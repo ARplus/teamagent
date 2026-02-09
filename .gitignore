@@ -37,3 +37,7 @@ next-env.d.ts
 
 # Misc
 *.log
+
+# Internal docs (not for public)
+*.internal.md
+INTERNAL/
