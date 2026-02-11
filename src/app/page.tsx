@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { sampleTasks, sampleAgents, sampleUsers, categoryLabels, statusLabels, priorityLabels } from '@/data/sample-data'
 import { Task } from '@/lib/types'
+import { Navbar } from '@/components/Navbar'
 
 // 获取 Agent 信息
 function getAgent(agentId?: string) {
@@ -167,51 +169,60 @@ function TeamAgents() {
 
 // 主页
 export default function Home() {
+  const { data: session, status } = useSession()
   const [tasks] = useState(sampleTasks)
 
   return (
-    <div>
-      {/* Agent 状态 */}
-      <AgentStatusCard />
-      
-      {/* 团队概览 */}
-      <TeamAgents />
-      
-      {/* 项目标题 */}
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-800">📋 北大医疗康复项目 - 协作看板</h2>
-        <p className="text-gray-500 text-sm mt-1">
-          追踪所有协作点，让 Agent 帮你协调推进
-        </p>
-      </div>
-      
-      {/* 看板 */}
-      <div className="flex space-x-6 overflow-x-auto pb-4">
-        <BoardColumn 
-          title="待处理" 
-          status="todo" 
-          tasks={tasks} 
-          color="border-gray-300"
-        />
-        <BoardColumn 
-          title="进行中" 
-          status="in-progress" 
-          tasks={tasks} 
-          color="border-blue-500"
-        />
-        <BoardColumn 
-          title="待审核" 
-          status="review" 
-          tasks={tasks} 
-          color="border-yellow-500"
-        />
-        <BoardColumn 
-          title="已完成" 
-          status="done" 
-          tasks={tasks} 
-          color="border-green-500"
-        />
-      </div>
-    </div>
+    <>
+      <Navbar />
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Agent 状态 */}
+        <AgentStatusCard />
+        
+        {/* 团队概览 */}
+        <TeamAgents />
+        
+        {/* 项目标题 */}
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-800">📋 北大医疗康复项目 - 协作看板</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            追踪所有协作点，让 Agent 帮你协调推进
+            {session?.user && (
+              <span className="ml-2 text-green-600">
+                · 欢迎回来，{session.user.name || session.user.email}！
+              </span>
+            )}
+          </p>
+        </div>
+        
+        {/* 看板 */}
+        <div className="flex space-x-6 overflow-x-auto pb-4">
+          <BoardColumn 
+            title="待处理" 
+            status="todo" 
+            tasks={tasks} 
+            color="border-gray-300"
+          />
+          <BoardColumn 
+            title="进行中" 
+            status="in-progress" 
+            tasks={tasks} 
+            color="border-blue-500"
+          />
+          <BoardColumn 
+            title="待审核" 
+            status="review" 
+            tasks={tasks} 
+            color="border-yellow-500"
+          />
+          <BoardColumn 
+            title="已完成" 
+            status="done" 
+            tasks={tasks} 
+            color="border-green-500"
+          />
+        </div>
+      </main>
+    </>
   )
 }
