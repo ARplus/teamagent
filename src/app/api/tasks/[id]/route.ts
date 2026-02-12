@@ -2,18 +2,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { authenticateRequest } from '@/lib/api-auth'
+
+// 统一认证：支持 Token 或 Session
+async function authenticate(req: NextRequest) {
+  // 先尝试 API Token
+  const tokenAuth = await authenticateRequest(req)
+  if (tokenAuth) {
+    return { userId: tokenAuth.user.id, user: tokenAuth.user }
+  }
+
+  // 尝试 Session
+  const session = await getServerSession(authOptions)
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email }
+    })
+    if (user) {
+      return { userId: user.id, user }
+    }
+  }
+
+  return null
+}
 
 // 获取单个任务
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
+    
     const task = await prisma.task.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
-        assignee: { select: { id: true, name: true, avatar: true } }
+        assignee: { select: { id: true, name: true, avatar: true } },
+        workspace: { select: { id: true, name: true } }
       }
     })
 
@@ -29,16 +55,17 @@ export async function GET(
   }
 }
 
-// 更新任务
+// 更新任务（支持 Token 认证）
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const { id } = await params
+    const auth = await authenticate(req)
     
-    if (!session?.user) {
-      return NextResponse.json({ error: '请先登录' }, { status: 401 })
+    if (!auth) {
+      return NextResponse.json({ error: '请先登录或提供 API Token' }, { status: 401 })
     }
 
     const data = await req.json()
@@ -48,12 +75,26 @@ export async function PATCH(
       data.dueDate = new Date(data.dueDate)
     }
 
+    // 验证用户有权限更新这个任务（是创建者或执行者）
+    const existingTask = await prisma.task.findUnique({
+      where: { id }
+    })
+
+    if (!existingTask) {
+      return NextResponse.json({ error: '任务不存在' }, { status: 404 })
+    }
+
+    if (existingTask.creatorId !== auth.userId && existingTask.assigneeId !== auth.userId) {
+      return NextResponse.json({ error: '无权限更新此任务' }, { status: 403 })
+    }
+
     const task = await prisma.task.update({
-      where: { id: params.id },
+      where: { id },
       data,
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
-        assignee: { select: { id: true, name: true, avatar: true } }
+        assignee: { select: { id: true, name: true, avatar: true } },
+        workspace: { select: { id: true, name: true } }
       }
     })
 
@@ -68,17 +109,31 @@ export async function PATCH(
 // 删除任务
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const { id } = await params
+    const auth = await authenticate(req)
     
-    if (!session?.user) {
-      return NextResponse.json({ error: '请先登录' }, { status: 401 })
+    if (!auth) {
+      return NextResponse.json({ error: '请先登录或提供 API Token' }, { status: 401 })
+    }
+
+    // 只有创建者可以删除任务
+    const existingTask = await prisma.task.findUnique({
+      where: { id }
+    })
+
+    if (!existingTask) {
+      return NextResponse.json({ error: '任务不存在' }, { status: 404 })
+    }
+
+    if (existingTask.creatorId !== auth.userId) {
+      return NextResponse.json({ error: '只有创建者可以删除任务' }, { status: 403 })
     }
 
     await prisma.task.delete({
-      where: { id: params.id }
+      where: { id }
     })
 
     return NextResponse.json({ message: '删除成功' })

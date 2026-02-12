@@ -26,6 +26,7 @@ model User {
   tasks         Task[]    @relation("TaskAssignee")
   createdTasks  Task[]    @relation("TaskCreator")
   workspaces    WorkspaceMember[]
+  apiTokens     ApiToken[]
 
   // NextAuth
   accounts      Account[]
@@ -44,6 +45,20 @@ model Agent {
 
   // 绑定用户
   userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// API Token - 让 Skill 能安全调用 API
+model ApiToken {
+  id          String   @id @default(cuid())
+  token       String   @unique  // 实际 token 值（hash 后存储）
+  name        String   // token 名称，如 "Lobster Skill"
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  
+  // 绑定用户
+  userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

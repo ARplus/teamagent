@@ -2,22 +2,41 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { authenticateRequest } from '@/lib/api-auth'
+
+// 统一认证
+async function authenticate(req: NextRequest) {
+  const tokenAuth = await authenticateRequest(req)
+  if (tokenAuth) {
+    return { userId: tokenAuth.user.id, user: tokenAuth.user }
+  }
+
+  const session = await getServerSession(authOptions)
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email }
+    })
+    if (user) {
+      return { userId: user.id, user }
+    }
+  }
+
+  return null
+}
 
 // 获取用户的工作区列表
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const auth = await authenticate(req)
     
-    if (!session?.user) {
+    if (!auth) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 })
     }
-
-    const userId = (session.user as any).id
 
     const workspaces = await prisma.workspace.findMany({
       where: {
         members: {
-          some: { userId }
+          some: { userId: auth.userId }
         }
       },
       include: {
@@ -41,13 +60,12 @@ export async function GET(req: NextRequest) {
 // 创建工作区
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const auth = await authenticate(req)
     
-    if (!session?.user) {
+    if (!auth) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 })
     }
 
-    const userId = (session.user as any).id
     const { name, description } = await req.json()
 
     if (!name) {
@@ -60,7 +78,7 @@ export async function POST(req: NextRequest) {
         description,
         members: {
           create: {
-            userId,
+            userId: auth.userId,
             role: 'owner'
           }
         }

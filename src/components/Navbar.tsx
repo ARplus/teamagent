@@ -9,11 +9,28 @@ export function Navbar() {
   return (
     <nav className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <Link href="/" className="flex items-center space-x-3">
-          <span className="text-2xl">🤝</span>
-          <h1 className="text-xl font-bold text-gray-900">TeamAgent</h1>
-          <span className="text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white px-2 py-0.5 rounded-full">Beta</span>
-        </Link>
+        <div className="flex items-center space-x-8">
+          <Link href="/" className="flex items-center space-x-3">
+            <span className="text-2xl">🤝</span>
+            <h1 className="text-xl font-bold text-gray-900">TeamAgent</h1>
+            <span className="text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white px-2 py-0.5 rounded-full">Beta</span>
+          </Link>
+
+          {/* 导航链接 */}
+          {session && (
+            <div className="flex items-center space-x-6">
+              <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
+                📋 看板
+              </Link>
+              <Link href="/tasks/new" className="text-sm text-gray-600 hover:text-gray-900">
+                ➕ 创建任务
+              </Link>
+              <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
+                ⚙️ 设置
+              </Link>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center space-x-4">
           {/* Lobster 状态 */}
