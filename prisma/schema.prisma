@@ -27,6 +27,8 @@ model User {
   createdTasks  Task[]    @relation("TaskCreator")
   workspaces    WorkspaceMember[]
   apiTokens     ApiToken[]
+  taskSteps     TaskStep[]
+  attachments   Attachment[]
 
   // NextAuth
   accounts      Account[]
@@ -112,6 +114,51 @@ model Task {
   // 所属工作区
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // 工作流步骤
+  steps       TaskStep[]
+}
+
+// 任务步骤 - 工作流节点
+model TaskStep {
+  id          String   @id @default(cuid())
+  title       String   // 步骤标题
+  description String?  // 步骤说明
+  order       Int      // 步骤顺序
+  status      String   @default("pending") // pending, in_progress, waiting_approval, done
+  agentStatus String?  // online, working, waiting, offline, error
+  result      String?  // 步骤结果/产出
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 所属任务
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // 负责人
+  assigneeId  String?
+  assignee    User?    @relation(fields: [assigneeId], references: [id])
+
+  // 附件
+  attachments Attachment[]
+}
+
+// 附件
+model Attachment {
+  id          String   @id @default(cuid())
+  name        String   // 文件名
+  url         String   // 文件 URL 或路径
+  type        String?  // 文件类型 (mime type)
+  size        Int?     // 文件大小 (bytes)
+  createdAt   DateTime @default(now())
+
+  // 所属步骤
+  stepId      String
+  step        TaskStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  // 上传者
+  uploaderId  String
+  uploader    User     @relation(fields: [uploaderId], references: [id])
 }
 
 // ============ NextAuth 相关表 ============
