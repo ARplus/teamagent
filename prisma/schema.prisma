@@ -126,19 +126,39 @@ model TaskStep {
   title       String   // 步骤标题
   description String?  // 步骤说明
   order       Int      // 步骤顺序
-  status      String   @default("pending") // pending, in_progress, waiting_approval, done
-  agentStatus String?  // online, working, waiting, offline, error
-  result      String?  // 步骤结果/产出
+  
+  // 责任人（支持多人显示）
+  assigneeNames String?  // JSON: ["小敏", "段段"] 用于显示
+  assigneeId    String?  // 主责任人用户ID
+  assignee      User?    @relation(fields: [assigneeId], references: [id])
+  
+  // 输入输出
+  inputs      String?  // JSON: ["需要的输入"]
+  outputs     String?  // JSON: ["产出物"]
+  skills      String?  // JSON: ["需要的Skill"]
+  
+  // 状态
+  status      String   @default("pending") // pending, in_progress, waiting_approval, done, rejected
+  agentStatus String?  // online, pending, working, waiting_approval, blocked, offline
+  
+  // 结果
+  result      String?  // 步骤结果/产出描述
+  
+  // 审核
+  approvedAt  DateTime?
+  approvedBy  String?
+  rejectedAt  DateTime?
+  rejectionReason String?
+  
+  // 时间戳
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
 
   // 所属任务
   taskId      String
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  // 负责人
-  assigneeId  String?
-  assignee    User?    @relation(fields: [assigneeId], references: [id])
 
   // 附件
   attachments Attachment[]

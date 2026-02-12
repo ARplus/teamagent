@@ -28,7 +28,8 @@ async function authenticate(req: NextRequest) {
 const NOT_NAMES = [
   '创意', '分类', '图片', '链接', '大模型', '接口', '小程序', '首页', '按钮',
   '模版', '报告', '功能', '居家', '护理', '同时', '确定', '要求', '设计',
-  '拆解', '讨论', '联系', '参加', '邀约', '开会', '给到', '更新', '集成'
+  '拆解', '讨论', '联系', '参加', '邀约', '开会', '给到', '更新', '集成',
+  '分析', '提供', '需要', '完成', '进行', '测试', '检查', '审核'
 ]
 
 // 从文本中提取人名
@@ -36,8 +37,7 @@ function extractNames(text: string): string[] {
   const names: string[] = []
   
   // 模式1: "XX + 动词" - 人名在动词前
-  // 例如: "小敏设计" → "小敏"
-  const pattern1 = /([\u4e00-\u9fa5]{2,3})(拆解|设计|出|找|给到|给|把|集成|联调|提供|上传|放入|更新|要|讨论|确定|联系|开会|参加|邀约)/g
+  const pattern1 = /([\u4e00-\u9fa5]{2,3})(拆解|设计|出|找|给到|给|把|集成|联调|提供|上传|放入|更新|要|讨论|确定|联系|开会|参加|邀约|负责|完成|检查|审核|测试)/g
   let m
   while ((m = pattern1.exec(text)) !== null) {
     const name = m[1]
@@ -46,9 +46,8 @@ function extractNames(text: string): string[] {
     }
   }
   
-  // 模式2: "动词 + XX" 或 "给/到/邀约 + XX" - 人名在介词后
-  // 例如: "给到段段" → "段段", "邀约Aurora" → "Aurora"
-  const pattern2 = /(?:给到|给|找|联系|邀约|带上)([\u4e00-\u9fa5]{2,3}|[A-Za-z]+)/g
+  // 模式2: "给/到/邀约/联系 + XX"
+  const pattern2 = /(?:给到|给|找|联系|邀约|带上|通知)([\u4e00-\u9fa5]{2,3}|[A-Za-z]+)/g
   while ((m = pattern2.exec(text)) !== null) {
     const name = m[1]
     if (!NOT_NAMES.includes(name) && !names.includes(name)) {
@@ -56,8 +55,8 @@ function extractNames(text: string): string[] {
     }
   }
   
-  // 模式3: "于主任"、"李院" 这种 "X + 职位" 格式
-  const pattern3 = /([\u4e00-\u9fa5])(主任|院长|院|总|经理|师)/g
+  // 模式3: "X主任"、"X院长" 等职位格式
+  const pattern3 = /([\u4e00-\u9fa5])(主任|院长|院|总|经理|师|工)/g
   while ((m = pattern3.exec(text)) !== null) {
     const name = m[1] + m[2]
     if (!names.includes(name)) {
@@ -68,48 +67,122 @@ function extractNames(text: string): string[] {
   return names
 }
 
-// 简单的任务拆解（规则版，后续可接入大模型）
+// 推断可能需要的 Skills
+function inferSkills(text: string): string[] {
+  const skills: string[] = []
+  
+  if (/设计|模版|UI|界面/.test(text)) skills.push('设计')
+  if (/文档|报告|分析|拆解/.test(text)) skills.push('文档处理')
+  if (/代码|开发|API|接口/.test(text)) skills.push('代码开发')
+  if (/会议|开会|安排|日程/.test(text)) skills.push('日程管理')
+  if (/邮件|通知|消息/.test(text)) skills.push('消息发送')
+  if (/测试|联调|检查/.test(text)) skills.push('测试')
+  if (/上传|OSS|存储/.test(text)) skills.push('文件管理')
+  if (/H5|小程序|前端/.test(text)) skills.push('前端开发')
+  if (/prompt|AI|大模型/.test(text)) skills.push('AI对接')
+  
+  return skills
+}
+
+// 推断输入输出
+function inferInputsOutputs(text: string, prevStep?: string): { inputs: string[], outputs: string[] } {
+  const inputs: string[] = []
+  const outputs: string[] = []
+  
+  // 输入：从描述中找 "XX给过来的"、"基于XX" 等
+  const inputPatterns = [
+    /(?:给过来的|收到的|基于|根据)([\u4e00-\u9fa5]+(?:报告|文档|设计|方案|链接|数据))/g,
+    /([\u4e00-\u9fa5]+(?:报告|文档|设计|方案|链接|数据))(?:给到|提供给)/g
+  ]
+  for (const pattern of inputPatterns) {
+    let m
+    while ((m = pattern.exec(text)) !== null) {
+      if (!inputs.includes(m[1])) inputs.push(m[1])
+    }
+  }
+  
+  // 如果有前置步骤，前置步骤的产出就是输入
+  if (prevStep) {
+    inputs.push(`上一步产出`)
+  }
+  
+  // 输出：从描述中找产出物
+  if (/设计.*模版/.test(text)) outputs.push('模版设计')
+  if (/prompt/.test(text)) outputs.push('Prompt')
+  if (/报告/.test(text) && /拆解|分析/.test(text)) outputs.push('分析结果')
+  if (/确定|选择/.test(text)) outputs.push('确认方案')
+  if (/会议|开会/.test(text)) outputs.push('会议安排')
+  if (/H5/.test(text)) outputs.push('H5页面')
+  if (/上传.*OSS/.test(text)) outputs.push('OSS链接')
+  if (/集成/.test(text)) outputs.push('集成完成')
+  if (/测试|联调/.test(text)) outputs.push('测试通过')
+  
+  // 默认输出
+  if (outputs.length === 0) outputs.push('任务完成')
+  
+  return { inputs, outputs }
+}
+
+// 解析任务描述
 function parseTaskDescription(description: string) {
-  const steps: { title: string; description: string; assignees: string[] }[] = []
+  const steps: {
+    title: string
+    description: string
+    assignees: string[]
+    inputs: string[]
+    outputs: string[]
+    skills: string[]
+  }[] = []
   
-  // 按数字编号拆分 - 支持多种格式
   const lines = description.split(/\n/).filter(l => l.trim())
+  let prevStepTitle = ''
   
+  // 先尝试按数字编号拆分
   for (const line of lines) {
     const trimmed = line.trim()
-    
-    // 匹配 "1. xxx" 或 "1、xxx" 或 "1 xxx" 格式
     const match = trimmed.match(/^(\d+)[.、\s]\s*(.+)/)
+    
     if (match) {
       const content = match[2]
       const assignees = extractNames(content)
+      const skills = inferSkills(content)
+      const { inputs, outputs } = inferInputsOutputs(content, prevStepTitle)
       
       steps.push({
         title: content.length > 40 ? content.slice(0, 40) + '...' : content,
         description: content,
-        assignees
+        assignees,
+        inputs,
+        outputs,
+        skills
       })
+      
+      prevStepTitle = content
     }
   }
   
-  // 如果没有匹配到编号格式，尝试按句子/逗号拆分
+  // 如果没有编号，按句子拆分
   if (steps.length === 0) {
-    // 合并所有行
     const fullText = lines.join(' ')
-    
-    // 按句号、逗号、分号拆分
     const sentences = fullText.split(/[。，；]/).filter(s => s.trim().length > 5)
     
     for (const sentence of sentences) {
       const trimmed = sentence.trim()
       if (trimmed.length > 0) {
         const assignees = extractNames(trimmed)
+        const skills = inferSkills(trimmed)
+        const { inputs, outputs } = inferInputsOutputs(trimmed, prevStepTitle)
         
         steps.push({
           title: trimmed.length > 40 ? trimmed.slice(0, 40) + '...' : trimmed,
           description: trimmed,
-          assignees
+          assignees,
+          inputs,
+          outputs,
+          skills
         })
+        
+        prevStepTitle = trimmed
       }
     }
   }
@@ -117,7 +190,7 @@ function parseTaskDescription(description: string) {
   return steps
 }
 
-// POST /api/tasks/[id]/parse - AI 解析任务并创建步骤
+// POST /api/tasks/[id]/parse - 解析任务并创建步骤
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -130,7 +203,6 @@ export async function POST(
       return NextResponse.json({ error: '请先登录' }, { status: 401 })
     }
 
-    // 获取任务
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       include: { steps: true }
@@ -148,27 +220,25 @@ export async function POST(
     const parsedSteps = parseTaskDescription(task.description)
 
     if (parsedSteps.length === 0) {
-      return NextResponse.json({ error: '无法从描述中识别步骤' }, { status: 400 })
+      return NextResponse.json({ error: '无法从描述中识别步骤，请使用数字编号格式（1. 2. 3.）' }, { status: 400 })
     }
 
-    // 获取工作区内所有用户（用于匹配昵称）
+    // 获取工作区内所有用户
     const workspaceMembers = await prisma.workspaceMember.findMany({
       where: { workspaceId: task.workspaceId },
       include: {
-        user: {
-          select: { id: true, name: true, nickname: true }
-        }
+        user: { select: { id: true, name: true, nickname: true } }
       }
     })
 
     // 创建步骤
     const createdSteps = []
-    let order = task.steps.length // 从现有步骤数量开始
+    let order = task.steps.length
 
     for (const step of parsedSteps) {
       order++
       
-      // 尝试匹配负责人
+      // 尝试匹配主责任人
       let assigneeId: string | null = null
       for (const assigneeName of step.assignees) {
         const member = workspaceMembers.find(m => 
@@ -184,10 +254,16 @@ export async function POST(
       const created = await prisma.taskStep.create({
         data: {
           title: step.title,
-          description: `负责人: ${step.assignees.join('、') || '待分配'}\n\n${step.description}`,
+          description: step.description,
           order,
           taskId,
-          assigneeId
+          assigneeId,
+          assigneeNames: JSON.stringify(step.assignees),
+          inputs: JSON.stringify(step.inputs),
+          outputs: JSON.stringify(step.outputs),
+          skills: JSON.stringify(step.skills),
+          status: 'pending',
+          agentStatus: assigneeId ? 'pending' : null
         },
         include: {
           assignee: { select: { id: true, name: true, nickname: true } }
@@ -196,7 +272,10 @@ export async function POST(
 
       createdSteps.push({
         ...created,
-        recognizedAssignees: step.assignees
+        assigneeNames: step.assignees,
+        inputs: step.inputs,
+        outputs: step.outputs,
+        skills: step.skills
       })
     }
 

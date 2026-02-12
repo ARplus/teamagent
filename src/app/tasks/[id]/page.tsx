@@ -15,6 +15,10 @@ interface TaskStep {
   agentStatus: string | null
   result: string | null
   assignee?: { id: string; name: string | null; avatar: string | null }
+  assigneeNames?: string  // JSON string of names
+  inputs?: string        // JSON string
+  outputs?: string       // JSON string
+  skills?: string        // JSON string
   attachments: { id: string; name: string; url: string }[]
 }
 
@@ -57,10 +61,26 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
   urgent: { label: '紧急', color: 'bg-red-100 text-red-600' }
 }
 
+// 解析 JSON 字符串
+function parseJSON(str: string | undefined | null): string[] {
+  if (!str) return []
+  try {
+    return JSON.parse(str)
+  } catch {
+    return []
+  }
+}
+
 // 步骤卡片
 function StepCard({ step, index, isActive }: { step: TaskStep; index: number; isActive: boolean }) {
   const status = statusConfig[step.status] || statusConfig.pending
   const agentStatus = step.agentStatus ? agentStatusConfig[step.agentStatus] : null
+  
+  // 解析 JSON 字段
+  const assigneeNames = parseJSON(step.assigneeNames)
+  const inputs = parseJSON(step.inputs)
+  const outputs = parseJSON(step.outputs)
+  const skills = parseJSON(step.skills)
 
   return (
     <div className={`relative pl-8 pb-8 ${index === 0 ? '' : ''}`}>
@@ -87,26 +107,56 @@ function StepCard({ step, index, isActive }: { step: TaskStep; index: number; is
           <p className="text-sm text-gray-600 mb-3">{step.description}</p>
         )}
 
-        {/* 负责人 + Agent 状态 */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {step.assignee ? (
-              <>
-                <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs">
-                  {step.assignee.name?.[0] || '?'}
-                </div>
-                <span className="text-sm text-gray-600">{step.assignee.name}</span>
-              </>
-            ) : (
-              <span className="text-sm text-gray-400">未分配</span>
-            )}
-
-            {agentStatus && (
-              <span className={`text-xs ${agentStatus.color}`}>
-                {agentStatus.icon} {agentStatus.label}
+        {/* 责任人 + Agent 状态 */}
+        <div className="flex items-center flex-wrap gap-2 mb-3">
+          <span className="text-xs text-gray-500">责任人:</span>
+          {assigneeNames.length > 0 ? (
+            assigneeNames.map((name, i) => (
+              <span key={i} className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                {name}
               </span>
-            )}
-          </div>
+            ))
+          ) : step.assignee ? (
+            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+              {step.assignee.name}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400">待分配</span>
+          )}
+          
+          {agentStatus && (
+            <span className={`text-xs ${agentStatus.color} ml-2`}>
+              {agentStatus.icon} Agent {agentStatus.label}
+            </span>
+          )}
+        </div>
+
+        {/* 输入/输出/Skills */}
+        <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+          {inputs.length > 0 && (
+            <div className="bg-blue-50 p-2 rounded">
+              <div className="text-blue-600 font-medium mb-1">📥 输入</div>
+              {inputs.map((item, i) => (
+                <div key={i} className="text-blue-700">{item}</div>
+              ))}
+            </div>
+          )}
+          {outputs.length > 0 && (
+            <div className="bg-green-50 p-2 rounded">
+              <div className="text-green-600 font-medium mb-1">📤 产出</div>
+              {outputs.map((item, i) => (
+                <div key={i} className="text-green-700">{item}</div>
+              ))}
+            </div>
+          )}
+          {skills.length > 0 && (
+            <div className="bg-orange-50 p-2 rounded">
+              <div className="text-orange-600 font-medium mb-1">🔧 Skill</div>
+              {skills.map((item, i) => (
+                <div key={i} className="text-orange-700">{item}</div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 结果/产出 */}
