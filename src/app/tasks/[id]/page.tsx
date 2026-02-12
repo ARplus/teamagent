@@ -65,7 +65,8 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
 function parseJSON(str: string | undefined | null): string[] {
   if (!str) return []
   try {
-    return JSON.parse(str)
+    const parsed = JSON.parse(str)
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }

@@ -93,6 +93,12 @@ export async function POST(
         }
       }
 
+      // 确保是数组格式
+      const assignees = Array.isArray(step.assignees) ? step.assignees : [step.assignees].filter(Boolean)
+      const inputs = Array.isArray(step.inputs) ? step.inputs : [step.inputs].filter(Boolean)
+      const outputs = Array.isArray(step.outputs) ? step.outputs : [step.outputs].filter(Boolean)
+      const skills = Array.isArray(step.skills) ? step.skills : [step.skills].filter(Boolean)
+
       const created = await prisma.taskStep.create({
         data: {
           title: step.title,
@@ -100,10 +106,10 @@ export async function POST(
           order,
           taskId,
           assigneeId,
-          assigneeNames: JSON.stringify(step.assignees),
-          inputs: JSON.stringify(step.inputs || []),
-          outputs: JSON.stringify(step.outputs || []),
-          skills: JSON.stringify(step.skills || []),
+          assigneeNames: JSON.stringify(assignees),
+          inputs: JSON.stringify(inputs),
+          outputs: JSON.stringify(outputs),
+          skills: JSON.stringify(skills),
           status: 'pending',
           agentStatus: assigneeId ? 'pending' : null
         },

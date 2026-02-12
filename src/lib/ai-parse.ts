@@ -5,45 +5,52 @@
 const QWEN_API_KEY = process.env.QWEN_API_KEY || 'sk-4a673b39b21f4e2aad6b9e38f487631f'
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 
+// ============================================================
+// TeamAgent Protocol v1.0 - 任务拆解 Prompt
+// 来源: skills/teamagent/PROTOCOL.md
+// ============================================================
+
 const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任务描述拆解为结构化的子流程。
 
-## 输出格式（必须是合法 JSON）
+## 输入
+用户的任务描述（自然语言）
+
+## 输出格式（JSON）
 {
+  "taskTitle": "任务总标题",
   "steps": [
     {
       "order": 1,
-      "title": "子流程标题（简洁，10字以内）",
+      "title": "子流程标题（简洁）",
       "description": "详细描述",
       "assignees": ["人名1", "人名2"],
       "inputs": ["需要的输入/依赖"],
       "outputs": ["产出物"],
-      "skills": ["可能需要的Skill"]
+      "skills": ["可能需要的 Skill"]
     }
   ]
 }
 
 ## 拆解规则
 1. 每个子流程应该是**可独立执行**的最小单元
-2. 识别所有**人名**：
-   - 中文名：2-3个汉字，如"小敏"、"段段"
-   - 职位格式：如"于主任"、"李院长"
-   - 英文名：如"Aurora"
-   - 不要把"过来的"、"同时给"、"确定后"等词当成人名！
+2. 识别所有**人名**（中文2-3字、英文名、X主任/X总等职位格式）
 3. 明确每步的**输入依赖**和**输出产出**
 4. 推断可能需要的 **Skill**（如：文档处理、代码编写、设计、会议安排等）
-5. 如果描述中有"同时"、"并且"，考虑合并为一个步骤
-6. 如果描述中有"要求"、"带上"等补充说明，合并到上一个步骤
+5. 保持流程的**逻辑顺序**
 
 ## 示例
-输入：小敏拆解于主任给过来的居家护理分析报告，设计出模版，同时给出prompt MD。给到段段讨论，确定后联系于主任开会，要求带上他们的康复师、报告师，邀约Aurora和李院参加
 
-输出：
+### 输入
+小敏拆解于主任给过来的居家护理分析报告，设计出模版，给到段段讨论，确定后联系于主任开会
+
+### 输出
 {
+  "taskTitle": "居家护理功能讨论",
   "steps": [
     {
       "order": 1,
       "title": "拆解分析报告",
-      "description": "小敏拆解于主任提供的居家护理分析报告",
+      "description": "拆解于主任提供的居家护理分析报告",
       "assignees": ["小敏"],
       "inputs": ["于主任的居家护理分析报告"],
       "outputs": ["报告拆解结果"],
@@ -52,19 +59,19 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
     {
       "order": 2,
       "title": "设计模版",
-      "description": "小敏设计模版，并给出 prompt MD",
+      "description": "基于拆解结果设计模版，并给出 prompt",
       "assignees": ["小敏"],
       "inputs": ["报告拆解结果"],
-      "outputs": ["模版设计", "Prompt MD"],
-      "skills": ["模版设计", "Prompt编写"]
+      "outputs": ["模版设计", "prompt MD"],
+      "skills": ["模版设计", "prompt 编写"]
     },
     {
       "order": 3,
       "title": "讨论确认",
-      "description": "将模版给到段段讨论并确认",
+      "description": "与段段讨论模版设计并确认",
       "assignees": ["小敏", "段段"],
-      "inputs": ["模版设计", "Prompt MD"],
-      "outputs": ["确认的方案"],
+      "inputs": ["模版设计", "prompt MD"],
+      "outputs": ["确认的最终方案"],
       "skills": []
     },
     {
@@ -72,9 +79,9 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
       "title": "安排会议",
       "description": "联系于主任安排会议，邀请康复师、报告师、Aurora、李院参加",
       "assignees": ["段段"],
-      "inputs": ["确认的方案"],
+      "inputs": ["确认的最终方案"],
       "outputs": ["会议安排"],
-      "skills": ["日程管理"],
+      "skills": ["日程管理", "邮件发送"],
       "invitees": ["于主任", "康复师", "报告师", "Aurora", "李院"]
     }
   ]
