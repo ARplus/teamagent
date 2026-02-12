@@ -238,6 +238,12 @@ export default function Home() {
           /* 看板 */
           <div className="flex space-x-6 overflow-x-auto pb-4">
             <BoardColumn 
+              title="💡 建议" 
+              status="suggested" 
+              tasks={tasks} 
+              color="border-purple-500"
+            />
+            <BoardColumn 
               title="待处理" 
               status="todo" 
               tasks={tasks} 

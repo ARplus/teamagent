@@ -98,7 +98,7 @@ model Task {
   id          String   @id @default(cuid())
   title       String
   description String?
-  status      String   @default("todo") // todo, in_progress, review, done
+  status      String   @default("todo") // suggested, todo, in_progress, review, done
   priority    String   @default("medium") // low, medium, high, urgent
   dueDate     DateTime?
   createdAt   DateTime @default(now())
@@ -115,6 +115,11 @@ model Task {
   // 所属工作区
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // 前置任务（历史上下文）
+  parentTaskId String?
+  parentTask   Task?    @relation("TaskHistory", fields: [parentTaskId], references: [id])
+  childTasks   Task[]   @relation("TaskHistory")
 
   // 工作流步骤
   steps       TaskStep[]
