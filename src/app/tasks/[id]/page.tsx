@@ -147,6 +147,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const [showAddStep, setShowAddStep] = useState(false)
   const [newStepTitle, setNewStepTitle] = useState('')
   const [addingStep, setAddingStep] = useState(false)
+  const [parsing, setParsing] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -194,6 +195,31 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       console.error('添加步骤失败', e)
     } finally {
       setAddingStep(false)
+    }
+  }
+
+  const parseTask = async () => {
+    if (!task?.description) {
+      alert('任务没有描述，无法自动拆解')
+      return
+    }
+    setParsing(true)
+    try {
+      const res = await fetch(`/api/tasks/${id}/parse`, {
+        method: 'POST'
+      })
+      const data = await res.json()
+      if (res.ok) {
+        alert(`🎉 ${data.message}`)
+        fetchTask()
+      } else {
+        alert(data.error || '拆解失败')
+      }
+    } catch (e) {
+      console.error('拆解任务失败', e)
+      alert('拆解任务失败')
+    } finally {
+      setParsing(false)
     }
   }
 
@@ -280,12 +306,23 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-gray-800">📋 工作流程</h2>
-            <button
-              className="text-sm text-blue-600 hover:text-blue-800"
-              onClick={() => setShowAddStep(true)}
-            >
-              + 添加步骤
-            </button>
+            <div className="flex items-center space-x-3">
+              {task.description && (!task.steps || task.steps.length === 0) && (
+                <button
+                  className="text-sm bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1.5 rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50"
+                  onClick={parseTask}
+                  disabled={parsing}
+                >
+                  {parsing ? '🤖 拆解中...' : '🤖 AI 自动拆解'}
+                </button>
+              )}
+              <button
+                className="text-sm text-blue-600 hover:text-blue-800"
+                onClick={() => setShowAddStep(true)}
+              >
+                + 添加步骤
+              </button>
+            </div>
           </div>
 
           {/* 添加步骤表单 */}

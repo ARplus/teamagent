@@ -16,6 +16,7 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String?
+  nickname      String?   // 昵称，用于 AI 识别（如"段段"、"小敏"）
   password      String    // bcrypt hashed
   avatar        String?
   createdAt     DateTime  @default(now())
