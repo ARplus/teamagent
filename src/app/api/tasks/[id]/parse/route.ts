@@ -24,34 +24,93 @@ async function authenticate(req: NextRequest) {
   return null
 }
 
+// 不是人名的常见词
+const NOT_NAMES = [
+  '创意', '分类', '图片', '链接', '大模型', '接口', '小程序', '首页', '按钮',
+  '模版', '报告', '功能', '居家', '护理', '同时', '确定', '要求', '设计',
+  '拆解', '讨论', '联系', '参加', '邀约', '开会', '给到', '更新', '集成'
+]
+
+// 从文本中提取人名
+function extractNames(text: string): string[] {
+  const names: string[] = []
+  
+  // 模式1: "XX + 动词" - 人名在动词前
+  // 例如: "小敏设计" → "小敏"
+  const pattern1 = /([\u4e00-\u9fa5]{2,3})(拆解|设计|出|找|给到|给|把|集成|联调|提供|上传|放入|更新|要|讨论|确定|联系|开会|参加|邀约)/g
+  let m
+  while ((m = pattern1.exec(text)) !== null) {
+    const name = m[1]
+    if (!NOT_NAMES.includes(name) && !names.includes(name)) {
+      names.push(name)
+    }
+  }
+  
+  // 模式2: "动词 + XX" 或 "给/到/邀约 + XX" - 人名在介词后
+  // 例如: "给到段段" → "段段", "邀约Aurora" → "Aurora"
+  const pattern2 = /(?:给到|给|找|联系|邀约|带上)([\u4e00-\u9fa5]{2,3}|[A-Za-z]+)/g
+  while ((m = pattern2.exec(text)) !== null) {
+    const name = m[1]
+    if (!NOT_NAMES.includes(name) && !names.includes(name)) {
+      names.push(name)
+    }
+  }
+  
+  // 模式3: "于主任"、"李院" 这种 "X + 职位" 格式
+  const pattern3 = /([\u4e00-\u9fa5])(主任|院长|院|总|经理|师)/g
+  while ((m = pattern3.exec(text)) !== null) {
+    const name = m[1] + m[2]
+    if (!names.includes(name)) {
+      names.push(name)
+    }
+  }
+  
+  return names
+}
+
 // 简单的任务拆解（规则版，后续可接入大模型）
 function parseTaskDescription(description: string) {
   const steps: { title: string; description: string; assignees: string[] }[] = []
   
-  // 按数字编号拆分
+  // 按数字编号拆分 - 支持多种格式
   const lines = description.split(/\n/).filter(l => l.trim())
   
   for (const line of lines) {
-    // 匹配 "1. xxx" 或 "1、xxx" 格式
-    const match = line.match(/^\d+[.、]\s*(.+)/)
+    const trimmed = line.trim()
+    
+    // 匹配 "1. xxx" 或 "1、xxx" 或 "1 xxx" 格式
+    const match = trimmed.match(/^(\d+)[.、\s]\s*(.+)/)
     if (match) {
-      const content = match[1]
-      
-      // 提取人名（简单版：找中文2-3字的词，后面跟着动词）
-      const namePattern = /([一-龥]{2,3})(?:出|设计|找|给|把|集成|联调|提供|上传|放入|更新)/g
-      const assignees: string[] = []
-      let nameMatch
-      while ((nameMatch = namePattern.exec(content)) !== null) {
-        if (!assignees.includes(nameMatch[1])) {
-          assignees.push(nameMatch[1])
-        }
-      }
+      const content = match[2]
+      const assignees = extractNames(content)
       
       steps.push({
-        title: content.slice(0, 50) + (content.length > 50 ? '...' : ''),
+        title: content.length > 40 ? content.slice(0, 40) + '...' : content,
         description: content,
         assignees
       })
+    }
+  }
+  
+  // 如果没有匹配到编号格式，尝试按句子/逗号拆分
+  if (steps.length === 0) {
+    // 合并所有行
+    const fullText = lines.join(' ')
+    
+    // 按句号、逗号、分号拆分
+    const sentences = fullText.split(/[。，；]/).filter(s => s.trim().length > 5)
+    
+    for (const sentence of sentences) {
+      const trimmed = sentence.trim()
+      if (trimmed.length > 0) {
+        const assignees = extractNames(trimmed)
+        
+        steps.push({
+          title: trimmed.length > 40 ? trimmed.slice(0, 40) + '...' : trimmed,
+          description: trimmed,
+          assignees
+        })
+      }
     }
   }
   
