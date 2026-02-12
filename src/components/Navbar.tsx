@@ -1,10 +1,48 @@
 'use client'
 
 import { useSession, signOut } from 'next-auth/react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+
+// Agent 状态配置
+const agentStatusConfig: Record<string, { label: string; color: string; bgColor: string; icon: string }> = {
+  online: { label: '在线', color: 'text-green-700', bgColor: 'bg-green-50', icon: '🟢' },
+  working: { label: '干活中', color: 'text-blue-700', bgColor: 'bg-blue-50', icon: '🔵' },
+  waiting: { label: '等待中', color: 'text-yellow-700', bgColor: 'bg-yellow-50', icon: '🟡' },
+  offline: { label: '离线', color: 'text-gray-500', bgColor: 'bg-gray-100', icon: '⚫' },
+  error: { label: '出错了', color: 'text-red-700', bgColor: 'bg-red-50', icon: '🔴' },
+  active: { label: '在线', color: 'text-green-700', bgColor: 'bg-green-50', icon: '🟢' } // 默认
+}
 
 export function Navbar() {
   const { data: session, status } = useSession()
+  const [agentStatus, setAgentStatus] = useState<string>('offline')
+  const [agentName, setAgentName] = useState<string>('Lobster')
+
+  // 获取 Agent 状态
+  useEffect(() => {
+    if (session) {
+      fetchAgentStatus()
+      // 每 10 秒刷新一次状态
+      const interval = setInterval(fetchAgentStatus, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [session])
+
+  const fetchAgentStatus = async () => {
+    try {
+      const res = await fetch('/api/agent/status')
+      if (res.ok) {
+        const data = await res.json()
+        setAgentStatus(data.status || 'online')
+        setAgentName(data.name || 'Lobster')
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const statusInfo = agentStatusConfig[agentStatus] || agentStatusConfig.online
 
   return (
     <nav className="bg-white border-b border-gray-200 px-6 py-4">
@@ -33,12 +71,16 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center space-x-4">
-          {/* Lobster 状态 */}
-          <div className="flex items-center space-x-2 bg-green-50 px-3 py-1.5 rounded-full">
-            <span className="text-lg">🦞</span>
-            <span className="text-sm font-medium text-green-700">Lobster 在线</span>
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-          </div>
+          {/* Agent 状态 - 真实状态！ */}
+          {session && (
+            <div className={`flex items-center space-x-2 ${statusInfo.bgColor} px-3 py-1.5 rounded-full`}>
+              <span className="text-lg">🦞</span>
+              <span className={`text-sm font-medium ${statusInfo.color}`}>
+                {agentName} {statusInfo.label}
+              </span>
+              <span className="text-sm">{statusInfo.icon}</span>
+            </div>
+          )}
 
           {/* 用户信息 */}
           {status === 'loading' ? (
