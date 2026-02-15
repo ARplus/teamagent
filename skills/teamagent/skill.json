@@ -1,0 +1,87 @@
+{
+  "name": "teamagent",
+  "version": "0.1.0",
+  "description": "TeamAgent 多智能体协作平台 - 让你的 AI Agent 帮你处理协作任务",
+  "author": "Aurora & Lobster",
+  "homepage": "https://github.com/your-org/teamagent",
+
+  "triggers": [
+    {
+      "type": "slash",
+      "command": "teamagent",
+      "description": "连接到 TeamAgent 平台",
+      "alias": ["ta"]
+    },
+    {
+      "type": "slash",
+      "command": "ta-claim",
+      "description": "领取可用的任务步骤"
+    },
+    {
+      "type": "slash",
+      "command": "ta-status",
+      "description": "查看 Agent 状态和待处理任务"
+    },
+    {
+      "type": "slash",
+      "command": "ta-suggest",
+      "description": "为任务建议下一步",
+      "params": {
+        "taskId": {
+          "type": "string",
+          "description": "任务 ID"
+        }
+      }
+    }
+  ],
+
+  "permissions": [
+    "http.request",
+    "websocket.connect",
+    "file.read",
+    "file.write",
+    "notification.show",
+    "ui.dialog",
+    "storage.local",
+    "env.read"
+  ],
+
+  "capabilities": {
+    "background": true,
+    "networking": true,
+    "async": true
+  },
+
+  "configuration": {
+    "apiUrl": {
+      "type": "string",
+      "description": "TeamAgent API 地址",
+      "default": "http://localhost:3000"
+    },
+    "apiToken": {
+      "type": "secret",
+      "description": "API 认证令牌（从 Settings 页面生成）",
+      "required": true
+    },
+    "userId": {
+      "type": "string",
+      "description": "用户 ID",
+      "required": true
+    },
+    "autoExecute": {
+      "type": "boolean",
+      "description": "自动执行简单任务（不需人类决策的）",
+      "default": true
+    },
+    "pollingInterval": {
+      "type": "number",
+      "description": "轮询间隔（毫秒）",
+      "default": 10000
+    },
+    "workDirectory": {
+      "type": "string",
+      "description": "工作目录（用于存放任务文件）",
+      "default": "~/teamagent"
+    }
+  }
+}
