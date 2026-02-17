@@ -41,3 +41,7 @@ next-env.d.ts
 # Internal docs (not for public)
 *.internal.md
 INTERNAL/
+
+# Uploaded files (keep directory structure, ignore files)
+public/uploads/**
+!public/uploads/.gitkeep

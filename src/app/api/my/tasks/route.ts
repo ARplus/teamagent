@@ -33,9 +33,13 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') // todo, in_progress, review, done
     const workspaceId = searchParams.get('workspaceId')
 
-    // 构建查询条件
+    // 构建查询条件：我是任务负责人 OR 我是某个步骤的负责人 OR 我是创建者
     const where: any = {
-      assigneeId: userId
+      OR: [
+        { assigneeId: userId },  // 任务负责人
+        { creatorId: userId },   // 创建者
+        { steps: { some: { assigneeId: userId } } }  // 步骤负责人
+      ]
     }
     if (status) {
       where.status = status
@@ -60,6 +64,10 @@ export async function GET(req: NextRequest) {
             id: true,
             name: true
           }
+        },
+        steps: {
+          where: { assigneeId: userId },
+          select: { id: true, title: true, status: true }
         }
       },
       orderBy: [

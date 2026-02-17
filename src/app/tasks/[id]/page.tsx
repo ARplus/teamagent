@@ -835,14 +835,39 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               </div>
               <h1 className="text-2xl font-bold text-gray-900">{task.title}</h1>
             </div>
-            {task.dueDate && (
-              <div className="text-right">
-                <div className="text-xs text-gray-500">截止日期</div>
-                <div className="text-sm font-medium text-gray-700">
-                  {new Date(task.dueDate).toLocaleDateString('zh-CN')}
+            <div className="flex items-center space-x-4">
+              {task.dueDate && (
+                <div className="text-right">
+                  <div className="text-xs text-gray-500">截止日期</div>
+                  <div className="text-sm font-medium text-gray-700">
+                    {new Date(task.dueDate).toLocaleDateString('zh-CN')}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              {/* 删除按钮 - 只有创建者可见 */}
+              {session?.user?.id === task.creator?.id && (
+                <button
+                  onClick={async () => {
+                    if (!confirm('确定要删除这个任务吗？所有步骤也会被删除。')) return
+                    try {
+                      const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+                      if (res.ok) {
+                        router.push('/')
+                      } else {
+                        const data = await res.json()
+                        alert(data.error || '删除失败')
+                      }
+                    } catch (e) {
+                      console.error('删除失败', e)
+                      alert('删除失败')
+                    }
+                  }}
+                  className="text-sm text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition"
+                >
+                  🗑️ 删除
+                </button>
+              )}
+            </div>
           </div>
 
           {task.description && (
