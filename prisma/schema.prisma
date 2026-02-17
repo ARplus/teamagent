@@ -104,6 +104,11 @@ model Task {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // ⏱️ 工作量统计
+  totalAgentTimeMs  Int?    // 总 Agent 执行时间（毫秒）
+  totalHumanTimeMs  Int?    // 总人类审批时间（毫秒）
+  agentWorkRatio    Float?  // Agent 工作占比 (0-1)
+
   // 创建者
   creatorId   String
   creator     User     @relation("TaskCreator", fields: [creatorId], references: [id])
@@ -148,6 +153,7 @@ model TaskStep {
   
   // 结果
   result      String?  // 步骤结果/产出描述
+  summary     String?  // AI 生成的摘要
   
   // 审核
   approvedAt  DateTime?
@@ -155,11 +161,17 @@ model TaskStep {
   rejectedAt  DateTime?
   rejectionReason String?
   
+  // ⏱️ 工作量追踪
+  rejectionCount   Int      @default(0)  // 被打回次数
+  agentDurationMs  Int?     // Agent 执行耗时（毫秒）
+  humanDurationMs  Int?     // 人类审批耗时（毫秒）
+  
   // 时间戳
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   startedAt   DateTime?
   completedAt DateTime?
+  reviewStartedAt DateTime?  // 人类开始审批时间
 
   // 所属任务
   taskId      String

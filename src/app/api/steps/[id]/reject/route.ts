@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendToUser } from '@/lib/events'
 
 // POST /api/steps/[id]/reject - 人类审核拒绝
 export async function POST(
@@ -48,12 +49,30 @@ export async function POST(
     const updated = await prisma.taskStep.update({
       where: { id },
       data: {
-        status: 'in_progress', // 打回重做
+        status: 'pending', // 打回后重新等待领取
         agentStatus: 'pending', // Agent 需要重新领取
+        result: null, // 清空之前的结果
         rejectedAt: new Date(),
-        rejectionReason: reason || '需要修改'
+        rejectionReason: reason || '需要修改',
+        completedAt: null, // 清空完成时间
+        rejectionCount: { increment: 1 }, // 增加打回次数
+        // 重置时间（下次执行重新计时）
+        startedAt: null,
+        reviewStartedAt: null,
+        agentDurationMs: null,
+        humanDurationMs: null
       }
     })
+
+    // 🔔 通知步骤负责人：被打回了
+    if (step.assigneeId) {
+      sendToUser(step.assigneeId, {
+        type: 'approval:rejected',
+        taskId: step.taskId,
+        stepId: id,
+        reason: reason || '需要修改'
+      })
+    }
 
     return NextResponse.json({
       message: '已打回修改',

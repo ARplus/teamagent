@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { Navbar } from '@/components/Navbar'
 import Link from 'next/link'
+import AgentStatusList from '@/components/AgentStatusList'
 
 // 任务类型
 interface Task {
@@ -18,6 +19,17 @@ interface Task {
   creator?: { id: string; name: string | null; email: string }
   assignee?: { id: string; name: string | null; avatar: string | null }
   workspace?: { id: string; name: string }
+}
+
+// 步骤类型
+interface Step {
+  id: string
+  title: string
+  description: string | null
+  order: number
+  status: string
+  agentStatus: string | null
+  task: { id: string; title: string }
 }
 
 // 优先级配置
@@ -147,28 +159,114 @@ function AgentStatusCard({ tasks }: { tasks: Task[] }) {
   )
 }
 
+// 我的待办步骤组件
+function MyStepsCard({ steps }: { steps: Step[] }) {
+  if (steps.length === 0) return null
+
+  const pendingSteps = steps.filter(s => s.status === 'pending')
+  const inProgressSteps = steps.filter(s => s.status === 'in_progress')
+  const waitingSteps = steps.filter(s => s.status === 'waiting_approval')
+
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-8">
+      <h2 className="text-lg font-bold text-gray-800 mb-4">🎯 我的待办步骤</h2>
+      
+      <div className="space-y-3">
+        {/* 进行中的步骤 */}
+        {inProgressSteps.map(step => (
+          <Link 
+            key={step.id} 
+            href={`/tasks/${step.task.id}`}
+            className="flex items-center justify-between p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
+          >
+            <div>
+              <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded mr-2">进行中</span>
+              <span className="font-medium text-gray-900">{step.title}</span>
+              <span className="text-sm text-gray-500 ml-2">· {step.task.title}</span>
+            </div>
+            <span className="text-blue-600">→</span>
+          </Link>
+        ))}
+
+        {/* 等待审批的步骤 */}
+        {waitingSteps.map(step => (
+          <Link 
+            key={step.id} 
+            href={`/tasks/${step.task.id}`}
+            className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition"
+          >
+            <div>
+              <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded mr-2">待审批</span>
+              <span className="font-medium text-gray-900">{step.title}</span>
+              <span className="text-sm text-gray-500 ml-2">· {step.task.title}</span>
+            </div>
+            <span className="text-yellow-600">→</span>
+          </Link>
+        ))}
+
+        {/* 待领取的步骤 */}
+        {pendingSteps.slice(0, 5).map(step => (
+          <Link 
+            key={step.id} 
+            href={`/tasks/${step.task.id}`}
+            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+          >
+            <div>
+              <span className="text-xs bg-gray-400 text-white px-2 py-0.5 rounded mr-2">待领取</span>
+              <span className="font-medium text-gray-900">{step.title}</span>
+              <span className="text-sm text-gray-500 ml-2">· {step.task.title}</span>
+            </div>
+            <span className="text-gray-400">→</span>
+          </Link>
+        ))}
+
+        {pendingSteps.length > 5 && (
+          <div className="text-center text-sm text-gray-500">
+            还有 {pendingSteps.length - 5} 个待领取步骤...
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // 主页
 export default function Home() {
   const { data: session, status } = useSession()
   const [tasks, setTasks] = useState<Task[]>([])
+  const [steps, setSteps] = useState<Step[]>([])
   const [loading, setLoading] = useState(true)
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
 
-  // 获取任务
+  // 获取任务和步骤
   useEffect(() => {
     if (session) {
-      fetchTasks()
+      fetchData()
     } else if (status === 'unauthenticated') {
       setLoading(false)
     }
   }, [session, status])
 
-  const fetchTasks = async () => {
+  const fetchData = async () => {
     try {
-      const res = await fetch('/api/my/tasks')
-      const data = await res.json()
-      setTasks(data.tasks || [])
+      const [tasksRes, stepsRes, workspacesRes] = await Promise.all([
+        fetch('/api/my/tasks'),
+        fetch('/api/my/steps'),
+        fetch('/api/workspaces')
+      ])
+      const tasksData = await tasksRes.json()
+      const stepsData = await stepsRes.json()
+      const workspacesData = await workspacesRes.json()
+      
+      setTasks(tasksData.tasks || [])
+      setSteps(stepsData.steps || [])
+      
+      // 获取第一个工作区 ID
+      if (workspacesData.workspaces?.length > 0) {
+        setWorkspaceId(workspacesData.workspaces[0].id)
+      }
     } catch (e) {
-      console.error('获取任务失败', e)
+      console.error('获取数据失败', e)
     } finally {
       setLoading(false)
     }
@@ -208,8 +306,20 @@ export default function Home() {
     <>
       <Navbar />
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Agent 状态 */}
-        <AgentStatusCard tasks={tasks} />
+        {/* Agent 状态 + 团队状态 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2">
+            <AgentStatusCard tasks={tasks} />
+          </div>
+          <div>
+            {workspaceId && (
+              <AgentStatusList workspaceId={workspaceId} refreshInterval={30000} />
+            )}
+          </div>
+        </div>
+        
+        {/* 我的待办步骤 */}
+        <MyStepsCard steps={steps} />
         
         {/* 项目标题 */}
         <div className="mb-6 flex items-center justify-between">

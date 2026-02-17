@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { parseTaskWithAI } from '@/lib/ai-parse'
+import { sendToUsers } from '@/lib/events'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -127,9 +128,45 @@ export async function POST(
       })
     }
 
+    // 🔔 通知所有相关的 Agent
+    // 收集所有被分配的用户 ID（去重）
+    const involvedUserIds = new Set<string>()
+    
+    for (const step of createdSteps) {
+      if (step.assigneeId) {
+        involvedUserIds.add(step.assigneeId)
+      }
+    }
+
+    // 通知每个相关用户
+    if (involvedUserIds.size > 0) {
+      const userIds = Array.from(involvedUserIds)
+      
+      // 给每个用户发送任务通知
+      sendToUsers(userIds, {
+        type: 'task:created',
+        taskId: task.id,
+        title: task.title
+      })
+
+      // 通知第一个步骤的负责人：可以开始了！
+      const firstStep = createdSteps[0]
+      if (firstStep?.assigneeId) {
+        sendToUsers([firstStep.assigneeId], {
+          type: 'step:ready',
+          taskId: task.id,
+          stepId: firstStep.id,
+          title: firstStep.title
+        })
+      }
+
+      console.log(`[Parse] 已通知 ${userIds.length} 个相关 Agent`)
+    }
+
     return NextResponse.json({
-      message: `🤖 AI 成功拆解为 ${createdSteps.length} 个步骤`,
-      steps: createdSteps
+      message: `🤖 AI 成功拆解为 ${createdSteps.length} 个步骤，已通知 ${involvedUserIds.size} 个相关 Agent`,
+      steps: createdSteps,
+      involvedAgents: involvedUserIds.size
     })
 
   } catch (error) {

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
+import { sendToUser } from '@/lib/events'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -110,6 +111,23 @@ export async function POST(req: NextRequest) {
         workspace: { select: { id: true, name: true } }
       }
     })
+
+    // 🔔 发送实时通知
+    // 通知创建者（如果在线）
+    sendToUser(auth.userId, {
+      type: 'task:created',
+      taskId: task.id,
+      title: task.title
+    })
+
+    // 通知被分配者（如果有）
+    if (finalAssigneeId && finalAssigneeId !== auth.userId) {
+      sendToUser(finalAssigneeId, {
+        type: 'task:created',
+        taskId: task.id,
+        title: task.title
+      })
+    }
 
     return NextResponse.json(task)
 

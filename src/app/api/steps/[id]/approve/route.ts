@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendToUser } from '@/lib/events'
 
 // POST /api/steps/[id]/approve - 人类审核通过
 export async function POST(
@@ -43,16 +44,39 @@ export async function POST(
       return NextResponse.json({ error: '步骤未在等待审核状态' }, { status: 400 })
     }
 
+    // 计算人类审批时间
+    const now = new Date()
+    const humanDurationMs = step.reviewStartedAt
+      ? now.getTime() - new Date(step.reviewStartedAt).getTime()
+      : null
+
     // 更新步骤状态
     const updated = await prisma.taskStep.update({
       where: { id },
       data: {
         status: 'done',
         agentStatus: null,
-        approvedAt: new Date(),
+        approvedAt: now,
         approvedBy: user.id,
-        completedAt: new Date()
+        completedAt: now,
+        humanDurationMs
       }
+    })
+
+    // 更新任务的总时间统计
+    const allSteps = await prisma.taskStep.findMany({
+      where: { taskId: step.taskId },
+      select: { agentDurationMs: true, humanDurationMs: true }
+    })
+    
+    const totalAgentTimeMs = allSteps.reduce((sum, s) => sum + (s.agentDurationMs || 0), 0)
+    const totalHumanTimeMs = allSteps.reduce((sum, s) => sum + (s.humanDurationMs || 0), 0)
+    const totalTime = totalAgentTimeMs + totalHumanTimeMs
+    const agentWorkRatio = totalTime > 0 ? totalAgentTimeMs / totalTime : null
+
+    await prisma.task.update({
+      where: { id: step.taskId },
+      data: { totalAgentTimeMs, totalHumanTimeMs, agentWorkRatio }
     })
 
     // 检查是否有下一个步骤需要通知
@@ -68,6 +92,23 @@ export async function POST(
       await prisma.taskStep.update({
         where: { id: nextStep.id },
         data: { agentStatus: 'pending' }
+      })
+
+      // 🔔 通知下一步的 Agent：轮到你了！
+      sendToUser(nextStep.assigneeId, {
+        type: 'step:ready',
+        taskId: step.taskId,
+        stepId: nextStep.id,
+        title: nextStep.title
+      })
+    }
+
+    // 🔔 通知当前步骤负责人：已审核通过
+    if (step.assigneeId) {
+      sendToUser(step.assigneeId, {
+        type: 'approval:granted',
+        taskId: step.taskId,
+        stepId: step.id
       })
     }
 

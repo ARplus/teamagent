@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
+import { sendToUser } from '@/lib/events'
 
 // POST /api/steps/[id]/claim - Agent 领取步骤
 export async function POST(
@@ -62,14 +63,61 @@ export async function POST(
       data: { status: 'working' }
     })
 
+    // 🔔 通知任务创建者：有人领取了步骤
+    if (updated.task.creatorId && updated.task.creatorId !== tokenAuth.user.id) {
+      sendToUser(updated.task.creatorId, {
+        type: 'step:assigned',
+        taskId: updated.task.id,
+        stepId: id,
+        title: updated.title
+      })
+    }
+
+    // 获取前序步骤的产出（作为本步骤的输入）
+    const previousSteps = updated.task.steps
+      .filter(s => s.order < updated.order && s.status === 'done')
+      .map(s => ({
+        order: s.order,
+        title: s.title,
+        result: s.result,
+        summary: s.summary
+      }))
+
     return NextResponse.json({
       message: '已领取步骤',
       step: updated,
       context: {
+        // 任务信息
         taskTitle: updated.task.title,
         taskDescription: updated.task.description,
-        allSteps: updated.task.steps,
-        currentStepOrder: updated.order
+        
+        // 当前步骤
+        currentStep: {
+          order: updated.order,
+          title: updated.title,
+          description: updated.description,
+          inputs: updated.inputs,
+          outputs: updated.outputs,
+          skills: updated.skills
+        },
+        
+        // 如果是被打回的，提供打回原因
+        rejection: updated.rejectionReason ? {
+          reason: updated.rejectionReason,
+          previousResult: null, // 已清空
+          rejectedAt: updated.rejectedAt
+        } : null,
+        
+        // 前序步骤的产出（本步骤的输入依赖）
+        previousOutputs: previousSteps,
+        
+        // 所有步骤概览
+        allSteps: updated.task.steps.map(s => ({
+          order: s.order,
+          title: s.title,
+          status: s.status,
+          assigneeNames: s.assigneeNames
+        }))
       }
     })
 
