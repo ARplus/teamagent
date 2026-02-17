@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser } from '@/lib/events'
 import { processWorkflowAfterSubmit } from '@/lib/workflow-engine'
+import { generateSummary } from '@/lib/ai-summary'
 
 /**
  * POST /api/steps/[id]/submit
@@ -61,6 +62,20 @@ export async function POST(
       ? now.getTime() - new Date(step.startedAt).getTime()
       : null
 
+    // 🤖 如果没有提供 summary，自动生成
+    let finalSummary = summary
+    if (!summary && result) {
+      console.log('[Submit] 自动生成 AI Summary...')
+      const aiSummary = await generateSummary({
+        stepTitle: step.title,
+        result: result,
+        attachmentCount: attachments?.length || 0
+      })
+      if (aiSummary) {
+        finalSummary = aiSummary
+      }
+    }
+
     // 更新步骤状态
     const updated = await prisma.taskStep.update({
       where: { id },
@@ -68,7 +83,7 @@ export async function POST(
         status: 'waiting_approval',
         agentStatus: 'waiting_approval',
         result: result || '任务已完成，等待审核',
-        summary: summary || null,
+        summary: finalSummary || null,
         completedAt: now,
         reviewStartedAt: now,  // 开始等待审核
         agentDurationMs
