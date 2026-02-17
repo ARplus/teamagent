@@ -3,6 +3,7 @@
 import { useSession, signOut } from 'next-auth/react'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { NotificationBell } from './NotificationBell'
 
 // Agent 状态配置
 const agentStatusConfig: Record<string, { label: string; color: string; bgColor: string; icon: string }> = {
@@ -81,6 +82,9 @@ export function Navbar() {
               <span className="text-sm">{statusInfo.icon}</span>
             </div>
           )}
+
+          {/* 通知铃铛 */}
+          {session && <NotificationBell />}
 
           {/* 用户信息 */}
           {status === 'loading' ? (

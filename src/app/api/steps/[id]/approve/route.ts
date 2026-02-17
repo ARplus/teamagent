@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
+import { createNotification, notificationTemplates } from '@/lib/notifications'
 
 // POST /api/steps/[id]/approve - 人类审核通过
 export async function POST(
@@ -50,7 +51,24 @@ export async function POST(
       ? now.getTime() - new Date(step.reviewStartedAt).getTime()
       : null
 
-    // 更新步骤状态
+    // 1. 更新最新的 submission 状态为 approved
+    const latestSubmission = await prisma.stepSubmission.findFirst({
+      where: { stepId: id, status: 'pending' },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    if (latestSubmission) {
+      await prisma.stepSubmission.update({
+        where: { id: latestSubmission.id },
+        data: {
+          status: 'approved',
+          reviewedAt: now,
+          reviewedBy: user.id
+        }
+      })
+    }
+
+    // 2. 更新步骤状态
     const updated = await prisma.taskStep.update({
       where: { id },
       data: {
@@ -110,6 +128,15 @@ export async function POST(
         taskId: step.taskId,
         stepId: step.id
       })
+      
+      // 站内信通知
+      const template = notificationTemplates.stepApproved(step.title, user.name || user.email)
+      await createNotification({
+        userId: step.assigneeId,
+        ...template,
+        taskId: step.taskId,
+        stepId: step.id
+      })
     }
 
     // 检查任务是否全部完成
@@ -125,6 +152,14 @@ export async function POST(
       await prisma.task.update({
         where: { id: step.taskId },
         data: { status: 'done' }
+      })
+      
+      // 通知任务创建者任务已完成
+      const template = notificationTemplates.taskCompleted(step.task.title)
+      await createNotification({
+        userId: step.task.creatorId,
+        ...template,
+        taskId: step.taskId
       })
     }
 

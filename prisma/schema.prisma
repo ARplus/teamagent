@@ -30,10 +30,14 @@ model User {
   apiTokens     ApiToken[]
   taskSteps     TaskStep[]
   attachments   Attachment[]
+  submissions   StepSubmission[] @relation("SubmissionSubmitter")
 
   // NextAuth
   accounts      Account[]
   sessions      Session[]
+  
+  // 通知
+  notifications Notification[]
 }
 
 // AI Agent - 每个用户绑定一个
@@ -128,6 +132,9 @@ model Task {
 
   // 工作流步骤
   steps       TaskStep[]
+  
+  // 通知
+  notifications Notification[]
 }
 
 // 任务步骤 - 工作流节点
@@ -179,6 +186,43 @@ model TaskStep {
 
   // 附件
   attachments Attachment[]
+  
+  // 提交历史
+  submissions StepSubmission[]
+  
+  // 通知
+  notifications Notification[]
+}
+
+// 步骤提交记录 - 每次提交都是一条新记录，保留历史
+model StepSubmission {
+  id          String   @id @default(cuid())
+  
+  // 提交内容
+  result      String   // 提交的结果
+  summary     String?  // AI 摘要
+  
+  // 审核状态
+  status      String   @default("pending") // pending, approved, rejected
+  reviewedAt  DateTime?
+  reviewedBy  String?   // 审核人 ID
+  reviewNote  String?   // 审核备注（通过/拒绝的说明）
+  
+  // 时间
+  createdAt   DateTime @default(now())
+  
+  // 执行耗时
+  durationMs  Int?     // 这次提交的执行时间
+  
+  // 关联
+  stepId      String
+  step        TaskStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  
+  submitterId String
+  submitter   User     @relation("SubmissionSubmitter", fields: [submitterId], references: [id])
+  
+  // 附件
+  attachments Attachment[]
 }
 
 // 附件
@@ -190,13 +234,42 @@ model Attachment {
   size        Int?     // 文件大小 (bytes)
   createdAt   DateTime @default(now())
 
-  // 所属步骤
-  stepId      String
-  step        TaskStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  // 所属步骤（直接附件）
+  stepId      String?
+  step        TaskStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  
+  // 所属提交记录（提交时的附件）
+  submissionId String?
+  submission   StepSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   // 上传者
   uploaderId  String
   uploader    User     @relation(fields: [uploaderId], references: [id])
+}
+
+// 站内通知
+model Notification {
+  id          String   @id @default(cuid())
+  type        String   // task_assigned, step_waiting, step_approved, step_rejected, task_completed, mention
+  title       String
+  content     String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  // 接收者
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联的任务（可选）
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  // 关联的步骤（可选）
+  stepId      String?
+  step        TaskStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 // ============ NextAuth 相关表 ============

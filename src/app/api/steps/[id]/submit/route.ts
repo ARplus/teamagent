@@ -4,6 +4,7 @@ import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser } from '@/lib/events'
 import { processWorkflowAfterSubmit } from '@/lib/workflow-engine'
 import { generateSummary } from '@/lib/ai-summary'
+import { createNotification, notificationTemplates } from '@/lib/notifications'
 
 /**
  * POST /api/steps/[id]/submit
@@ -76,7 +77,18 @@ export async function POST(
       }
     }
 
-    // 更新步骤状态
+    // 1. 创建 StepSubmission 记录（保留历史）
+    const submission = await prisma.stepSubmission.create({
+      data: {
+        stepId: id,
+        submitterId: tokenAuth.user.id,
+        result: result || '任务已完成，等待审核',
+        summary: finalSummary || null,
+        durationMs: agentDurationMs
+      }
+    })
+
+    // 2. 更新步骤状态
     const updated = await prisma.taskStep.update({
       where: { id },
       data: {
@@ -90,14 +102,14 @@ export async function POST(
       }
     })
 
-    // 如果有附件，创建附件记录
+    // 3. 如果有附件，关联到 submission
     if (attachments && Array.isArray(attachments) && attachments.length > 0) {
       await prisma.attachment.createMany({
         data: attachments.map((att: { name: string; url: string; type?: string }) => ({
           name: att.name,
           url: att.url,
           type: att.type || 'file',
-          stepId: id,
+          submissionId: submission.id,  // 关联到提交记录
           uploaderId: tokenAuth.user.id
         }))
       })
@@ -122,6 +134,16 @@ export async function POST(
         taskId: step.task.id,
         stepId: id,
         title: step.title
+      })
+      
+      // 站内信通知
+      const submitterName = tokenAuth.user.name || tokenAuth.user.email
+      const template = notificationTemplates.stepWaiting(step.title, step.task.title, submitterName)
+      await createNotification({
+        userId: step.task.creatorId,
+        ...template,
+        taskId: step.task.id,
+        stepId: id
       })
     }
 

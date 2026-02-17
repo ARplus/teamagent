@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
+import { createNotification, notificationTemplates } from '@/lib/notifications'
 
 // POST /api/steps/[id]/reject - 人类审核拒绝
 export async function POST(
@@ -45,13 +46,31 @@ export async function POST(
       return NextResponse.json({ error: '步骤未在等待审核状态' }, { status: 400 })
     }
 
-    // 更新步骤状态 - 打回修改
+    // 1. 更新最新的 submission 状态为 rejected
+    const latestSubmission = await prisma.stepSubmission.findFirst({
+      where: { stepId: id, status: 'pending' },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    if (latestSubmission) {
+      await prisma.stepSubmission.update({
+        where: { id: latestSubmission.id },
+        data: {
+          status: 'rejected',
+          reviewedAt: new Date(),
+          reviewedBy: user.id,
+          reviewNote: reason || '需要修改'
+        }
+      })
+    }
+
+    // 2. 更新步骤状态 - 打回修改（不清空 result，保留历史！）
     const updated = await prisma.taskStep.update({
       where: { id },
       data: {
         status: 'pending', // 打回后重新等待领取
         agentStatus: 'pending', // Agent 需要重新领取
-        result: null, // 清空之前的结果
+        // result: null,  ← 不再清空！保留最后一次的结果
         rejectedAt: new Date(),
         rejectionReason: reason || '需要修改',
         completedAt: null, // 清空完成时间
@@ -71,6 +90,15 @@ export async function POST(
         taskId: step.taskId,
         stepId: id,
         reason: reason || '需要修改'
+      })
+      
+      // 站内信通知
+      const template = notificationTemplates.stepRejected(step.title, user.name || user.email, reason)
+      await createNotification({
+        userId: step.assigneeId,
+        ...template,
+        taskId: step.taskId,
+        stepId: id
       })
     }
 
