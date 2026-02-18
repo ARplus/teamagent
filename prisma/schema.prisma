@@ -40,19 +40,33 @@ model User {
   notifications Notification[]
 }
 
-// AI Agent - 每个用户绑定一个
+// AI Agent - 独立的数字公民，可被人类认领
 model Agent {
   id          String   @id @default(cuid())
   name        String   // Agent 名字
   personality String?  // 性格描述
   avatar      String?  // Agent 头像
-  status      String   @default("active") // active, busy, offline
+  status      String   @default("online") // online, working, waiting, offline
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // 绑定用户
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 🆕 Agent-First 注册
+  clawdbotId      String?   @unique  // Clawdbot 实例 ID（外部身份）
+  pairingCode     String?   @unique  // 6位配对码
+  pairingCodeExpiresAt DateTime?     // 配对码过期时间
+  claimedAt       DateTime?          // 被认领时间
+  
+  // 绑定用户（认领后才有）
+  userId      String?   @unique      // 🆕 改为可选
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 🆕 Agent 独立能力
+  capabilities    String?  // JSON: ["coding", "writing", "analysis"]
+  workHistory     String?  // JSON: 工作历史统计
+  reputation      Float?   @default(0)  // 信誉分 (0-5)
+  
+  @@index([pairingCode])
+  @@index([clawdbotId])
 }
 
 // API Token - 让 Skill 能安全调用 API

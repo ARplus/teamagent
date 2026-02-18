@@ -30,42 +30,63 @@ export default function NewTaskPage() {
     setLoading(true)
     try {
       // 先创建或获取默认工作区
+      console.log('[DEBUG] 获取工作区...')
       const wsRes = await fetch('/api/workspaces')
-      let workspaces = await wsRes.json()
+      console.log('[DEBUG] wsRes.status:', wsRes.status)
+      
+      if (!wsRes.ok) {
+        const errText = await wsRes.text()
+        console.error('[DEBUG] 获取工作区失败:', errText)
+        alert('获取工作区失败: ' + errText)
+        setLoading(false)
+        return
+      }
+      
+      const workspaces = await wsRes.json()
+      console.log('[DEBUG] workspaces:', workspaces)
       
       let workspaceId: string
-      if (workspaces.length === 0) {
-        // 创建默认工作区
+      if (!Array.isArray(workspaces) || workspaces.length === 0) {
+        console.log('[DEBUG] 没有工作区，创建默认...')
         const createRes = await fetch('/api/workspaces', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: '默认工作区' })
         })
         const newWs = await createRes.json()
+        console.log('[DEBUG] 新工作区:', newWs)
         workspaceId = newWs.id
       } else {
         workspaceId = workspaces[0].id
       }
+      
+      console.log('[DEBUG] workspaceId:', workspaceId)
 
       // 创建任务
+      const taskData = {
+        ...form,
+        workspaceId,
+        dueDate: form.dueDate || null
+      }
+      console.log('[DEBUG] 创建任务:', taskData)
+      
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          workspaceId,
-          dueDate: form.dueDate || null
-        })
+        body: JSON.stringify(taskData)
       })
 
+      console.log('[DEBUG] res.status:', res.status)
+      
       if (res.ok) {
         router.push('/')
       } else {
         const err = await res.json()
+        console.error('[DEBUG] 创建失败:', err)
         alert(err.error || '创建失败')
       }
     } catch (e) {
-      console.error('创建任务失败', e)
+      console.error('[DEBUG] 异常:', e)
       alert('创建任务失败')
     } finally {
       setLoading(false)
@@ -90,7 +111,6 @@ export default function NewTaskPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-8">📝 创建新任务</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 任务标题 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               任务标题 *
@@ -105,7 +125,6 @@ export default function NewTaskPage() {
             />
           </div>
 
-          {/* 任务描述 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               任务描述
@@ -119,7 +138,6 @@ export default function NewTaskPage() {
             />
           </div>
 
-          {/* 分配给谁 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               分配给（邮箱）
@@ -131,12 +149,8 @@ export default function NewTaskPage() {
               placeholder="例如：lobster@example.com"
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              留空则不分配。如果对方还没注册，任务会等待他们注册后自动关联。
-            </p>
           </div>
 
-          {/* 优先级 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               优先级
@@ -164,7 +178,6 @@ export default function NewTaskPage() {
             </div>
           </div>
 
-          {/* 截止日期 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               截止日期
@@ -177,7 +190,6 @@ export default function NewTaskPage() {
             />
           </div>
 
-          {/* 提交按钮 */}
           <div className="flex space-x-4 pt-4">
             <button
               type="button"
