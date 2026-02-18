@@ -75,11 +75,27 @@ export async function POST(req: NextRequest) {
       workspaceId 
     } = await req.json()
 
-    if (!title || !workspaceId) {
+    if (!title) {
       return NextResponse.json(
-        { error: '标题和工作区不能为空' },
+        { error: '标题不能为空' },
         { status: 400 }
       )
+    }
+
+    // 如果没有指定 workspaceId，使用用户的默认工作区
+    let finalWorkspaceId = workspaceId
+    if (!finalWorkspaceId) {
+      const membership = await prisma.workspaceMember.findFirst({
+        where: { userId: auth.userId },
+        select: { workspaceId: true }
+      })
+      if (!membership) {
+        return NextResponse.json(
+          { error: '请先创建或加入一个工作区' },
+          { status: 400 }
+        )
+      }
+      finalWorkspaceId = membership.workspaceId
     }
 
     // 解析执行者
@@ -103,7 +119,7 @@ export async function POST(req: NextRequest) {
         dueDate: dueDate ? new Date(dueDate) : null,
         creatorId: auth.userId,
         assigneeId: finalAssigneeId,
-        workspaceId
+        workspaceId: finalWorkspaceId
       },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
