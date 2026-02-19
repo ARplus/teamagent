@@ -130,15 +130,19 @@ function TaskList({
   selectedId, 
   onSelect,
   onCreateNew,
+  onPairAgent,
   collapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  hasAgent
 }: { 
   tasks: Task[]
   selectedId: string | null
   onSelect: (id: string) => void
   onCreateNew: () => void
+  onPairAgent: () => void
   collapsed: boolean
   onToggleCollapse: () => void
+  hasAgent: boolean
 }) {
   const [search, setSearch] = useState('')
   
@@ -160,6 +164,17 @@ function TaskList({
           ☰
         </button>
         <div className="flex-1" />
+        <button
+          onClick={onPairAgent}
+          title={hasAgent ? '配对新 Agent' : '还没有 Agent，点击配对'}
+          className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm transition-colors shadow-lg ${
+            hasAgent
+              ? 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+              : 'bg-amber-500 hover:bg-amber-400 text-white animate-pulse shadow-amber-500/30'
+          }`}
+        >
+          🤖
+        </button>
         <button 
           onClick={onCreateNew}
           className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 flex items-center justify-center text-white transition-colors shadow-lg shadow-orange-500/30"
@@ -215,7 +230,21 @@ function TaskList({
         )}
       </div>
 
-      <div className="p-4">
+      <div className="p-4 space-y-2">
+        {/* 配对 Agent 按钮 */}
+        <button
+          onClick={onPairAgent}
+          className={`w-full py-2.5 rounded-xl font-medium transition-all flex items-center justify-center space-x-2 text-sm ${
+            hasAgent
+              ? 'bg-slate-800/60 hover:bg-slate-700/60 text-slate-400 hover:text-slate-200 border border-slate-700/50'
+              : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 animate-pulse'
+          }`}
+        >
+          <span>🤖</span>
+          <span>{hasAgent ? '⊕ 配对新 Agent' : '⊕ 配对我的 Agent'}</span>
+          {!hasAgent && <span className="w-2 h-2 rounded-full bg-amber-400" />}
+        </button>
+
         <button
           onClick={onCreateNew}
           className="w-full py-3 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white rounded-xl font-medium transition-all shadow-lg shadow-orange-500/25 flex items-center justify-center space-x-2"
@@ -1159,8 +1188,10 @@ export default function HomePage() {
           selectedId={selectedId}
           onSelect={setSelectedId}
           onCreateNew={() => setShowCreateModal(true)}
+          onPairAgent={() => setShowPairingModal(true)}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          hasAgent={!!myAgent}
         />
         {selectedTask ? (
           <TaskDetail
