@@ -100,6 +100,8 @@ export async function POST(
       const outputs = Array.isArray(step.outputs) ? step.outputs : [step.outputs].filter(Boolean)
       const skills = Array.isArray(step.skills) ? step.skills : [step.skills].filter(Boolean)
 
+      const participants = Array.isArray(step.participants) ? step.participants : []
+
       const created = await prisma.taskStep.create({
         data: {
           title: step.title,
@@ -112,7 +114,10 @@ export async function POST(
           outputs: JSON.stringify(outputs),
           skills: JSON.stringify(skills),
           status: 'pending',
-          agentStatus: assigneeId ? 'pending' : null
+          agentStatus: assigneeId ? 'pending' : null,
+          stepType: step.stepType || 'task',
+          agenda: step.agenda || null,
+          participants: participants.length > 0 ? JSON.stringify(participants) : null,
         },
         include: {
           assignee: { select: { id: true, name: true, nickname: true } }

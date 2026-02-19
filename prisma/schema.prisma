@@ -161,11 +161,19 @@ model TaskStep {
   description String?  // 步骤说明
   order       Int      // 步骤顺序
   
+  // 步骤类型
+  stepType    String   @default("task")  // task | meeting
+
   // 责任人（支持多人显示）
   assigneeNames String?  // JSON: ["小敏", "段段"] 用于显示
   assigneeId    String?  // 主责任人用户ID
   assignee      User?    @relation(fields: [assigneeId], references: [id])
   
+  // 会议专用字段
+  scheduledAt  DateTime?  // 会议时间
+  agenda       String?    // 会议议程（Markdown）
+  participants String?    // JSON: ["小敏", "段段", "Aurora"] 所有参会人名
+
   // 输入输出
   inputs      String?  // JSON: ["需要的输入"]
   outputs     String?  // JSON: ["产出物"]

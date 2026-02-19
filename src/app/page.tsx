@@ -54,6 +54,11 @@ interface TaskStep {
   humanDurationMs?: number | null
   rejectionCount?: number
   rejectionReason?: string | null
+  // 会议专用
+  stepType?: string        // 'task' | 'meeting'
+  scheduledAt?: string | null
+  agenda?: string | null
+  participants?: string    // JSON string
 }
 
 interface Task {
@@ -718,6 +723,10 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
   const [parsing, setParsing] = useState(false)
   const [showAddStep, setShowAddStep] = useState(false)
   const [newStepTitle, setNewStepTitle] = useState('')
+  const [newStepType, setNewStepType] = useState<'task' | 'meeting'>('task')
+  const [newStepAgenda, setNewStepAgenda] = useState('')
+  const [newStepParticipants, setNewStepParticipants] = useState('')
+  const [newStepScheduledAt, setNewStepScheduledAt] = useState('')
   const [addingStep, setAddingStep] = useState(false)
 
   const parseTask = async () => {
@@ -736,13 +745,26 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
     if (!newStepTitle.trim()) return
     setAddingStep(true)
     try {
+      const participants = newStepParticipants
+        ? newStepParticipants.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+        : []
       const res = await fetch(`/api/tasks/${task.id}/steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newStepTitle })
+        body: JSON.stringify({
+          title: newStepTitle,
+          stepType: newStepType,
+          agenda: newStepAgenda || undefined,
+          participants: participants.length > 0 ? participants : undefined,
+          scheduledAt: newStepScheduledAt || undefined,
+        })
       })
       if (res.ok) {
         setNewStepTitle('')
+        setNewStepType('task')
+        setNewStepAgenda('')
+        setNewStepParticipants('')
+        setNewStepScheduledAt('')
         setShowAddStep(false)
         onRefresh()
       }
@@ -810,22 +832,63 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
 
       {/* Add Step Form */}
       {showAddStep && (
-        <div className="mx-6 mt-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
+        <div className={`mx-6 mt-4 p-4 rounded-xl border ${newStepType === 'meeting' ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-100'}`}>
+          {/* 类型切换 */}
+          <div className="flex space-x-2 mb-3">
+            <button
+              onClick={() => setNewStepType('task')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${newStepType === 'task' ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+            >
+              <span>📋</span><span>普通步骤</span>
+            </button>
+            <button
+              onClick={() => setNewStepType('meeting')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${newStepType === 'meeting' ? 'bg-blue-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+            >
+              <span>📅</span><span>会议</span>
+            </button>
+          </div>
+
           <input
             type="text"
             value={newStepTitle}
             onChange={(e) => setNewStepTitle(e.target.value)}
-            placeholder="步骤标题"
-            className="w-full px-4 py-2.5 border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 bg-white"
+            placeholder={newStepType === 'meeting' ? '会议名称，如：Q2 复盘会' : '步骤标题'}
+            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
             autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && addStep()}
           />
+
+          {newStepType === 'meeting' && (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={newStepParticipants}
+                onChange={(e) => setNewStepParticipants(e.target.value)}
+                placeholder="参会人（逗号分隔），如：Aurora, Bob, Carol"
+                className="w-full px-4 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white"
+              />
+              <textarea
+                value={newStepAgenda}
+                onChange={(e) => setNewStepAgenda(e.target.value)}
+                placeholder="议程（选填）&#10;1. 回顾Q1进展&#10;2. 讨论Q2目标&#10;3. 确定行动项"
+                className="w-full px-4 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white resize-none"
+                rows={3}
+              />
+              <input
+                type="datetime-local"
+                value={newStepScheduledAt}
+                onChange={(e) => setNewStepScheduledAt(e.target.value)}
+                className="w-full px-4 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white"
+              />
+            </div>
+          )}
+
           <div className="flex space-x-2 mt-3">
             <button onClick={addStep} disabled={addingStep || !newStepTitle.trim()}
-              className="px-4 py-2 bg-orange-500 text-white rounded-xl text-xs font-medium disabled:opacity-50 hover:bg-orange-600">
-              {addingStep ? '添加中...' : '添加'}
+              className={`px-4 py-2 text-white rounded-xl text-xs font-medium disabled:opacity-50 ${newStepType === 'meeting' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-orange-500 hover:bg-orange-600'}`}>
+              {addingStep ? '添加中...' : newStepType === 'meeting' ? '📅 添加会议' : '添加步骤'}
             </button>
-            <button onClick={() => { setShowAddStep(false); setNewStepTitle('') }}
+            <button onClick={() => { setShowAddStep(false); setNewStepTitle(''); setNewStepType('task') }}
               className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-xl">
               取消
             </button>
@@ -873,9 +936,11 @@ function StepCard({
   const [rejectReason, setRejectReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
   const agentName = step.assignee?.agent?.name || parseJSON(step.assigneeNames)[0] || '未分配'
+  const participantList = parseJSON(step.participants)
 
   const loadHistory = async () => {
     try {
@@ -897,27 +962,55 @@ function StepCard({
 
   return (
     <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
-      step.status === 'done' ? 'border-emerald-200 bg-emerald-50/30' :
-      isActive ? 'border-orange-300 bg-gradient-to-r from-orange-50 to-rose-50/50 shadow-md shadow-orange-100' :
-      isWaiting ? 'border-amber-200 bg-amber-50/30' :
-      'border-slate-200 bg-white hover:border-slate-300'
+      isMeeting
+        ? step.status === 'done' ? 'border-blue-200 bg-blue-50/30'
+          : isWaiting ? 'border-blue-300 bg-blue-50/50 shadow-md shadow-blue-100'
+          : isActive ? 'border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50/50 shadow-md shadow-blue-100'
+          : 'border-blue-200/60 bg-white hover:border-blue-300'
+        : step.status === 'done' ? 'border-emerald-200 bg-emerald-50/30'
+          : isActive ? 'border-orange-300 bg-gradient-to-r from-orange-50 to-rose-50/50 shadow-md shadow-orange-100'
+          : isWaiting ? 'border-amber-200 bg-amber-50/30'
+          : 'border-slate-200 bg-white hover:border-slate-300'
     }`}>
       {/* Header */}
       <div className="px-5 py-4 cursor-pointer flex items-center justify-between" onClick={handleExpand}>
         <div className="flex items-center space-x-4">
           <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${
-            step.status === 'done' ? 'bg-emerald-500 text-white' :
-            isActive ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-orange-500/30' :
-            'bg-slate-200 text-slate-500'
+            step.status === 'done'
+              ? isMeeting ? 'bg-blue-500 text-white' : 'bg-emerald-500 text-white'
+              : isMeeting
+                ? isActive ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-blue-500/30' : 'bg-blue-100 text-blue-600'
+                : isActive ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-orange-500/30' : 'bg-slate-200 text-slate-500'
           }`}>
-            {step.status === 'done' ? '✓' : index + 1}
+            {step.status === 'done' ? '✓' : isMeeting ? '📅' : index + 1}
           </div>
           <div>
-            <div className={`font-semibold ${step.status === 'done' ? 'text-emerald-700' : 'text-slate-800'}`}>
-              {step.title}
+            <div className="flex items-center space-x-2">
+              <span className={`font-semibold ${step.status === 'done' ? (isMeeting ? 'text-blue-700' : 'text-emerald-700') : 'text-slate-800'}`}>
+                {step.title}
+              </span>
+              {isMeeting && (
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">会议</span>
+              )}
             </div>
             <div className="text-xs text-slate-500 mt-0.5 flex items-center space-x-2">
-              <span>🤖 {agentName}</span>
+              {isMeeting ? (
+                <>
+                  {step.scheduledAt && <span>🕐 {new Date(step.scheduledAt).toLocaleString('zh-CN', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>}
+                  {participantList.length > 0 && (
+                    <span className="flex items-center space-x-1">
+                      {participantList.slice(0, 3).map((p, i) => (
+                        <span key={i} className="w-4 h-4 rounded-full bg-blue-200 text-blue-700 text-xs flex items-center justify-center font-bold" title={p}>
+                          {p[0]}
+                        </span>
+                      ))}
+                      {participantList.length > 3 && <span className="text-blue-500">+{participantList.length - 3}</span>}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span>🤖 {agentName}</span>
+              )}
               <span className={`px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
             </div>
           </div>
@@ -928,13 +1021,59 @@ function StepCard({
       {/* Expanded Content */}
       {expanded && (
         <div className="px-5 pb-5 border-t border-slate-100/50">
-          {step.description && (
+
+          {/* 会议专属信息块 */}
+          {isMeeting && (
+            <div className="mt-4 space-y-3">
+              {/* 参会人 */}
+              {participantList.length > 0 && (
+                <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                  <div className="text-xs text-blue-600 font-medium mb-2">👥 参会人员</div>
+                  <div className="flex flex-wrap gap-2">
+                    {participantList.map((p, i) => (
+                      <div key={i} className="flex items-center space-x-1.5 bg-white rounded-xl px-2.5 py-1.5 border border-blue-100 shadow-sm">
+                        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold">
+                          {p[0]}
+                        </div>
+                        <span className="text-xs text-slate-700 font-medium">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 议程 */}
+              {step.agenda && (
+                <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <div className="text-xs text-indigo-600 font-medium mb-2">📋 会议议程</div>
+                  <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">{step.agenda}</pre>
+                </div>
+              )}
+
+              {/* 时间 */}
+              {step.scheduledAt && (
+                <div className="flex items-center space-x-2 text-xs text-blue-600">
+                  <span>🕐</span>
+                  <span className="font-medium">
+                    {new Date(step.scheduledAt).toLocaleString('zh-CN', {year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',weekday:'short'})}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isMeeting && step.description && (
             <p className="text-sm text-slate-600 mt-4 p-3 bg-slate-50 rounded-xl">{step.description}</p>
+          )}
+          {isMeeting && step.description && (
+            <p className="text-sm text-slate-600 mt-3 p-3 bg-slate-50 rounded-xl">{step.description}</p>
           )}
 
           {step.result && (
-            <div className="mt-4 p-4 bg-slate-50 rounded-xl">
-              <div className="text-xs text-slate-500 mb-2 font-medium">📝 提交结果</div>
+            <div className={`mt-4 p-4 rounded-xl ${isMeeting ? 'bg-blue-50 border border-blue-100' : 'bg-slate-50'}`}>
+              <div className="text-xs text-slate-500 mb-2 font-medium">
+                {isMeeting ? '📝 会议纪要' : '📝 提交结果'}
+              </div>
               <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{step.result}</pre>
             </div>
           )}

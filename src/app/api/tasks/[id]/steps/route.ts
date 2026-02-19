@@ -47,7 +47,8 @@ export async function POST(
       return NextResponse.json({ error: '任务不存在' }, { status: 404 })
     }
 
-    const { title, description, assigneeId, assigneeEmail } = await req.json()
+    const { title, description, assigneeId, assigneeEmail,
+            stepType, agenda, participants, scheduledAt } = await req.json()
 
     if (!title) {
       return NextResponse.json({ error: '步骤标题不能为空' }, { status: 400 })
@@ -73,7 +74,11 @@ export async function POST(
         description,
         order: maxOrder + 1,
         taskId,
-        assigneeId: finalAssigneeId
+        assigneeId: finalAssigneeId,
+        stepType: stepType || 'task',
+        agenda: agenda || null,
+        participants: participants ? JSON.stringify(participants) : null,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
       },
       include: {
         assignee: { select: { id: true, name: true, avatar: true } },
