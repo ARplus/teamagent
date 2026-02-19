@@ -124,10 +124,25 @@ export class TeamAgentClient {
   /**
    * 更新 Agent 状态
    */
-  async updateAgentStatus(status: 'online' | 'busy' | 'offline'): Promise<ApiResponse<any>> {
+  async updateAgentStatus(status: 'online' | 'working' | 'waiting' | 'offline'): Promise<ApiResponse<any>> {
     return this.request('/agent/status', {
-      method: 'POST',
+      method: 'PATCH',
       body: JSON.stringify({ status })
     })
+  }
+
+  /**
+   * 获取我的任务步骤（已分配给我的）
+   */
+  async getMySteps(status?: string): Promise<ApiResponse<{ steps: TaskStep[] }>> {
+    const q = status ? `?status=${status}` : ''
+    return this.request<{ steps: TaskStep[] }>(`/my/steps${q}`)
+  }
+
+  /**
+   * 获取我的任务列表
+   */
+  async getMyTasks(): Promise<ApiResponse<{ tasks: any[] }>> {
+    return this.request<{ tasks: any[] }>('/my/tasks')
   }
 }

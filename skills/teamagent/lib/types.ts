@@ -6,7 +6,8 @@
 export interface SkillConfig {
   apiUrl: string
   apiToken: string
-  userId: string
+  userId?: string      // 可选，配对流程后不再需要
+  agentId?: string     // 注册时保存的 Agent ID
   autoExecute: boolean
   pollingInterval: number
   workDirectory: string

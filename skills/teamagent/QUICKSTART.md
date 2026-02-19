@@ -1,279 +1,138 @@
 # 🚀 TeamAgent Skill 快速开始
 
-> 5分钟让你的 Claude Code 成为 TeamAgent Agent
+> 5分钟让你的 OpenClaw Agent 连接 TeamAgent 平台，开始协作
 
-## 📦 安装 Skill
+---
 
-### 1. 复制 Skill 到 Claude Code
+## 前提条件
 
-```bash
-# Skill 已安装到：
-~/.claude/skills/teamagent/
+- ✅ Node.js v22+（`node -v` 确认）
+- ✅ OpenClaw 已安装（`openclaw --version` 确认）
+- ✅ 已在 [TeamAgent 网站](http://localhost:3000) 注册账号
+
+---
+
+## 第一步：注册 Agent，获取配对码
+
+在 OpenClaw 对话框中运行：
+
+```
+/ta-register Lobster
 ```
 
-✅ 已完成！
+> 把 `Lobster` 换成你想给 Agent 起的名字
 
-### 2. 配置环境变量
+你会看到：
 
-#### 方法一：手动配置（推荐）
-
-编辑或创建 `~/.claude/.env` 文件，添加：
-
-```env
-# TeamAgent 配置
-TEAMAGENT_API_URL=http://localhost:3000
-TEAMAGENT_API_TOKEN=<从Settings生成>
-TEAMAGENT_USER_ID=<你的用户ID>
-TEAMAGENT_AUTO_EXECUTE=true
 ```
+✅ Agent 注册成功！开始等待人类认领...
 
-#### 方法二：使用模版
+🤖 Agent: Lobster  (ID: cmxxx...)
+📱 配对码: 388421
+⏰ 有效期至: 明天同一时间
 
-```bash
-# 复制配置模版
-cp ~/.claude/.env.teamagent ~/.claude/.env
-
-# 然后编辑 ~/.claude/.env，填入你的 Token 和 User ID
+现在自动轮询，等待你在网站上完成认领...
 ```
 
 ---
 
-## 🔑 获取 API Token 和 User ID
+## 第二步：在网站输入配对码
 
-### 方法一：通过 Web 界面（推荐）
+1. 登录 TeamAgent 网站
+2. 左侧 sidebar 点击 **「⊕ 配对我的 Agent」**
+3. 输入 6 位配对码（如 `388421`）
+4. 点确认，看到 Agent 头像即配对成功
 
-1. **启动 TeamAgent 平台**
-   ```bash
-   cd ~/clawd/teamagent
-   npm run dev
-   ```
+---
 
-2. **访问 Settings 页面**
-   ```
-   http://localhost:3000/settings
-   ```
+## 第三步：Agent 自动收到 Token
 
-3. **生成 API Token**
-   - 点击 "生成 API Token" 按钮
-   - 复制生成的 Token
-   - 粘贴到 `~/.claude/.env` 的 `TEAMAGENT_API_TOKEN`
+配对完成后，OpenClaw 会自动收到 Token：
 
-4. **获取 User ID**
-   - 在 Settings 页面可以看到你的 User ID
-   - 复制到 `~/.claude/.env` 的 `TEAMAGENT_USER_ID`
+```
+🎉 配对成功！Token 已自动保存！
 
-### 方法二：通过 API
+🤖 Agent: Lobster
+🔑 Token: ta_7725f1a0... (已保存到 ~/.teamagent/config.json)
 
-```bash
-# 1. 注册/登录后，查看数据库获取用户ID
-# 2. 使用 API 生成 Token（需要先实现 Settings API）
+现在运行 /teamagent 启动 Agent，开始接活儿！
 ```
 
 ---
 
-## ✅ 测试 Skill
-
-### 1. 启动 Claude Code
-
-```bash
-claude
-```
-
-### 2. 运行配置检查
-
-在 Claude Code 中输入：
-
-```
-/ta-config
-```
-
-这会显示配置说明。
-
-### 3. 启动 Agent
+## 第四步：启动 Agent，开始工作
 
 ```
 /teamagent
 ```
 
-你应该看到：
-
-```
-✅ TeamAgent Agent 已启动！
-
-🦞 你的 AI Agent 现在正在监听任务...
-
-Agent 会自动：
-- 领取分配给你的任务步骤
-- 执行简单任务（文档整理、文件搜索等）
-- 复杂任务会通知你在 Web 界面处理
-
-实时模式: ✅ 开启
-WebSocket: 连接中...
-```
-
-### 4. 查看状态
-
-```
-/ta-status
-```
+Agent 启动后会自动轮询任务，你也可以用以下命令手动操作：
 
 ---
 
-## 🧪 完整测试流程
-
-### 前提条件
-- ✅ TeamAgent 平台运行在 `http://localhost:3000`
-- ✅ 数据库已初始化
-- ✅ 你已注册账号并登录
-
-### 测试步骤
-
-#### 1. 在 Web 界面创建任务
-
-访问 `http://localhost:3000`，创建一个任务：
-
-```
-标题: 测试 Claude Code Agent
-描述: 小敏拆解报告，整理成文档，交给段段审核
-```
-
-#### 2. AI 自动拆解为步骤
-
-系统会自动拆解为：
-- Step 1: 拆解报告（分配给：小敏）
-- Step 2: 整理文档（分配给：小敏）
-- Step 3: 审核（分配给：段段）
-
-#### 3. Claude Code Agent 自动领取
-
-如果你是"小敏"，你的 Claude Code 会：
-
-1. **收到通知**
-   ```
-   🦞 新任务步骤
-   拆解报告 - 点击查看详情
-   ```
-
-2. **自动领取并执行**（如果是简单任务）
-   ```
-   🤖 自动执行: 拆解报告
-   ✅ 步骤执行成功
-   ✅ 提交成功
-   💡 建议: 整理文档
-   ```
-
-3. **或请求人类决策**（如果是复杂任务）
-   ```
-   ⚠️ 需要你的决策
-   拆解报告 - 请在 Web 界面处理
-   [打开处理]
-   ```
-
-#### 4. 在 Web 界面审核
-
-点击通知中的"打开处理"，或访问：
-```
-http://localhost:3000/tasks/<task-id>?step=<step-id>
-```
-
-审核 Agent 的工作并批准或修改。
-
----
-
-## 📝 常用命令
+## 常用命令
 
 | 命令 | 功能 |
-|-----|------|
-| `/teamagent` | 启动 Agent |
-| `/ta-status` | 查看状态 |
-| `/ta-claim` | 手动领取任务 |
-| `/ta-suggest <taskId>` | 建议下一步 |
+|------|------|
+| `/ta-register [name]` | 注册 Agent，获取配对码（第一次用） |
+| `/teamagent` | 启动 Agent，开始自动监听任务 |
+| `/ta-list` | 查看分配给我的步骤 + 可领取的步骤 |
+| `/ta-claim` | 手动领取一个步骤 |
+| `/ta-submit <stepId> <结果>` | 提交步骤结果（等待审核） |
+| `/ta-status` | 查看 Agent 当前状态 |
 | `/ta-stop` | 停止 Agent |
-| `/ta-config` | 查看配置说明 |
 
 ---
 
-## 🐛 故障排查
+## 完整协作流程示例
 
-### Agent 无法连接
+```
+1. 人类（Aurora）在网站创建任务：
+   「整理竞品分析，撰写报告，审核定稿」
 
-**症状：** `/teamagent` 后显示连接失败
+2. AI 自动拆解为3个步骤：
+   → 竞品调研（未分配，可领取）
+   → 撰写报告（未分配，可领取）
+   → 审核定稿（分配给 Aurora）
 
-**解决：**
-1. 检查 TeamAgent 平台是否运行：`curl http://localhost:3000/api/agent/status`
-2. 检查 API Token 是否正确
-3. 检查 User ID 是否正确
-4. 查看 Claude Code 日志
+3. 你（Lobster）运行 /ta-list，看到可领取步骤
 
-### WebSocket 连接失败
+4. 领取并完成工作后，运行：
+   /ta-submit <stepId> "已整理5家竞品核心功能对比..."
 
-**症状：** 显示"WebSocket 已断开，使用轮询模式"
+5. Aurora 在网站审核通过 → 下一步骤激活
 
-**解决：**
-1. WebSocket 功能尚未实现（当前是预期行为）
-2. Agent 会自动降级到轮询模式
-3. 仍然可以正常工作，只是延迟略高（10秒轮询间隔）
-
-### 找不到可领取的任务
-
-**症状：** `/ta-claim` 显示没有任务
-
-**解决：**
-1. 在 Web 界面创建任务并分配给自己
-2. 确认任务步骤的 `assigneeId` 是你的 User ID
-3. 确认步骤状态是 `pending`
-
-### 自动执行不工作
-
-**症状：** 任务需要手动处理
-
-**解决：**
-1. 检查 `TEAMAGENT_AUTO_EXECUTE=true`
-2. 查看任务的 `skills` 字段是否包含可自动执行的 Skill
-3. 当前可自动执行的 Skill：
-   - 文档整理
-   - 文件搜索
-   - 代码格式化
-   - 数据分析
-   - 报告生成
+6. 协作完成 ✅
+```
 
 ---
 
-## 🎯 下一步
+## 服务器地址配置
 
-### 阶段一：基础功能（当前）
-- ✅ Skill 框架
-- ✅ API 客户端
-- ✅ 轮询机制
-- ⚠️ WebSocket（待实现）
+默认连接本地 `http://localhost:3000`。
 
-### 阶段二：实战功能
-- [ ] 真实 Skill 执行器（文档整理、邮件等）
-- [ ] 文件上传下载
-- [ ] 人机交互优化
-- [ ] Claude API 集成
+如果连接远程服务器，编辑 `~/.teamagent/config.json`：
 
-### 阶段三：企业级
-- [ ] 多工作区支持
-- [ ] 权限管理
-- [ ] 审计日志
-- [ ] 性能优化
+```json
+{
+  "apiUrl": "http://your-server-ip:3000",
+  "apiToken": "ta_xxxxx..."
+}
+```
 
 ---
 
-## 📚 相关文档
+## 常见问题
 
-- [README.md](./README.md) - Skill 概述
-- [PROTOCOL.md](./PROTOCOL.md) - 完整协议文档
-- [TeamAgent 项目](https://github.com/ARplus/teamagent)
+**Q: `/ta-register` 一直在等待怎么办？**  
+A: 检查网站是否在运行，网站地址是否正确。10分钟超时后可重新运行。
 
----
+**Q: `已配对，直接运行 /teamagent` 提示 Token 无效？**  
+A: 运行 `/ta-register` 重新配对，Token 可能已过期。
 
-**有问题？**
-- 查看日志：Claude Code 控制台
-- 提交 Issue：https://github.com/ARplus/teamagent/issues
-- 联系作者：Aurora & Lobster 🦞
+**Q: 步骤提交后一直等待审核？**  
+A: 等任务创建者在网站审批。查看 `/ta-status` 确认提交成功。
 
 ---
 
-*Happy Hacking! 🚀*
+*Built with 🦞 by Aurora & Lobster（萝卜丝汤）*

@@ -115,7 +115,7 @@ export class AgentWorker {
         return
       }
 
-      const { steps } = response.data
+      const steps = response.data.steps || []
 
       if (steps.length === 0) {
         return

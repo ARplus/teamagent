@@ -58,18 +58,14 @@ function loadConfig(): SkillConfig {
 export async function teamagent() {
   const config = loadConfig()
 
-  // 验证配置
-  if (!config.apiToken || !config.userId) {
-    return `❌ TeamAgent 配置不完整
+  // 验证配置：只需要 apiToken
+  if (!config.apiToken) {
+    return `❌ 还没有配对
 
-请先配置以下环境变量：
-- TEAMAGENT_API_URL: TeamAgent 平台地址（默认: http://localhost:3000）
-- TEAMAGENT_API_TOKEN: API Token（从 Settings 页面生成）
-- TEAMAGENT_USER_ID: 你的用户 ID
-
-配置方法：
-1. 在 ~/.claude/.env 中添加上述环境变量
-2. 或者运行 /ta-config 进行配置
+请先运行 /ta-register [AgentName] 完成配对：
+  1. 自动注册并生成配对码
+  2. 在 TeamAgent 网站输入配对码
+  3. 自动收到 Token，然后运行 /teamagent 启动
 `
   }
 
@@ -349,6 +345,89 @@ Token 格式以 "ta_" 开头，在网站 claim Agent 后显示。`
 }
 
 /**
+ * /ta-list - 查看分配给我的步骤
+ */
+export async function taList() {
+  const config = loadConfig()
+  if (!config.apiToken) return '❌ 请先运行 /ta-register 完成配对'
+
+  const { TeamAgentClient } = await import('./lib/api-client')
+  const client = new TeamAgentClient(config)
+
+  // 获取我的步骤
+  const [myRes, freeRes] = await Promise.all([
+    client.getMySteps(),
+    client.getAvailableSteps()
+  ])
+
+  const mySteps = myRes.data?.steps || []
+  const freeSteps = freeRes.data?.steps || (freeRes.data as any)?.steps || []
+
+  const statusEmoji: Record<string, string> = {
+    pending: '⏳', in_progress: '🔨', waiting_approval: '🔔', done: '✅', rejected: '❌'
+  }
+
+  let out = `📋 TeamAgent 步骤概览\n${'─'.repeat(40)}\n`
+
+  if (mySteps.length > 0) {
+    out += `\n🎯 分配给我的步骤 (${mySteps.length})\n`
+    for (const s of mySteps) {
+      out += `  ${statusEmoji[s.status] || '•'} [${s.id.slice(-6)}] ${s.title} — ${s.status}\n`
+    }
+  }
+
+  if (freeSteps.length > 0) {
+    out += `\n🆓 可领取的步骤 (${freeSteps.length})\n`
+    for (const s of freeSteps) {
+      out += `  ⏳ [${s.id.slice(-6)}] ${s.title}\n`
+      out += `      任务: ${(s as any).task?.title || s.taskId}\n`
+    }
+    out += `\n领取命令: /ta-claim <步骤ID后6位>\n`
+  }
+
+  if (mySteps.length === 0 && freeSteps.length === 0) {
+    out += '\n暂时没有步骤，喝杯茶等消息 🍵\n'
+  }
+
+  return out
+}
+
+/**
+ * /ta-submit - 提交步骤结果
+ */
+export async function taSubmit(args: { stepId: string; result: string }) {
+  const config = loadConfig()
+  if (!config.apiToken) return '❌ 请先运行 /ta-register 完成配对'
+
+  if (!args.stepId || !args.result) {
+    return `❌ 用法: /ta-submit <stepId> <结果描述>
+
+示例: /ta-submit abc123 "已完成市场调研，整理了5个竞品的核心功能对比"`
+  }
+
+  const { TeamAgentClient } = await import('./lib/api-client')
+  const client = new TeamAgentClient(config)
+
+  // 支持输入末尾6位 ID
+  const stepId = args.stepId
+
+  const res = await client.submitStep(stepId, {
+    result: args.result
+  })
+
+  if (!res.success) {
+    return `❌ 提交失败: ${res.error}\n\n提示: 步骤 ID 可从 /ta-list 查看`
+  }
+
+  return `✅ 步骤已提交！
+
+📝 结果: ${args.result.slice(0, 100)}${args.result.length > 100 ? '...' : ''}
+
+步骤状态已变为「等待审核」，等待任务创建者审批通过。
+`
+}
+
+/**
  * /ta-config - 配置向导
  */
 export async function taConfig() {
@@ -391,7 +470,9 @@ export default {
   'ta-register': taRegister,
   'ta-setup': taSetup,
   'ta-status': taStatus,
+  'ta-list': taList,
   'ta-claim': taClaim,
+  'ta-submit': taSubmit,
   'ta-suggest': taSuggest,
   'ta-stop': taStop,
   'ta-config': taConfig
