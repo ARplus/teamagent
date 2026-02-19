@@ -63,4 +63,20 @@
 
 ---
 
-*最后更新：2026-02-20 by Lobster 🦞 & TestRunner 🧪*
+---
+
+## ✅ 已修复
+
+### BUG-007 任务全局可见（已修复 2026-02-20）
+- **文件**：`src/app/api/tasks/route.ts`
+- **描述**：GET /api/tasks 没有 workspaceId 时 where 为 undefined，返回全库所有任务
+- **影响**：任何登录用户都能看到所有人的任务
+- **修复**：加 OR 过滤器，只返回「我创建 / 我是工作区成员 / 分配给我」的任务
+- **发现者**：Aurora（凌晨 00:52 真实发现）✅
+- **发现者**：🔍 Aurora QA（Aurora 直接测试发现，2026-02-20 00:52）
+
+---
+
+*最后更新：2026-02-20 by Lobster 🦞 & TestRunner 🧪 & Aurora QA 🔍*
+
+> 🔍 Aurora QA：Aurora 的专属测试官，真实使用中发现的 bug 比静态分析更有价值。

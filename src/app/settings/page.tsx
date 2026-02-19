@@ -13,6 +13,18 @@ interface ApiToken {
   createdAt: string
 }
 
+interface Member {
+  id: string
+  role: string
+  user: {
+    id: string
+    name: string
+    email: string
+    avatar: string | null
+    agent: { id: string; name: string; status: string } | null
+  }
+}
+
 export default function SettingsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -23,6 +35,13 @@ export default function SettingsPage() {
   const [newToken, setNewToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // 团队成员
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  const [members, setMembers] = useState<Member[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteMsg, setInviteMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
   // 未登录跳转
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -30,12 +49,75 @@ export default function SettingsPage() {
     }
   }, [status, router])
 
-  // 加载 token 列表
+  // 加载 token 列表 + 工作区信息
   useEffect(() => {
     if (session) {
       fetchTokens()
+      fetchWorkspace()
     }
   }, [session])
+
+  const fetchWorkspace = async () => {
+    try {
+      const res = await fetch('/api/workspaces/my')
+      const data = await res.json()
+      if (data.workspace?.id) {
+        setWorkspaceId(data.workspace.id)
+        fetchMembers(data.workspace.id)
+      }
+    } catch (e) {
+      console.error('获取工作区失败', e)
+    }
+  }
+
+  const fetchMembers = async (wsId: string) => {
+    try {
+      const res = await fetch(`/api/workspaces/${wsId}/members`)
+      const data = await res.json()
+      setMembers(data.members || [])
+    } catch (e) {
+      console.error('获取成员失败', e)
+    }
+  }
+
+  const inviteMember = async () => {
+    if (!inviteEmail.trim() || !workspaceId) return
+    setInviting(true)
+    setInviteMsg(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim() })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setInviteMsg({ type: 'ok', text: data.message })
+        setInviteEmail('')
+        fetchMembers(workspaceId)
+      } else {
+        setInviteMsg({ type: 'err', text: data.error })
+      }
+    } catch (e) {
+      setInviteMsg({ type: 'err', text: '邀请失败，请重试' })
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const removeMember = async (userId: string) => {
+    if (!workspaceId || !confirm('确定移除该成员？')) return
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      })
+      fetchMembers(workspaceId)
+    } catch (e) {
+      console.error('移除成员失败', e)
+    }
+  }
 
   const fetchTokens = async () => {
     try {
@@ -109,6 +191,86 @@ export default function SettingsPage() {
       <Navbar />
       <main className="max-w-4xl mx-auto px-6 py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-8">⚙️ 设置</h1>
+
+        {/* 团队成员管理 */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">👥 团队成员</h2>
+          <p className="text-gray-500 text-sm mb-5">
+            邀请协作者加入你的工作区，任务拆解时可以分配给他们。
+          </p>
+
+          {/* 邀请框 */}
+          <div className="flex items-center space-x-3 mb-4">
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && inviteMember()}
+              placeholder="输入协作者邮箱..."
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+            />
+            <button
+              onClick={inviteMember}
+              disabled={inviting || !inviteEmail.trim()}
+              className="px-5 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm"
+            >
+              {inviting ? '邀请中...' : '邀请'}
+            </button>
+          </div>
+
+          {/* 邀请反馈 */}
+          {inviteMsg && (
+            <div className={`text-sm px-4 py-2 rounded-lg mb-4 ${
+              inviteMsg.type === 'ok'
+                ? 'bg-green-50 text-green-700 border border-green-200'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {inviteMsg.text}
+            </div>
+          )}
+
+          {/* 成员列表 */}
+          <div className="space-y-3">
+            {members.length === 0 ? (
+              <p className="text-gray-400 text-sm">工作区暂无其他成员</p>
+            ) : (
+              members.map((m) => (
+                <div key={m.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <div className="flex items-center space-x-3">
+                    {/* 头像 */}
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-bold text-sm">
+                      {(m.user.name || m.user.email)[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-800 text-sm">{m.user.name || m.user.email}</span>
+                        {m.role === 'owner' && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Owner</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 flex items-center space-x-2">
+                        <span>{m.user.email}</span>
+                        {m.user.agent && (
+                          <span className="text-blue-500">
+                            🤖 {m.user.agent.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {m.role !== 'owner' && (
+                    <button
+                      onClick={() => removeMember(m.user.id)}
+                      className="text-xs text-gray-400 hover:text-red-500 transition"
+                    >
+                      移除
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
 
         {/* API Token 管理 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
