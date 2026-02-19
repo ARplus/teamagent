@@ -715,19 +715,38 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               )}
             </div>
             
-            {/* 删除按钮 */}
+            {/* 操作按钮 */}
             {session?.user?.id === task.creator?.id && (
-              <button
-                onClick={async () => {
-                  if (!confirm('确定要删除这个任务吗？')) return
-                  const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
-                  if (res.ok) router.push('/')
-                  else alert('删除失败')
-                }}
-                className="text-sm text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg"
-              >
-                🗑️ 删除
-              </button>
+              <div className="flex items-center space-x-2">
+                {/* 邀请协作者 */}
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/tasks/${task.id}/invite`, { method: 'POST' })
+                    const data = await res.json()
+                    if (res.ok) {
+                      navigator.clipboard.writeText(data.inviteUrl).catch(() => {})
+                      alert(`✅ 邀请链接已复制！\n\n${data.inviteUrl}\n\n7天内有效，发给协作者即可。`)
+                    } else {
+                      alert(data.error || '生成邀请链接失败')
+                    }
+                  }}
+                  className="text-sm text-orange-500 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-200"
+                >
+                  🔗 邀请协作者
+                </button>
+                {/* 删除 */}
+                <button
+                  onClick={async () => {
+                    if (!confirm('确定要删除这个任务吗？')) return
+                    const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+                    if (res.ok) router.push('/')
+                    else alert('删除失败')
+                  }}
+                  className="text-sm text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg"
+                >
+                  🗑️ 删除
+                </button>
+              </div>
             )}
           </div>
         </div>
