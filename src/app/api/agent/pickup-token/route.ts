@@ -46,17 +46,24 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // 取走 token，并清空（一次性）
-    const token = agent.pendingApiToken
-
-    await prisma.agent.update({
-      where: { id: agentId },
+    // 原子操作：只有当 pendingApiToken 仍为此值时才清空并返回（防竞态）
+    const updated = await prisma.agent.updateMany({
+      where: { id: agentId, pendingApiToken: agent.pendingApiToken },
       data: { pendingApiToken: null }
     })
 
+    // 如果 count=0，说明已被其他请求先取走
+    if (updated.count === 0) {
+      return NextResponse.json({
+        pending: true,
+        claimed: true,
+        message: '已认领但 token 已取走'
+      })
+    }
+
     return NextResponse.json({
       success: true,
-      apiToken: token,
+      apiToken: agent.pendingApiToken,
       agentName: agent.name,
       message: '🎉 配对成功！Token 已领取，开始工作吧！'
     })

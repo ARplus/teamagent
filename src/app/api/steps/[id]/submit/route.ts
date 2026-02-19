@@ -77,43 +77,49 @@ export async function POST(
       }
     }
 
-    // 1. 创建 StepSubmission 记录（保留历史）
-    const submission = await prisma.stepSubmission.create({
-      data: {
-        stepId: id,
-        submitterId: tokenAuth.user.id,
-        result: result || '任务已完成，等待审核',
-        summary: finalSummary || null,
-        durationMs: agentDurationMs
-      }
-    })
-
-    // 2. 更新步骤状态
-    const updated = await prisma.taskStep.update({
-      where: { id },
-      data: {
-        status: 'waiting_approval',
-        agentStatus: 'waiting_approval',
-        result: result || '任务已完成，等待审核',
-        summary: finalSummary || null,
-        completedAt: now,
-        reviewStartedAt: now,  // 开始等待审核
-        agentDurationMs
-      }
-    })
-
-    // 3. 如果有附件，关联到 submission
-    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
-      await prisma.attachment.createMany({
-        data: attachments.map((att: { name: string; url: string; type?: string }) => ({
-          name: att.name,
-          url: att.url,
-          type: att.type || 'file',
-          submissionId: submission.id,  // 关联到提交记录
-          uploaderId: tokenAuth.user.id
-        }))
+    // 1+2+3 事务：确保 Submission、Step 状态、Attachment 同时成功或同时回滚
+    const resultText = result || '任务已完成，等待审核'
+    const [submission, updated] = await prisma.$transaction(async (tx) => {
+      // 1. 创建 StepSubmission 记录
+      const sub = await tx.stepSubmission.create({
+        data: {
+          stepId: id,
+          submitterId: tokenAuth.user.id,
+          result: resultText,
+          summary: finalSummary || null,
+          durationMs: agentDurationMs
+        }
       })
-    }
+
+      // 2. 更新步骤状态
+      const upd = await tx.taskStep.update({
+        where: { id },
+        data: {
+          status: 'waiting_approval',
+          agentStatus: 'waiting_approval',
+          result: resultText,
+          summary: finalSummary || null,
+          completedAt: now,
+          reviewStartedAt: now,
+          agentDurationMs
+        }
+      })
+
+      // 3. 附件（如有）
+      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+        await tx.attachment.createMany({
+          data: attachments.map((att: { name: string; url: string; type?: string }) => ({
+            name: att.name,
+            url: att.url,
+            type: att.type || 'file',
+            submissionId: sub.id,
+            uploaderId: tokenAuth.user.id
+          }))
+        })
+      }
+
+      return [sub, upd]
+    })
 
     // 更新 Agent 状态（如果存在）
     const agent = await prisma.agent.findUnique({
