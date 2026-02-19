@@ -382,9 +382,29 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
 }) {
   const status = statusConfig[task.status] || statusConfig.todo
   const alerts = getTaskAlerts(task)
-  
-  // 调试：打印 alerts
-  console.log('[Lobster Debug] task.steps:', task.steps?.length, 'alerts:', alerts)
+  const [showInvite, setShowInvite] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const inviteUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/tasks/${task.id}`
+    : `/tasks/${task.id}`
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(inviteUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // 点击弹窗外部关闭
+  useEffect(() => {
+    if (!showInvite) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-invite-popup]')) setShowInvite(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showInvite])
 
   return (
     <div className="flex-1 flex flex-col bg-gradient-to-br from-slate-50 to-orange-50/30 overflow-hidden">
@@ -438,6 +458,88 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
                 </div>
               </div>
             )}
+            {/* 邀请协作者 */}
+            <div className="relative" data-invite-popup>
+              <button
+                onClick={() => setShowInvite(v => !v)}
+                className={`flex items-center space-x-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors ${
+                  showInvite
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                    : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent'
+                }`}
+                title="邀请协作者"
+              >
+                <span>👥</span>
+                <span className="text-xs font-medium">邀请</span>
+              </button>
+
+              {/* 邀请弹窗 */}
+              {showInvite && (
+                <div className="absolute right-0 top-10 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 z-30">
+                  {/* 小箭头 */}
+                  <div className="absolute -top-2 right-4 w-4 h-4 bg-white border-l border-t border-slate-200 rotate-45" />
+
+                  <div className="mb-4">
+                    <h3 className="font-semibold text-slate-900 text-sm mb-1">邀请协作者</h3>
+                    <p className="text-xs text-slate-500">分享链接，对方登录后可查看任务并参与协作</p>
+                  </div>
+
+                  {/* 链接复制区 */}
+                  <div className="flex items-center space-x-2 mb-4">
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-600 truncate font-mono">
+                      {inviteUrl}
+                    </div>
+                    <button
+                      onClick={handleCopyLink}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex-shrink-0 ${
+                        copied
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-gradient-to-r from-orange-500 to-rose-500 text-white hover:from-orange-400 hover:to-rose-400'
+                      }`}
+                    >
+                      {copied ? '✓ 已复制' : '复制'}
+                    </button>
+                  </div>
+
+                  {/* 当前协作者 */}
+                  {(task.steps?.some(s => s.assignee)) && (
+                    <div>
+                      <div className="text-xs text-slate-400 mb-2 font-medium">当前协作者</div>
+                      <div className="flex flex-wrap gap-2">
+                        {/* 去重显示已参与的人+Agent */}
+                        {Array.from(
+                          new Map(
+                            task.steps
+                              ?.filter(s => s.assignee)
+                              .map(s => [s.assignee!.id, s.assignee!])
+                          ).values()
+                        ).map(assignee => (
+                          <div key={assignee.id} className="flex items-center space-x-1.5 bg-slate-50 rounded-xl px-2.5 py-1.5 border border-slate-100">
+                            <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                              {(assignee.name || 'U')[0]}
+                            </div>
+                            <div className="text-xs">
+                              <div className="text-slate-700 font-medium">{assignee.name || assignee.email?.split('@')[0]}</div>
+                              {assignee.agent && (
+                                <div className="text-slate-400">🤖 {assignee.agent.name}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setShowInvite(false)}
+                    className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 text-lg leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* 通知铃铛 */}
             <NotificationBell />
             
