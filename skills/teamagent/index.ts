@@ -203,8 +203,8 @@ export async function taStop() {
 }
 
 /**
- * /ta-register - 注册 Agent，获取配对码
- * 方式B 第一步：Agent 自己注册，生成配对码告知人类
+ * /ta-register - 注册 Agent，获取配对码，并自动等待人类认领
+ * 注册完成后自动轮询 pickup-token，人类认领后自动保存 token
  */
 export async function taRegister(args?: { name?: string }) {
   const config = loadConfig()
@@ -228,44 +228,75 @@ export async function taRegister(args?: { name?: string }) {
     }
 
     const data = await res.json()
-    const { agent, pairingCode, pairingUrl, expiresAt } = data
+    const { agent, pairingCode, expiresAt } = data
 
-    // 保存 agentId 到本地配置，后续可能用到
+    // 保存 agentId，后续轮询用
     saveConfig({ agentId: agent.id } as any)
 
     const expiry = new Date(expiresAt).toLocaleString('zh-CN')
 
-    return `✅ Agent 注册成功！
+    console.log(`
+✅ Agent 注册成功！开始等待人类认领...
 
-🤖 Agent 名称: ${agent.name}
-🆔 Agent ID: ${agent.id}
+🤖 Agent: ${agent.name}  (ID: ${agent.id})
+📱 配对码: ${pairingCode}
+⏰ 有效期至: ${expiry}
+
+现在自动轮询，等待你在网站上完成认领...
+`)
+
+    // ── 自动轮询 pickup-token ──────────────────────────
+    const POLL_INTERVAL = 5000  // 5秒一次
+    const MAX_WAIT = 10 * 60 * 1000  // 最多等 10 分钟
+    const startTime = Date.now()
+    let dots = 0
+
+    while (Date.now() - startTime < MAX_WAIT) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL))
+      dots++
+      process.stdout.write(`\r⏳ 等待认领${'.'.repeat(dots % 4).padEnd(3)} (${Math.round((Date.now() - startTime) / 1000)}s)`)
+
+      try {
+        const pollRes = await fetch(
+          `${config.apiUrl}/api/agent/pickup-token?agentId=${agent.id}`
+        )
+        const pollData = await pollRes.json()
+
+        if (pollData.success && pollData.apiToken) {
+          // 拿到 token！保存它
+          saveConfig({ apiToken: pollData.apiToken })
+          process.stdout.write('\n')
+          return `
+🎉 配对成功！Token 已自动保存！
+
+🤖 Agent: ${pollData.agentName}
+🔑 Token: ${pollData.apiToken.slice(0, 16)}... (已保存到 ~/.teamagent/config.json)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📱 请把以下信息发给你的人类：
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+现在运行 /teamagent 启动 Agent，开始接活儿！
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+        }
+        // pending: true 继续等待
+      } catch {
+        // 网络抖动，继续轮询
+      }
+    }
 
-你的 AI Agent 已上线！
+    process.stdout.write('\n')
+    return `⏰ 等待超时（10分钟）
 
-配对码：${pairingCode}
+配对码仍然有效，你可以：
+1. 在网站输入配对码完成认领
+2. 认领后运行 /ta-setup <token> 手动设置
 
-请访问：${config.apiUrl}
-登录后在「构建你的 Agent」页面输入配对码完成配对。
+配对码: ${pairingCode}
+网站: ${config.apiUrl}`
 
-⏰ 配对码有效期至：${expiry}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-配对完成后，你的人类会看到 API Token。
-请让他们把 Token 告诉你，然后运行：
-
-  /ta-setup <API_TOKEN>
-`
   } catch (e) {
     return `❌ 网络错误: ${e instanceof Error ? e.message : String(e)}
 
-请确认 TeamAgent 服务器地址是否正确：
-当前地址: ${config.apiUrl}
-
-可通过 /ta-config 修改。`
+请确认 TeamAgent 服务器地址：
+当前地址: ${config.apiUrl}`
   }
 }
 
