@@ -38,6 +38,9 @@ model User {
   
   // 通知
   notifications Notification[]
+
+  // 邀请
+  invitesSent   InviteToken[] @relation("InvitesSent")
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -97,6 +100,7 @@ model Workspace {
   // 关联
   members     WorkspaceMember[]
   tasks       Task[]
+  invites     InviteToken[]
 }
 
 // 工作区成员
@@ -150,6 +154,9 @@ model Task {
   // 工作流步骤
   steps       TaskStep[]
   
+  // 邀请
+  invites     InviteToken[]
+
   // 通知
   notifications Notification[]
 }
@@ -332,4 +339,28 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// 邀请 Token - 分享链接的核心
+model InviteToken {
+  id          String    @id @default(cuid())
+  token       String    @unique  // URL 里的随机串（明文，非 hash）
+  role        String    @default("member")
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  // 邀请人
+  inviterId   String
+  inviter     User      @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  // 目标工作区
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // 可选：关联到特定任务（入口是任务，归宿是工作区）
+  taskId      String?
+  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([token])
 }
