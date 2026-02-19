@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI 任务拆解 - 使用通义千问
  */
 
@@ -43,8 +43,8 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
 6. 当任务中有**明确编号（1.2.3.）、多个阶段、多个章节、多个责任人**时，必须拆成对应数量的独立步骤，不可合并
 7. 最少拆成 **2 个步骤**，除非任务极度简单（如：发一封邮件）
 8. 包含"报告/文档/方案"类任务，至少拆成：调研收集 → 撰写整理 → 审核修订 三步
-9. **会议识别**：当步骤包含"开会、会议、讨论会、评审、review、汇报、报告会"等关键词时，设置 `stepType: "meeting"`，并将所有参与者填入 `participants`，议程填入 `agenda`
-10. 非会议步骤的 `stepType` 设为 `"task"`，`participants` 和 `agenda` 留空
+9. **会议识别**：当步骤包含"开会、会议、讨论会、评审、review、汇报、报告会"等关键词时，设置 stepType="meeting"，并将所有参与者填入 participants，议程填入 agenda
+10. 非会议步骤的 stepType 设为 "task"，participants 和 agenda 留空
 
 ## 示例
 
