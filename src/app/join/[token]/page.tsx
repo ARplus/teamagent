@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
@@ -12,7 +12,8 @@ interface InviteInfo {
   expiresAt: string
 }
 
-export default function JoinPage({ params }: { params: { token: string } }) {
+export default function JoinPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params)
   const { data: session, status } = useSession()
   const router = useRouter()
   const [invite, setInvite] = useState<InviteInfo | null>(null)
@@ -25,7 +26,7 @@ export default function JoinPage({ params }: { params: { token: string } }) {
   }, [])
 
   const fetchInvite = async () => {
-    const res = await fetch(`/api/invite/${params.token}`)
+    const res = await fetch(`/api/invite/${token}`)
     const data = await res.json()
     if (res.ok) setInvite(data)
     else setError(data.error)
@@ -33,12 +34,11 @@ export default function JoinPage({ params }: { params: { token: string } }) {
 
   const acceptInvite = async () => {
     if (!session) {
-      // 未登录，跳转登录后回来
-      signIn(undefined, { callbackUrl: `/join/${params.token}` })
+      signIn(undefined, { callbackUrl: `/join/${token}` })
       return
     }
     setJoining(true)
-    const res = await fetch(`/api/invite/${params.token}`, { method: 'POST' })
+    const res = await fetch(`/api/invite/${token}`, { method: 'POST' })
     const data = await res.json()
     if (res.ok) {
       setJoined(true)
