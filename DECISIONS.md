@@ -1,58 +1,107 @@
-# TeamAgent 设计决策记录
+# TeamAgent 产品决策记录
 
-> 记录重要的产品/技术决策及其背景原因。
-> 维护者：Aurora & Lobster 🦞
-
----
-
-## 2026-02-19
-
-### D001 · Avatar 命名策略
-**决策**：UI 层不暴露 "Avatar" 词汇，改用「人类/你」，或直接展示头像+名字。  
-**原因**：降低用户认知门槛，Avatar 对非 GAIA 世界用户有歧义。  
-**影响**：LandingPage 全部替换，内部 SPEC 仍保留 Avatar 概念。
-
-### D002 · Agent 配对流程（方式A/B 合并）
-**决策**：Agent 运行 `/ta-register` 自动注册 + 自动轮询 pickup-token；人类在网站输入6位配对码完成认领。  
-**原因**：无需手动粘贴 token，配对体验接近"扫码登录"。  
-**影响**：废弃旧的"Settings页面生成token"方案；OpenClaw Skill 使用 `register-and-wait` 命令。
-
-### D003 · 会议步骤 (stepType: meeting)
-**决策**：`TaskStep` 增加 `stepType ('task'|'meeting')`、`scheduledAt`、`agenda`、`participants` 字段。  
-**原因**：协同工作中「开会」是独立事件类型，需要参会人、议程、纪要，与普通任务步骤语义不同。  
-**影响**：AI parse 自动识别会议关键词；UI 蓝色卡片展示；Agent 作为 AI 秘书提交纪要。
-
-### D004 · Navbar 范围限定
-**决策**：Navbar 组件仅在 `/settings`、`/tasks/new`、`/tasks/[id]` 页面使用；主 Dashboard 用独立 sidebar。  
-**原因**：Dashboard 有专属的 sidebar 布局，强行加 Navbar 会造成双导航冲突。  
-**影响**：配对按钮在 Dashboard sidebar 里，不在 Navbar。
-
-### D005 · Owner 私审机制（V2 待实现）
-**决策**：Agent 提交后先进入 `pending_owner_review` 状态，仅 Agent 的配对人类可见；人类批准后才变为 `waiting_approval` 对任务创建者可见。  
-**原因**：保护人类不因 AI 输出质量不稳定而在协作者面前尴尬；体现「人类始终在场」理念。  
-**影响**：需新增状态值、API、UI 私审卡片。状态机：`in_progress → pending_owner_review → waiting_approval → done`
-
-### D006 · 人类步骤提交入口（V2 待实现）
-**决策**：当步骤 assignee 是人类（非 Agent）时，展开卡片底部显示「📝 提交我的工作」文本框 + 附件区。  
-**原因**：目前 UI 只有 Agent 自动提交路径，人类无法在网站上提交自己的步骤结果。  
-**影响**：TaskDetail 页面 StepCard 需要判断 assignee 类型；人类提交走相同的 `/api/steps/[id]/submit` 接口（session 认证）。
-
-### D007 · 附件格式（URL 链接）
-**决策**：附件存储 `{name, url, type}` 三元组，url 为外链（非上传文件）。  
-**原因**：早期阶段避免文件存储复杂度；arxiv/Google Doc/飞书链接足够满足研究和办公场景。  
-**影响**：submit API 已支持 `attachments[]`；UI 附件输入框待实现（输入链接+标题）。
+> 记录重要的产品设计决策、架构选择和未解决的设计问题。
+> 日期格式：YYYY-MM-DD
 
 ---
 
-## 会议步骤处理规范
+## 已定决策
 
-**当前版本（V1）：**
-1. AI 解析时，含「开会/会议/讨论会/评审/汇报」关键词 → 自动 `stepType: meeting`
-2. Agent 作为 AI 秘书：领取 → 在 chat 中与人类讨论 → 提交会议纪要
-3. 会议完成认定：任务创建者单次审批（同普通步骤）
-4. `scheduledAt`：可选，UI 展示倒计时
+### 2026-02-19 — 命名：去除 "Avatar" 词汇
+- **决策**：UI 层完全去除 "Avatar" 暴露，用人的头像/名字直接体现人类存在感
+- **原因**：降低认知门槛，"Avatar" 对普通用户不直观
+- **保留**：内部 SPEC/架构文档中保留 Avatar 概念（GAIA 宇宙体系）
 
-**V2 计划：**
-- 接入会议 MCP（Zoom/Teams/飞书）
-- Agent 实时入会 + 自动记录
-- 离线→在线无缝切换
+### 2026-02-19 — 配对流程：Agent 自动轮询 pickup-token
+- **决策**：`/ta-register` 之后 Agent 自动每5秒轮询 `pickup-token`，无需手动 `/ta-setup`
+- **原因**：降低用户操作步骤，从「3步」变「1步」
+- **实现**：`skills/teamagent/index.ts` + `teamagent-client.js` 的 `registerAndWait`
+
+### 2026-02-19 — 步骤类型：普通步骤 vs 会议步骤
+- **决策**：TaskStep 新增 `stepType: 'task' | 'meeting'`，会议步骤有议程/参会人/时间
+- **原因**：协作中大量存在「讨论/评审/汇报」类节点，需要区分处理
+- **Agent 角色**：会议步骤中 Agent 充当 AI 秘书，自动整理会议纪要
+- **完成条件**：同普通步骤，由任务创建者单人审核通过
+
+### 2026-02-19 — AI 拆解规则
+- 最少 2 个步骤（极简任务除外）
+- 有编号/阶段/多责任人 → 必须拆成对应步骤
+- 报告/文档类 → 至少：调研收集 → 撰写整理 → 审核修订
+- 含「开会/讨论会/评审/汇报」关键词 → 自动识别为 meeting 步骤
+
+### 2026-02-19 — 首页策略
+- 未登录 → 显示 LandingPage（营销首页）
+- 已登录 → 显示 Dashboard
+- 独立路由 `/landing` 供已登录用户预览
+- `/build-agent` 完整安装引导页（Node.js + OpenClaw + LLM 对比）
+
+### 2026-02-19 — OpenClaw Skill 架构
+- **OpenClaw Skill**（`~/clawd/skills/teamagent/`）：SKILL.md + Node.js 脚本，供 Lobster 自己用
+- **Claude Code Skill**（`teamagent/skills/teamagent/`）：TypeScript exports，供其他 Claude Code 用户安装
+- 两套并存，分工不同
+
+---
+
+## 待定设计问题
+
+### 🔴 高优先级
+
+#### V2-001 — Owner 私审机制（pending_owner_review）
+- **问题**：Agent 提交后直接变 `waiting_approval`，其他协作者立即可见
+- **期望**：Agent 提交 → Agent 的 Owner（人类）先私下审核 → 通过后才公开给任务创建者
+- **新状态流**：`in_progress` → `pending_owner_review`（仅 Owner 可见）→ `waiting_approval`（全员可见）→ `done`
+- **涉及改动**：新状态 + 新 API `/steps/[id]/owner-approve` + UI 私审卡片
+- **优先级**：高（影响核心协作信任模型）
+
+#### V2-002 — 人类步骤提交入口
+- **问题**：分配给人类用户的步骤，在 UI 上没有「提交我的工作」按钮
+- **期望**：步骤展开后，负责人可以输入结果、附上链接，点击提交
+- **优先级**：高（当前 demo 流程断路）
+
+### 🟡 中优先级
+
+#### V2-003 — 步骤附件/链接输入 UI
+- **问题**：Submit API 已支持 `attachments: [{name, url, type}]`，但 UI 没有输入入口
+- **期望**：提交时可以添加多个链接，展示时显示为可点击的附件卡片
+- **优先级**：中
+
+#### V2-004 — 会议步骤完整流程
+- **问题**：会议步骤 UI 已完成（蓝色卡片、参会人、议程），但 Agent 的会议秘书流程未自动化
+- **期望**：Lobster 在会议步骤中自动整理议程、记录纪要、提交会议记录
+- **优先级**：中
+
+#### V2-005 — Settings 页 Agent 管理
+- **问题**：Settings 页没有 Agent 管理区块
+- **期望**：显示 Agent 名字/状态/配对时间 + 「重新配对」按钮
+- **优先级**：中
+
+### 🟢 低优先级
+
+#### V2-006 — 会议 MCP 接入（长期）
+- **想法**：接入 Zoom/Teams MCP，会议步骤可自动创建会议室、发邀请、实时记录
+- **价值**：从「离线协作」变成「离线 + 在线超粘性工作台」
+- **优先级**：低（需 MCP 生态成熟）
+
+#### V2-007 — 平行步骤（parallel steps）
+- **想法**：同一 order 的多个步骤并行执行，全部完成后才进入下一阶段
+- **现状**：目前所有步骤严格顺序执行
+- **优先级**：低
+
+---
+
+## 战略决策
+
+### 张伟教授合作机会（2026-02-19）
+- 北京工商大学教授，留法背景，对 TeamAgent 高度感兴趣
+- 意向：研究中心首页跳转 + 学生使用 + 企业合作推荐 + 联合成立公司
+- 其老公是清华大学文化产业学院副院长
+- **下一步**：稳定版上线后第一时间发给她演示链接
+
+### 3月1日上线目标
+- 当前进度：本地全流程跑通（含配对、任务、步骤、审核）
+- 待完成：V2-001（Owner私审）、V2-002（人类步骤提交）后部署生产
+- 生产地址：`118.195.138.220`（Tencent Cloud，PM2 运行）
+
+---
+
+*最后更新：2026-02-19 by Lobster 🦞*
