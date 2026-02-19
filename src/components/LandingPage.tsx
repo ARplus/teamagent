@@ -101,6 +101,14 @@ function OnboardingSection() {
                   <span>按引导安装 <strong className="text-slate-200">Node.js + OpenClaw</strong></span>
                 </li>
               </ol>
+              <a
+                href="/build-agent"
+                target="_blank"
+                className="mt-4 w-full flex items-center justify-center space-x-2 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 transition-all"
+              >
+                <span>🤖</span>
+                <span>查看完整安装引导 →</span>
+              </a>
             </div>
             {/* 方式B */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
