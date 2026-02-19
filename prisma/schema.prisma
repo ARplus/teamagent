@@ -1,4 +1,5 @@
-// TeamAgent 閺佺増宓佹惔鎾茨侀崹?// Database: PostgreSQL
+// TeamAgent 数据库模型
+// Database: PostgreSQL
 
 generator client {
   provider = "prisma-client-js"
@@ -10,16 +11,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 閻劍鍩?model User {
+// 用户
+model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String?
-  nickname      String?   // 閺勭數袨閿涘瞼鏁ゆ禍?AI 鐠囧棗鍩嗛敍鍫濐洤"濞堝灚顔?閵?鐏忓繑鏅?閿?  password      String    // bcrypt hashed
+  nickname      String?   // 昵称，用于 AI 识别（如"段段"、"小敏"）
+  password      String    // bcrypt hashed
   avatar        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  // 閸忓疇浠?  agent         Agent?
+  // 关联
+  agent         Agent?
   tasks         Task[]    @relation("TaskAssignee")
   createdTasks  Task[]    @relation("TaskCreator")
   workspaces    WorkspaceMember[]
@@ -32,84 +36,94 @@ datasource db {
   accounts      Account[]
   sessions      Session[]
   
-<<<<<<< Updated upstream
   // 通知
   notifications Notification[]
-
-  // 邀请
   invitesSent   InviteToken[] @relation("InvitesSent")
-=======
-  // 闁氨鐓?  notifications Notification[]
-
-  // 闁偓鐠?  invitesSent   InviteToken[] @relation("InvitesSent")
->>>>>>> Stashed changes
 }
 
-// AI Agent - 閻欘剛鐝涢惃鍕殶鐎涙鍙曞鎴礉閸欘垵顫︽禍铏硅鐠併倝顣?model Agent {
+// AI Agent - 独立的数字公民，可被人类认领
+model Agent {
   id          String   @id @default(cuid())
-  name        String   // Agent 閸氬秴鐡?  personality String?  // 閹勭壐閹诲繗鍫?  avatar      String?  // Agent 婢舵潙鍎?  status      String   @default("online") // online, working, waiting, offline
+  name        String   // Agent 名字
+  personality String?  // 性格描述
+  avatar      String?  // Agent 头像
+  status      String   @default("online") // online, working, waiting, offline
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // 棣冨晭 Agent-First 濞夈劌鍞?  clawdbotId      String?   @unique  // Clawdbot 鐎圭偘绶?ID閿涘牆顦婚柈銊ㄩ煩娴犳枻绱?  pairingCode     String?   @unique  // 6娴ｅ秹鍘ょ€靛湱鐖?  pairingCodeExpiresAt DateTime?     // 闁板秴顕惍浣界箖閺堢喐妞傞梻?  claimedAt       DateTime?          // 鐞氼偉顓绘０鍡樻闂?  
-  // 缂佹垵鐣鹃悽銊﹀煕閿涘牐顓绘０鍡楁倵閹靛秵婀侀敍?  userId      String?   @unique      // 棣冨晭 閺€閫涜礋閸欘垶鈧?  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 🆕 Agent-First 注册
+  clawdbotId      String?   @unique  // Clawdbot 实例 ID（外部身份）
+  pairingCode     String?   @unique  // 6位配对码
+  pairingCodeExpiresAt DateTime?     // 配对码过期时间
+  claimedAt       DateTime?          // 被认领时间
   
-  // 棣冨晭 Agent 閻欘剛鐝涢懗钘夊
+  // 绑定用户（认领后才有）
+  userId      String?   @unique      // 🆕 改为可选
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 🆕 Agent 独立能力
   capabilities    String?  // JSON: ["coding", "writing", "analysis"]
-  workHistory     String?  // JSON: 瀹搞儰缍旈崢鍡楀蕉缂佺喕顓?  reputation      Float?   @default(0)  // 娣嚶ょ崟閸?(0-5)
+  workHistory     String?  // JSON: 工作历史统计
+  reputation      Float?   @default(0)  // 信誉分 (0-5)
 
-  // 棣冨晭 Claim 閸氬簼澶嶉弮璺虹摠閸樼喎顫?Token閿涘瓑gent 鏉烆喛顕楅崣鏍泲閸楀啿鍨?  pendingApiToken String?
+  // 🆕 Claim 后临时存原始 Token，Agent 轮询取走即删
+  pendingApiToken String?
   
   @@index([pairingCode])
   @@index([clawdbotId])
 }
 
-// API Token - 鐠?Skill 閼宠棄鐣ㄩ崗銊ㄧ殶閻?API
+// API Token - 让 Skill 能安全调用 API
 model ApiToken {
   id          String   @id @default(cuid())
-  token       String   @unique  // 鐎圭偤妾?token 閸婄》绱檋ash 閸氬骸鐡ㄩ崒顭掔礆
-  name        String   // token 閸氬秶袨閿涘苯顩?"Lobster Skill"
+  token       String   @unique  // 实际 token 值（hash 后存储）
+  name        String   // token 名称，如 "Lobster Skill"
   lastUsedAt  DateTime?
   expiresAt   DateTime?
   createdAt   DateTime @default(now())
   
-  // 缂佹垵鐣鹃悽銊﹀煕
+  // 绑定用户
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// 瀹搞儰缍旈崠?model Workspace {
+// 工作区
+model Workspace {
   id          String   @id @default(cuid())
   name        String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // 閸忓疇浠?  members     WorkspaceMember[]
+  // 关联
+  members     WorkspaceMember[]
   tasks       Task[]
   invites     InviteToken[]
 }
 
-// 闁偓鐠?Token閿涘牆鍨庢禍顐︽懠閹恒儳娈戦弽绋跨妇閿?model InviteToken {
+// 邀请 Token（分享链接核心）
+model InviteToken {
   id          String    @id @default(cuid())
-  token       String    @unique  // URL 闁插瞼娈戦梾蹇旀簚娑?  role        String    @default("member")
+  token       String    @unique
+  role        String    @default("member")
   expiresAt   DateTime
-  usedAt      DateTime?          // 鐞氼偅甯撮崣妤冩畱閺冨爼妫?  createdAt   DateTime  @default(now())
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
 
-  // 闁偓鐠囪渹姹?  inviterId   String
+  inviterId   String
   inviter     User      @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
 
-  // 閻╊喗鐖ｅ銉ょ稊閸?  workspaceId String
+  workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // 閸欘垶鈧绱伴崗瀹犱粓閸掓壆澹掔€规矮鎹㈤崝鈽呯礄闁偓鐠囧嘲濮為崗銉︾厙娑擃亙鎹㈤崝鈽呯礆
   taskId      String?
   task        Task?     @relation("TaskInvites", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([token])
 }
 
-// 瀹搞儰缍旈崠鐑樺灇閸?model WorkspaceMember {
+// 工作区成员
+model WorkspaceMember {
   id          String    @id @default(cuid())
   role        String    @default("member") // owner, admin, member
   joinedAt    DateTime  @default(now())
@@ -123,7 +137,8 @@ model ApiToken {
   @@unique([userId, workspaceId])
 }
 
-// 娴犺濮?model Task {
+// 任务
+model Task {
   id          String   @id @default(cuid())
   title       String
   description String?
@@ -133,123 +148,155 @@ model ApiToken {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // 閳存唻绗?瀹搞儰缍旈柌蹇曠埠鐠?  totalAgentTimeMs  Int?    // 閹?Agent 閹笛嗩攽閺冨爼妫块敍鍫燁嚑缁夋帪绱?  totalHumanTimeMs  Int?    // 閹姹夌猾璇差吀閹佃妞傞梻杈剧礄濮ｎ偆顫楅敍?  agentWorkRatio    Float?  // Agent 瀹搞儰缍旈崡鐘崇槷 (0-1)
+  // ⏱️ 工作量统计
+  totalAgentTimeMs  Int?    // 总 Agent 执行时间（毫秒）
+  totalHumanTimeMs  Int?    // 总人类审批时间（毫秒）
+  agentWorkRatio    Float?  // Agent 工作占比 (0-1)
 
-  // 閸掓稑缂撻懓?  creatorId   String
+  // 创建者
+  creatorId   String
   creator     User     @relation("TaskCreator", fields: [creatorId], references: [id])
 
-  // 閹笛嗩攽閼?  assigneeId  String?
+  // 执行者
+  assigneeId  String?
   assignee    User?    @relation("TaskAssignee", fields: [assigneeId], references: [id])
 
-  // 閹碘偓鐏炵偛浼愭担婊冨隘
+  // 所属工作区
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // 閸撳秶鐤嗘禒璇插閿涘牆宸婚崣韫瑐娑撳鏋冮敍?  parentTaskId String?
+  // 前置任务（历史上下文）
+  parentTaskId String?
   parentTask   Task?    @relation("TaskHistory", fields: [parentTaskId], references: [id])
   childTasks   Task[]   @relation("TaskHistory")
 
-<<<<<<< Updated upstream
   // 工作流步骤
   steps       TaskStep[]
+  invites     InviteToken[] @relation("TaskInvites")
   
-  // 邀请
-  invites     InviteToken[]
-
   // 通知
   notifications Notification[]
-=======
-  // 瀹搞儰缍斿ù浣诡劄妤?  steps       TaskStep[]
- 
-  invites     InviteToken[] 
-  // 闁氨鐓?  notifications Notification[]
->>>>>>> Stashed changes
 }
 
-// 娴犺濮熷銉╊€?- 瀹搞儰缍斿ù浣藉Ν閻?model TaskStep {
+// 任务步骤 - 工作流节点
+model TaskStep {
   id          String   @id @default(cuid())
-  title       String   // 濮濄儵顎冮弽鍥暯
-  description String?  // 濮濄儵顎冪拠瀛樻
-  order       Int      // 濮濄儵顎冩い鍝勭碍
+  title       String   // 步骤标题
+  description String?  // 步骤说明
+  order       Int      // 步骤顺序
   
-  // 濮濄儵顎冪猾璇茬€?  stepType    String   @default("task")  // task | meeting
+  // 步骤类型
+  stepType    String   @default("task")  // task | meeting
 
-  // 鐠愶絼鎹㈡禍鐚寸礄閺€顖涘瘮婢舵矮姹夐弰鍓с仛閿?  assigneeNames String?  // JSON: ["鐏忓繑鏅?, "濞堝灚顔?] 閻劋绨弰鍓с仛
-  assigneeId    String?  // 娑撴槒鐭楁禒璁虫眽閻劍鍩汭D
+  // 责任人（支持多人显示）
+  assigneeNames String?  // JSON: ["小敏", "段段"] 用于显示
+  assigneeId    String?  // 主责任人用户ID
   assignee      User?    @relation(fields: [assigneeId], references: [id])
   
-  // 娴兼俺顔呮稉鎾舵暏鐎涙顔?  scheduledAt  DateTime?  // 娴兼俺顔呴弮鍫曟？
-  agenda       String?    // 娴兼俺顔呯拋顔锯柤閿涘湣arkdown閿?  participants String?    // JSON: ["鐏忓繑鏅?, "濞堝灚顔?, "Aurora"] 閹碘偓閺堝寮导姘眽閸?
-  // 鏉堟挸鍙嗘潏鎾冲毉
-  inputs      String?  // JSON: ["闂団偓鐟曚胶娈戞潏鎾冲弳"]
-  outputs     String?  // JSON: ["娴溠冨毉閻?]
-  skills      String?  // JSON: ["闂団偓鐟曚胶娈慡kill"]
+  // 会议专用字段
+  scheduledAt  DateTime?  // 会议时间
+  agenda       String?    // 会议议程（Markdown）
+  participants String?    // JSON: ["小敏", "段段", "Aurora"] 所有参会人名
+
+  // 输入输出
+  inputs      String?  // JSON: ["需要的输入"]
+  outputs     String?  // JSON: ["产出物"]
+  skills      String?  // JSON: ["需要的Skill"]
   
-  // 閻樿埖鈧?  status      String   @default("pending") // pending, in_progress, waiting_approval, done, rejected
+  // 状态
+  status      String   @default("pending") // pending, in_progress, waiting_approval, done, rejected
   agentStatus String?  // online, pending, working, waiting_approval, blocked, offline
   
-  // 缂佹挻鐏?  result      String?  // 濮濄儵顎冪紒鎾寸亯/娴溠冨毉閹诲繗鍫?  summary     String?  // AI 閻㈢喐鍨氶惃鍕喅鐟?  
-  // 鐎光剝鐗?  approvedAt  DateTime?
+  // 结果
+  result      String?  // 步骤结果/产出描述
+  summary     String?  // AI 生成的摘要
+  
+  // 审核
+  approvedAt  DateTime?
   approvedBy  String?
   rejectedAt  DateTime?
   rejectionReason String?
   
-  // 閳存唻绗?瀹搞儰缍旈柌蹇氭嫹闊?  rejectionCount   Int      @default(0)  // 鐞氼偅澧﹂崶鐐搭偧閺?  agentDurationMs  Int?     // Agent 閹笛嗩攽閼版妞傞敍鍫燁嚑缁夋帪绱?  humanDurationMs  Int?     // 娴滆櫣琚€光剝澹掗懓妤佹閿涘牊顕犵粔鎺炵礆
+  // ⏱️ 工作量追踪
+  rejectionCount   Int      @default(0)  // 被打回次数
+  agentDurationMs  Int?     // Agent 执行耗时（毫秒）
+  humanDurationMs  Int?     // 人类审批耗时（毫秒）
   
-  // 閺冨爼妫块幋?  createdAt   DateTime @default(now())
+  // 时间戳
+  createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   startedAt   DateTime?
   completedAt DateTime?
-  reviewStartedAt DateTime?  // 娴滆櫣琚鈧慨瀣吀閹佃妞傞梻?
-  // 閹碘偓鐏炵偘鎹㈤崝?  taskId      String
+  reviewStartedAt DateTime?  // 人类开始审批时间
+
+  // 所属任务
+  taskId      String
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  // 闂勫嫪娆?  attachments Attachment[]
+  // 附件
+  attachments Attachment[]
   
-  // 閹绘劒姘﹂崢鍡楀蕉
+  // 提交历史
   submissions StepSubmission[]
   
-  // 闁氨鐓?  notifications Notification[]
+  // 通知
+  notifications Notification[]
 }
 
-// 濮濄儵顎冮幓鎰唉鐠佹澘缍?- 濮ｅ繑顐奸幓鎰唉闁姤妲告稉鈧弶鈩冩煀鐠佹澘缍嶉敍灞肩箽閻ｆ瑥宸婚崣?model StepSubmission {
+// 步骤提交记录 - 每次提交都是一条新记录，保留历史
+model StepSubmission {
   id          String   @id @default(cuid())
   
-  // 閹绘劒姘﹂崘鍛啇
-  result      String   // 閹绘劒姘﹂惃鍕波閺?  summary     String?  // AI 閹芥顩?  
-  // 鐎光剝鐗抽悩鑸碘偓?  status      String   @default("pending") // pending, approved, rejected
-  reviewedAt  DateTime?
-  reviewedBy  String?   // 鐎光剝鐗虫禍?ID
-  reviewNote  String?   // 鐎光剝鐗虫径鍥ㄦ暈閿涘牓鈧俺绻?閹锋帞绮烽惃鍕嚛閺勫函绱?  
-  // 閺冨爼妫?  createdAt   DateTime @default(now())
+  // 提交内容
+  result      String   // 提交的结果
+  summary     String?  // AI 摘要
   
-  // 閹笛嗩攽閼版妞?  durationMs  Int?     // 鏉╂瑦顐奸幓鎰唉閻ㄥ嫭澧界悰灞炬闂?  
-  // 閸忓疇浠?  stepId      String
+  // 审核状态
+  status      String   @default("pending") // pending, approved, rejected
+  reviewedAt  DateTime?
+  reviewedBy  String?   // 审核人 ID
+  reviewNote  String?   // 审核备注（通过/拒绝的说明）
+  
+  // 时间
+  createdAt   DateTime @default(now())
+  
+  // 执行耗时
+  durationMs  Int?     // 这次提交的执行时间
+  
+  // 关联
+  stepId      String
   step        TaskStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
   
   submitterId String
   submitter   User     @relation("SubmissionSubmitter", fields: [submitterId], references: [id])
   
-  // 闂勫嫪娆?  attachments Attachment[]
+  // 附件
+  attachments Attachment[]
 }
 
-// 闂勫嫪娆?model Attachment {
+// 附件
+model Attachment {
   id          String   @id @default(cuid())
-  name        String   // 閺傚洣娆㈤崥?  url         String   // 閺傚洣娆?URL 閹存牞鐭惧?  type        String?  // 閺傚洣娆㈢猾璇茬€?(mime type)
-  size        Int?     // 閺傚洣娆㈡径褍鐨?(bytes)
+  name        String   // 文件名
+  url         String   // 文件 URL 或路径
+  type        String?  // 文件类型 (mime type)
+  size        Int?     // 文件大小 (bytes)
   createdAt   DateTime @default(now())
 
-  // 閹碘偓鐏炵偞顒炴銈忕礄閻╁瓨甯撮梽鍕閿?  stepId      String?
+  // 所属步骤（直接附件）
+  stepId      String?
   step        TaskStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
   
-  // 閹碘偓鐏炵偞褰佹禍銈堫唶瑜版洩绱欓幓鎰唉閺冨墎娈戦梽鍕閿?  submissionId String?
+  // 所属提交记录（提交时的附件）
+  submissionId String?
   submission   StepSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
-  // 娑撳﹣绱堕懓?  uploaderId  String
+  // 上传者
+  uploaderId  String
   uploader    User     @relation(fields: [uploaderId], references: [id])
 }
 
-// 缁旀瑥鍞撮柅姘辩叀
+// 站内通知
 model Notification {
   id          String   @id @default(cuid())
   type        String   // task_assigned, step_waiting, step_approved, step_rejected, task_completed, mention
@@ -258,14 +305,15 @@ model Notification {
   read        Boolean  @default(false)
   createdAt   DateTime @default(now())
   
-  // 閹恒儲鏁归懓?  userId      String
+  // 接收者
+  userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // 閸忓疇浠堥惃鍕崲閸斺槄绱欓崣顖炩偓澶涚礆
+  // 关联的任务（可选）
   taskId      String?
   task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   
-  // 閸忓疇浠堥惃鍕劄妤犮倧绱欓崣顖炩偓澶涚礆
+  // 关联的步骤（可选）
   stepId      String?
   step        TaskStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
   
@@ -273,7 +321,7 @@ model Notification {
   @@index([userId, createdAt])
 }
 
-// ============ NextAuth 閻╃鍙х悰?============
+// ============ NextAuth 相关表 ============
 
 model Account {
   id                String  @id @default(cuid())
@@ -308,28 +356,4 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
-}
-
-// 邀请 Token - 分享链接的核心
-model InviteToken {
-  id          String    @id @default(cuid())
-  token       String    @unique  // URL 里的随机串（明文，非 hash）
-  role        String    @default("member")
-  expiresAt   DateTime
-  usedAt      DateTime?
-  createdAt   DateTime  @default(now())
-
-  // 邀请人
-  inviterId   String
-  inviter     User      @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
-
-  // 目标工作区
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  // 可选：关联到特定任务（入口是任务，归宿是工作区）
-  taskId      String?
-  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-
-  @@index([token])
 }
