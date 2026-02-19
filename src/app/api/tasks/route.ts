@@ -37,8 +37,23 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const workspaceId = searchParams.get('workspaceId')
 
+    // 只返回与当前用户相关的任务：创建者 / 工作区成员 / 被分配者
+    const visibilityFilter = {
+      OR: [
+        { creatorId: auth.userId },
+        { assigneeId: auth.userId },
+        {
+          workspace: {
+            members: { some: { userId: auth.userId } }
+          }
+        }
+      ]
+    }
+
     const tasks = await prisma.task.findMany({
-      where: workspaceId ? { workspaceId } : undefined,
+      where: workspaceId
+        ? { workspaceId, ...visibilityFilter }
+        : visibilityFilter,
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
         assignee: { select: { id: true, name: true, avatar: true } },
