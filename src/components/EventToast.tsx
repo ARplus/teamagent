@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { useAgentEvents, TeamAgentEvent } from '@/hooks/useAgentEvents'
 
 interface Toast {
@@ -17,6 +18,7 @@ interface Toast {
  * 放在布局中，自动显示所有实时事件
  */
 export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
+  const { data: session } = useSession()
   const [toasts, setToasts] = useState<Toast[]>([])
   const [showStatus, setShowStatus] = useState(true)
 
@@ -42,6 +44,7 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
   }
 
   const { connected, disconnect } = useAgentEvents({
+    enabled: !!session, // 只在登录后启用 SSE
     onEvent: (event: TeamAgentEvent) => {
       // 只处理重要事件，忽略 connected（太频繁）
       switch (event.type) {

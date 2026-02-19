@@ -64,6 +64,9 @@ model Agent {
   capabilities    String?  // JSON: ["coding", "writing", "analysis"]
   workHistory     String?  // JSON: 工作历史统计
   reputation      Float?   @default(0)  // 信誉分 (0-5)
+
+  // 🆕 Claim 后临时存原始 Token，Agent 轮询取走即删
+  pendingApiToken String?
   
   @@index([pairingCode])
   @@index([clawdbotId])

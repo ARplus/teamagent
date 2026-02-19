@@ -49,13 +49,33 @@ export async function GET(req: NextRequest) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  // 获取用户的 Agent
+  // 获取用户的 Agent（可能没有，Agent-First 模式下用户先注册后认领）
   const agent = await prisma.agent.findUnique({
     where: { userId: auth.userId }
   })
 
+  // 没有 Agent 也允许连接，返回等待状态
   if (!agent) {
-    return new Response('Agent not found', { status: 404 })
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder()
+        const msg = `data: ${JSON.stringify({
+          type: 'connected',
+          agentId: null,
+          agentName: null,
+          message: '🔗 已连接，等待认领 Agent'
+        })}\n\n`
+        controller.enqueue(encoder.encode(msg))
+        // 保持连接但不订阅事件
+      }
+    })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }
+    })
   }
 
   // 更新 Agent 状态为在线

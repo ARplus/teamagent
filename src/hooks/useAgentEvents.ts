@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 // 事件类型（与服务端一致）
 export type TeamAgentEvent = 
@@ -23,29 +23,34 @@ interface UseAgentEventsOptions {
 
 /**
  * 订阅 Agent 实时事件的 Hook
- * 
- * 简化版本，避免 React Strict Mode 导致的重复连接
  */
 export function useAgentEvents(options: UseAgentEventsOptions = {}) {
   const { onEvent, enabled = true } = options
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const [connected, setConnected] = useState(false)
-  const mountedRef = useRef(false)
+  const onEventRef = useRef(onEvent)
+  
+  // 保持 onEvent 回调最新
+  useEffect(() => {
+    onEventRef.current = onEvent
+  }, [onEvent])
 
   useEffect(() => {
-    // 防止 Strict Mode 重复挂载
-    if (mountedRef.current) return
-    if (!enabled) return
-    
-    mountedRef.current = true
+    // 不启用时不连接
+    if (!enabled) {
+      return
+    }
 
-    console.log('[SSE] 连接中...')
+    // 已经有连接了
+    if (eventSourceRef.current) {
+      return
+    }
+
     const eventSource = new EventSource('/api/agent/subscribe')
     eventSourceRef.current = eventSource
 
     eventSource.onopen = () => {
-      console.log('[SSE] 已连接')
       setConnected(true)
     }
 
@@ -56,36 +61,33 @@ export function useAgentEvents(options: UseAgentEventsOptions = {}) {
         // 忽略心跳和连接消息
         if (data.type === 'ping' || data.type === 'connected') return
         
-        console.log('[SSE] 收到事件:', data)
-        onEvent?.(data)
-      } catch (error) {
-        console.error('[SSE] 解析事件失败:', error)
+        onEventRef.current?.(data)
+      } catch {
+        // 静默处理解析错误
       }
     }
 
     eventSource.onerror = () => {
-      console.log('[SSE] 连接错误，不自动重连')
+      // 静默处理连接错误（可能是未登录导致的 401）
       setConnected(false)
       eventSource.close()
       eventSourceRef.current = null
     }
 
     return () => {
-      console.log('[SSE] 清理连接')
       eventSource.close()
       eventSourceRef.current = null
-      mountedRef.current = false
+      setConnected(false)
     }
-  }, [enabled, onEvent])
+  }, [enabled])
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
       setConnected(false)
-      mountedRef.current = false
     }
-  }
+  }, [])
 
   return {
     connected,

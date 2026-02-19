@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, name, agentName, agentEmoji } = await req.json()
+    const { email, password, name } = await req.json()
 
     // 验证
     if (!email || !password) {
@@ -36,32 +36,39 @@ export async function POST(req: NextRequest) {
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    // 创建用户 + 自动绑定 Agent
+    // 创建用户 + 默认工作区（Agent-First 模式：不自动创建 Agent，用户后续通过配对码认领）
+    const userName = name || email.split('@')[0]
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        name: name || email.split('@')[0],
-        agent: {
+        name: userName,
+      }
+    })
+
+    // 自动创建个人默认工作区
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: `${userName} 的工作区`,
+        members: {
           create: {
-            name: agentName || 'Agent',
-            avatar: agentEmoji || '🤖',
-            personality: '友好、高效、专注'
+            userId: user.id,
+            role: 'owner'
           }
         }
-      },
-      include: {
-        agent: true
       }
     })
 
     return NextResponse.json({
-      message: '注册成功',
+      message: '注册成功！现在可以用配对码认领你的 Agent 了',
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        agent: user.agent
+      },
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
       }
     })
 

@@ -5,21 +5,50 @@
 
 import type { SkillConfig } from './lib/types'
 import { AgentWorker } from './lib/agent-worker'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as os from 'os'
 
 // 全局 Agent 实例
 let agentWorker: AgentWorker | null = null
 
+// 配置文件路径
+const CONFIG_PATH = path.join(os.homedir(), '.teamagent', 'config.json')
+
 /**
- * 加载配置
+ * 读取本地保存的配置
+ */
+function loadSavedConfig(): Partial<SkillConfig> {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'))
+    }
+  } catch {}
+  return {}
+}
+
+/**
+ * 保存配置到本地
+ */
+function saveConfig(config: Partial<SkillConfig>) {
+  const dir = path.dirname(CONFIG_PATH)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  const existing = loadSavedConfig()
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, ...config }, null, 2))
+}
+
+/**
+ * 加载配置（环境变量 + 本地文件合并）
  */
 function loadConfig(): SkillConfig {
+  const saved = loadSavedConfig()
   return {
-    apiUrl: process.env.TEAMAGENT_API_URL || 'http://localhost:3000',
-    apiToken: process.env.TEAMAGENT_API_TOKEN || '',
-    userId: process.env.TEAMAGENT_USER_ID || '',
-    autoExecute: process.env.TEAMAGENT_AUTO_EXECUTE === 'true',
+    apiUrl: process.env.TEAMAGENT_API_URL || saved.apiUrl || 'https://agent.avatargaia.top',
+    apiToken: process.env.TEAMAGENT_API_TOKEN || saved.apiToken || '',
+    userId: process.env.TEAMAGENT_USER_ID || saved.userId || '',
+    autoExecute: process.env.TEAMAGENT_AUTO_EXECUTE === 'true' || saved.autoExecute || false,
     pollingInterval: parseInt(process.env.TEAMAGENT_POLLING_INTERVAL || '10000'),
-    workDirectory: process.env.TEAMAGENT_WORK_DIR || '~/teamagent'
+    workDirectory: process.env.TEAMAGENT_WORK_DIR || saved.workDirectory || '~/teamagent'
   }
 }
 
@@ -174,6 +203,121 @@ export async function taStop() {
 }
 
 /**
+ * /ta-register - 注册 Agent，获取配对码
+ * 方式B 第一步：Agent 自己注册，生成配对码告知人类
+ */
+export async function taRegister(args?: { name?: string }) {
+  const config = loadConfig()
+  const agentName = args?.name || process.env.TEAMAGENT_AGENT_NAME || 'MyAgent'
+
+  console.log(`🤖 正在向 TeamAgent 注册 Agent "${agentName}"...`)
+
+  try {
+    const res = await fetch(`${config.apiUrl}/api/agent/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: agentName,
+        clawdbotId: `openclaw-${Date.now()}`
+      })
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      return `❌ 注册失败: ${err}`
+    }
+
+    const data = await res.json()
+    const { agent, pairingCode, pairingUrl, expiresAt } = data
+
+    // 保存 agentId 到本地配置，后续可能用到
+    saveConfig({ agentId: agent.id } as any)
+
+    const expiry = new Date(expiresAt).toLocaleString('zh-CN')
+
+    return `✅ Agent 注册成功！
+
+🤖 Agent 名称: ${agent.name}
+🆔 Agent ID: ${agent.id}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 请把以下信息发给你的人类：
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+你的 AI Agent 已上线！
+
+配对码：${pairingCode}
+
+请访问：${config.apiUrl}
+登录后在「构建你的 Agent」页面输入配对码完成配对。
+
+⏰ 配对码有效期至：${expiry}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+配对完成后，你的人类会看到 API Token。
+请让他们把 Token 告诉你，然后运行：
+
+  /ta-setup <API_TOKEN>
+`
+  } catch (e) {
+    return `❌ 网络错误: ${e instanceof Error ? e.message : String(e)}
+
+请确认 TeamAgent 服务器地址是否正确：
+当前地址: ${config.apiUrl}
+
+可通过 /ta-config 修改。`
+  }
+}
+
+/**
+ * /ta-setup - 保存 API Token，完成配对
+ * 方式B 第二步：人类 claim 后把 Token 告诉 Agent
+ */
+export async function taSetup(args: { token: string }) {
+  if (!args.token || !args.token.startsWith('ta_')) {
+    return `❌ 请提供有效的 API Token
+
+用法：/ta-setup ta_xxxxxxxxxxxxxxxx
+
+Token 格式以 "ta_" 开头，在网站 claim Agent 后显示。`
+  }
+
+  const config = loadConfig()
+
+  // 验证 token 是否有效
+  console.log('🔄 验证 Token...')
+  try {
+    const res = await fetch(`${config.apiUrl}/api/agent/status`, {
+      headers: { 'Authorization': `Bearer ${args.token}` }
+    })
+
+    if (res.status === 401) {
+      return `❌ Token 无效或已过期，请重新在网站 claim 获取新 Token。`
+    }
+
+    // 保存 token
+    saveConfig({ apiToken: args.token })
+
+    const data = res.ok ? await res.json() : null
+    const agentName = data?.name || 'Agent'
+
+    return `✅ 配置成功！Token 已保存。
+
+🤖 Agent: ${agentName}
+🔑 Token: ${args.token.slice(0, 12)}...（已安全保存）
+📁 配置文件: ~/.teamagent/config.json
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+你的 Agent 现在已经准备好了！
+
+运行 /teamagent 启动 Agent，开始自动接收并处理任务。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+  } catch (e) {
+    return `❌ 验证失败: ${e instanceof Error ? e.message : String(e)}`
+  }
+}
+
+/**
  * /ta-config - 配置向导
  */
 export async function taConfig() {
@@ -213,6 +357,8 @@ TEAMAGENT_WORK_DIR=~/teamagent
 // 导出所有命令
 export default {
   teamagent,
+  'ta-register': taRegister,
+  'ta-setup': taSetup,
   'ta-status': taStatus,
   'ta-claim': taClaim,
   'ta-suggest': taSuggest,

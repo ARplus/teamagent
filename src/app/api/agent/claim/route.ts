@@ -120,14 +120,15 @@ export async function POST(req: NextRequest) {
 
     // 事务：绑定 Agent 并创建 Token
     const [updatedAgent, apiToken] = await prisma.$transaction([
-      // 更新 Agent，绑定到用户
+      // 更新 Agent，绑定到用户，同时存 pendingApiToken 供 Agent 轮询取走
       prisma.agent.update({
         where: { id: agent.id },
         data: {
           userId: user.id,
           claimedAt: new Date(),
-          pairingCode: null,  // 清除配对码
-          pairingCodeExpiresAt: null
+          pairingCode: null,
+          pairingCodeExpiresAt: null,
+          pendingApiToken: rawToken  // Agent 轮询 /pickup-token 取走即删
         }
       }),
       // 创建 API Token

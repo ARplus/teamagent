@@ -4,21 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-// 随机 Agent 名字生成
-const agentNames = [
-  'Spark', 'Nova', 'Pixel', 'Echo', 'Blaze',
-  'Storm', 'Frost', 'Shadow', 'Phoenix', 'Cyber',
-  'Neon', 'Quantum', 'Zenith', 'Orbit', 'Pulse'
-]
-
-const agentEmojis = ['🤖', '🚀', '⚡', '🌟', '🔮', '🎯', '💫', '🌈', '🦾', '🧠']
-
-function getRandomAgent() {
-  const name = agentNames[Math.floor(Math.random() * agentNames.length)]
-  const emoji = agentEmojis[Math.floor(Math.random() * agentEmojis.length)]
-  return { name, emoji }
-}
-
 export default function RegisterPage() {
   const router = useRouter()
   const [name, setName] = useState('')
@@ -27,7 +12,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [agentPreview] = useState(getRandomAgent())
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,9 +37,7 @@ export default function RegisterPage() {
         body: JSON.stringify({
           name,
           email,
-          password,
-          agentName: agentPreview.name,
-          agentEmoji: agentPreview.emoji
+          password
         })
       })
 
@@ -85,21 +67,17 @@ export default function RegisterPage() {
             <span className="text-4xl">🤝</span>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">加入 TeamAgent</h1>
-          <p className="text-gray-600 mt-2">创建账号，获得你的专属 AI Agent</p>
+          <p className="text-gray-600 mt-2">创建账号，认领你的 AI Agent</p>
         </div>
 
         {/* 注册表单 */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          {/* Agent 预览 */}
+          {/* Agent-First 说明 */}
           <div className="bg-gradient-to-r from-orange-100 to-red-100 rounded-xl p-4 mb-6">
-            <p className="text-sm text-gray-600 mb-2">🎁 你的专属 Agent</p>
-            <div className="flex items-center space-x-3">
-              <span className="text-4xl">{agentPreview.emoji}</span>
-              <div>
-                <p className="font-bold text-gray-900">{agentPreview.name}</p>
-                <p className="text-xs text-gray-500">注册后自动绑定</p>
-              </div>
-            </div>
+            <p className="text-sm text-gray-600 mb-2">🤖 Agent-First 模式</p>
+            <p className="text-sm text-gray-700">
+              注册后，你可以用<strong>配对码</strong>认领已注册的 AI Agent，开始协作！
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -196,7 +174,7 @@ export default function RegisterPage() {
 
         {/* 底部 */}
         <p className="text-center text-gray-500 text-sm mt-8">
-          🦞 + {agentPreview.emoji} = 无敌协作组合
+          🦞 + 🤖 = 无敌协作组合
         </p>
       </div>
     </div>

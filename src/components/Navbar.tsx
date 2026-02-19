@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { NotificationBell } from './NotificationBell'
+import { PairingModal } from './PairingModal'
 
 // Agent 状态配置
 const agentStatusConfig: Record<string, { label: string; color: string; bgColor: string; icon: string }> = {
@@ -19,6 +20,7 @@ export function Navbar() {
   const { data: session, status } = useSession()
   const [agentStatus, setAgentStatus] = useState<string>('offline')
   const [agentName, setAgentName] = useState<string>('Lobster')
+  const [showPairingModal, setShowPairingModal] = useState(false)
 
   // 获取 Agent 状态
   useEffect(() => {
@@ -46,6 +48,7 @@ export function Navbar() {
   const statusInfo = agentStatusConfig[agentStatus] || agentStatusConfig.online
 
   return (
+    <>
     <nav className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="flex items-center space-x-8">
@@ -81,6 +84,18 @@ export function Navbar() {
               </span>
               <span className="text-sm">{statusInfo.icon}</span>
             </div>
+          )}
+
+          {/* 配对 Agent 按钮 */}
+          {session && (
+            <button
+              onClick={() => setShowPairingModal(true)}
+              className="flex items-center space-x-1.5 text-sm text-slate-600 hover:text-orange-600 border border-slate-200 hover:border-orange-300 px-3 py-1.5 rounded-xl transition-colors hover:bg-orange-50"
+              title="配对新 Agent"
+            >
+              <span>⊕</span>
+              <span>配对 Agent</span>
+            </button>
           )}
 
           {/* 通知铃铛 */}
@@ -125,5 +140,11 @@ export function Navbar() {
         </div>
       </div>
     </nav>
+
+    {/* 配对 Modal */}
+    {showPairingModal && (
+      <PairingModal onClose={() => setShowPairingModal(false)} />
+    )}
+    </>
   )
 }

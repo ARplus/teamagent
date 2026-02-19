@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { NotificationBell } from '@/components/NotificationBell'
+import LandingPage from '@/components/LandingPage'
+import { PairingModal } from '@/components/PairingModal'
 
 // ============ Types ============
 
@@ -1035,10 +1037,10 @@ export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [myAgent, setMyAgent] = useState<{ name: string; status: string } | null>(null)
+  const [agentChecked, setAgentChecked] = useState(false)
+  const [showPairingModal, setShowPairingModal] = useState(false)
 
-  useEffect(() => {
-    if (status === 'unauthenticated') router.push('/login')
-  }, [status, router])
+  // 未登录由下方 LandingPage 处理，不再强制跳转
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -1053,6 +1055,7 @@ export default function HomePage() {
           setMyAgent({ name: data.name, status: data.status })
         }
       }
+      setAgentChecked(true)
     } finally {
       setLoading(false)
     }
@@ -1101,7 +1104,23 @@ export default function HomePage() {
     } else alert('删除失败')
   }
 
-  if (status === 'loading' || loading) {
+  if (status === 'loading') {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+        <div className="text-center">
+          <div className="text-5xl mb-4 animate-bounce">🦞</div>
+          <div className="text-white">加载中...</div>
+        </div>
+      </div>
+    )
+  }
+
+  // 未登录 → 显示营销首页
+  if (status === 'unauthenticated') {
+    return <LandingPage />
+  }
+
+  if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
         <div className="text-center">
@@ -1113,28 +1132,55 @@ export default function HomePage() {
   }
 
   return (
-    <div className="h-screen flex">
-      <TaskList
-        tasks={tasks}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onCreateNew={() => setShowCreateModal(true)}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
-      {selectedTask ? (
-        <TaskDetail
-          task={selectedTask}
-          onRefresh={handleRefresh}
-          canApprove={session?.user?.id === selectedTask.creator?.id}
-          onDelete={handleDelete}
-          myAgent={myAgent}
-        />
-      ) : (
-        <EmptyState onCreate={() => setShowCreateModal(true)} />
+    <div className="h-screen flex flex-col">
+      {/* 无 Agent 引导 Banner */}
+      {agentChecked && !myAgent && (
+        <div className="bg-gradient-to-r from-orange-500 to-rose-500 text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            <span className="text-xl">🤖</span>
+            <div>
+              <span className="font-semibold">还没有配对的 Agent！</span>
+              <span className="text-orange-100 ml-2 text-sm">配对一个 Agent，让它帮你自动完成任务步骤</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowPairingModal(true)}
+            className="bg-white text-orange-600 font-semibold px-4 py-2 rounded-xl text-sm hover:bg-orange-50 transition-colors flex items-center space-x-2 flex-shrink-0"
+          >
+            <span>⊕</span>
+            <span>输入配对码</span>
+          </button>
+        </div>
       )}
+
+      <div className="flex-1 flex overflow-hidden">
+        <TaskList
+          tasks={tasks}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onCreateNew={() => setShowCreateModal(true)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+        {selectedTask ? (
+          <TaskDetail
+            task={selectedTask}
+            onRefresh={handleRefresh}
+            canApprove={session?.user?.id === selectedTask.creator?.id}
+            onDelete={handleDelete}
+            myAgent={myAgent}
+          />
+        ) : (
+          <EmptyState onCreate={() => setShowCreateModal(true)} />
+        )}
+      </div>
+
       {showCreateModal && (
         <CreateTaskModal onClose={() => setShowCreateModal(false)} onCreated={(id) => { setShowCreateModal(false); fetchTasks(); setSelectedId(id) }} />
+      )}
+
+      {showPairingModal && (
+        <PairingModal onClose={() => setShowPairingModal(false)} />
       )}
     </div>
   )

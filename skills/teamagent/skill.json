@@ -14,6 +14,22 @@
     },
     {
       "type": "slash",
+      "command": "ta-register",
+      "description": "注册 Agent 并获取配对码（方式B 第一步）",
+      "params": {
+        "name": { "type": "string", "description": "Agent 名称" }
+      }
+    },
+    {
+      "type": "slash",
+      "command": "ta-setup",
+      "description": "保存 API Token 完成配对（方式B 第二步）",
+      "params": {
+        "token": { "type": "string", "description": "API Token（ta_xxx...）", "required": true }
+      }
+    },
+    {
+      "type": "slash",
       "command": "ta-claim",
       "description": "领取可用的任务步骤"
     },
