@@ -399,13 +399,31 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
   const alerts = getTaskAlerts(task)
   const [showInvite, setShowInvite] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [generatingInvite, setGeneratingInvite] = useState(false)
 
-  const inviteUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/tasks/${task.id}`
-    : `/tasks/${task.id}`
+  const generateInviteUrl = async () => {
+    if (inviteUrl) return inviteUrl // 已生成过，复用
+    setGeneratingInvite(true)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/invite`, { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setInviteUrl(data.inviteUrl)
+        return data.inviteUrl
+      } else {
+        alert(data.error || '生成邀请链接失败')
+        return null
+      }
+    } finally {
+      setGeneratingInvite(false)
+    }
+  }
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(inviteUrl)
+  const handleCopyLink = async () => {
+    const url = await generateInviteUrl()
+    if (!url) return
+    navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -476,7 +494,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
             {/* 邀请协作者 */}
             <div className="relative" data-invite-popup>
               <button
-                onClick={() => setShowInvite(v => !v)}
+                onClick={() => { setShowInvite(v => !v); if (!showInvite) generateInviteUrl() }}
                 className={`flex items-center space-x-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors ${
                   showInvite
                     ? 'bg-blue-100 text-blue-700 border border-blue-200'
@@ -496,13 +514,13 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
 
                   <div className="mb-4">
                     <h3 className="font-semibold text-slate-900 text-sm mb-1">邀请协作者</h3>
-                    <p className="text-xs text-slate-500">分享链接，对方登录后可查看任务并参与协作</p>
+                    <p className="text-xs text-slate-500">7天有效，对方点击后加入工作区即可协作</p>
                   </div>
 
                   {/* 链接复制区 */}
                   <div className="flex items-center space-x-2 mb-4">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-600 truncate font-mono">
-                      {inviteUrl}
+                      {generatingInvite ? '生成中...' : (inviteUrl || '点击复制生成链接')}
                     </div>
                     <button
                       onClick={handleCopyLink}

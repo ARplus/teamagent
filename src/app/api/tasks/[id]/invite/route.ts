@@ -40,6 +40,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
   const inviteUrl = `${baseUrl}/join/${token}`
 
+  console.log('[invite] generated:', inviteUrl, 'for task:', task.id)
+
   return NextResponse.json({
     inviteUrl,
     token,

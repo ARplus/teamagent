@@ -725,6 +725,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   onClick={async () => {
                     const res = await fetch(`/api/tasks/${task.id}/invite`, { method: 'POST' })
                     const data = await res.json()
+                    console.log('[invite] API response:', res.status, data)
                     if (res.ok) {
                       setInviteUrl(data.inviteUrl)
                       setInviteCopied(false)
