@@ -563,6 +563,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const [newStepTitle, setNewStepTitle] = useState('')
   const [addingStep, setAddingStep] = useState(false)
   const [parsing, setParsing] = useState(false)
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -724,8 +726,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                     const res = await fetch(`/api/tasks/${task.id}/invite`, { method: 'POST' })
                     const data = await res.json()
                     if (res.ok) {
-                      navigator.clipboard.writeText(data.inviteUrl).catch(() => {})
-                      alert(`✅ 邀请链接已复制！\n\n${data.inviteUrl}\n\n7天内有效，发给协作者即可。`)
+                      setInviteUrl(data.inviteUrl)
+                      setInviteCopied(false)
                     } else {
                       alert(data.error || '生成邀请链接失败')
                     }
@@ -831,6 +833,34 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       </main>
+
+      {/* 邀请链接弹窗 */}
+      {inviteUrl && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setInviteUrl(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">🔗 邀请协作者</h3>
+              <button onClick={() => setInviteUrl(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">把下面的链接发给你想邀请的协作者，对方点击即可加入。链接 7 天内有效。</p>
+            <div className="flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mb-4">
+              <span className="text-xs text-gray-600 break-all flex-1 font-mono">{inviteUrl}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(inviteUrl).then(() => {
+                    setInviteCopied(true)
+                    setTimeout(() => setInviteCopied(false), 2000)
+                  })
+                }}
+                className={`ml-2 shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${inviteCopied ? 'bg-green-500 text-white' : 'bg-orange-500 text-white hover:bg-orange-600'}`}
+              >
+                {inviteCopied ? '✅ 已复制' : '复制'}
+              </button>
+            </div>
+            <button onClick={() => setInviteUrl(null)} className="w-full py-2 text-sm text-gray-500 hover:text-gray-700">关闭</button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
