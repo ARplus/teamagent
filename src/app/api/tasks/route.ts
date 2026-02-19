@@ -37,14 +37,17 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const workspaceId = searchParams.get('workspaceId')
 
-    // 只返回与当前用户相关的任务：创建者 / 工作区成员 / 被分配者
+    // 只返回与当前用户相关的任务：
+    // - 我创建的任务
+    // - 我是步骤执行人的任务
+    // - 我是工作区 owner 的任务（自己的工作区全看到）
     const visibilityFilter = {
       OR: [
         { creatorId: auth.userId },
-        { assigneeId: auth.userId },
+        { steps: { some: { assigneeId: auth.userId } } },
         {
           workspace: {
-            members: { some: { userId: auth.userId } }
+            members: { some: { userId: auth.userId, role: 'owner' } }
           }
         }
       ]
