@@ -138,7 +138,8 @@ function TaskList({
   onPairAgent,
   collapsed,
   onToggleCollapse,
-  hasAgent
+  hasAgent,
+  currentUserId
 }: { 
   tasks: Task[]
   selectedId: string | null
@@ -148,6 +149,7 @@ function TaskList({
   collapsed: boolean
   onToggleCollapse: () => void
   hasAgent: boolean
+  currentUserId: string
 }) {
   const [search, setSearch] = useState('')
   
@@ -220,10 +222,10 @@ function TaskList({
 
       <div className="flex-1 overflow-y-auto px-2 space-y-4">
         {inProgress.length > 0 && (
-          <TaskGroup title="进行中" tasks={inProgress} selectedId={selectedId} onSelect={onSelect} dot="bg-blue-500" />
+          <TaskGroup title="进行中" tasks={inProgress} selectedId={selectedId} onSelect={onSelect} dot="bg-blue-500" currentUserId={currentUserId} />
         )}
         {todo.length > 0 && (
-          <TaskGroup title="待办" tasks={todo} selectedId={selectedId} onSelect={onSelect} dot="bg-slate-400" />
+          <TaskGroup title="待办" tasks={todo} selectedId={selectedId} onSelect={onSelect} dot="bg-slate-400" currentUserId={currentUserId} />
         )}
         {done.length > 0 && (
           <TaskGroup title="已完成" tasks={done} selectedId={selectedId} onSelect={onSelect} dot="bg-emerald-500" />
@@ -272,8 +274,8 @@ function TaskList({
   )
 }
 
-function TaskGroup({ title, tasks, selectedId, onSelect, dot }: { 
-  title: string; tasks: Task[]; selectedId: string | null; onSelect: (id: string) => void; dot: string 
+function TaskGroup({ title, tasks, selectedId, onSelect, dot, currentUserId }: { 
+  title: string; tasks: Task[]; selectedId: string | null; onSelect: (id: string) => void; dot: string; currentUserId: string
 }) {
   return (
     <div>
@@ -284,17 +286,26 @@ function TaskGroup({ title, tasks, selectedId, onSelect, dot }: {
       </div>
       <div className="space-y-1">
         {tasks.map(task => (
-          <TaskItem key={task.id} task={task} selected={task.id === selectedId} onClick={() => onSelect(task.id)} />
+          <TaskItem key={task.id} task={task} selected={task.id === selectedId} onClick={() => onSelect(task.id)} currentUserId={currentUserId} />
         ))}
       </div>
     </div>
   )
 }
 
-function TaskItem({ task, selected, onClick }: { task: Task; selected: boolean; onClick: () => void }) {
+function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; selected: boolean; onClick: () => void; currentUserId: string }) {
   const stepsTotal = task.steps?.length || 0
   const stepsDone = task.steps?.filter(s => s.status === 'done').length || 0
   const hasWaiting = task.steps?.some(s => s.status === 'waiting_approval')
+
+  // 角色标签
+  const isCreator = task.creator?.id === currentUserId
+  const isCollaborator = !isCreator && task.steps?.some(s => s.assignee?.id === currentUserId)
+  const roleLabel = isCreator
+    ? { icon: '🏠', text: '我的', color: selected ? 'bg-white/20 text-white' : 'bg-orange-500/15 text-orange-400' }
+    : isCollaborator
+    ? { icon: '🤝', text: '协作', color: selected ? 'bg-white/20 text-white' : 'bg-blue-500/15 text-blue-400' }
+    : { icon: '👁', text: '查看', color: selected ? 'bg-white/20 text-white' : 'bg-slate-500/15 text-slate-400' }
 
   return (
     <div
@@ -307,8 +318,13 @@ function TaskItem({ task, selected, onClick }: { task: Task; selected: boolean; 
     >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <div className={`font-medium truncate ${selected ? 'text-white' : 'text-slate-200'}`}>
-            {task.title}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`text-xs px-1.5 py-0.5 rounded-md shrink-0 ${roleLabel.color}`}>
+              {roleLabel.icon} {roleLabel.text}
+            </span>
+            <span className={`font-medium truncate ${selected ? 'text-white' : 'text-slate-200'}`}>
+              {task.title}
+            </span>
           </div>
           <div className={`text-xs mt-1 flex items-center space-x-2 ${selected ? 'text-orange-100' : 'text-slate-500'}`}>
             {stepsTotal > 0 && <span>{stepsDone}/{stepsTotal} 步骤</span>}
@@ -1458,6 +1474,7 @@ export default function HomePage() {
           onSelect={setSelectedId}
           onCreateNew={() => setShowCreateModal(true)}
           onPairAgent={() => setShowPairingModal(true)}
+          currentUserId={session?.user?.id || ''}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           hasAgent={!!myAgent}
