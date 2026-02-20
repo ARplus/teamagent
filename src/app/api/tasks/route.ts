@@ -60,7 +60,18 @@ export async function GET(req: NextRequest) {
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
         assignee: { select: { id: true, name: true, avatar: true } },
-        workspace: { select: { id: true, name: true } }
+        workspace: { select: { id: true, name: true } },
+        steps: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            stepType: true,
+            assigneeId: true,
+            assignee: { select: { id: true, name: true, avatar: true } }
+          },
+          orderBy: { order: 'asc' }
+        }
       },
       orderBy: { createdAt: 'desc' }
     })
