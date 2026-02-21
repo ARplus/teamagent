@@ -403,8 +403,8 @@ function StepCard({
                   ) : (
                     <span className="text-xs text-gray-400 italic">未分配</span>
                   )}
-                  {/* 创建者才能改分配 */}
-                  {canApprove && agents && agents.length > 0 && (
+                  {/* 已登录用户均可分配步骤 */}
+                  {agents && agents.length > 0 && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
                       className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200"
@@ -767,13 +767,6 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const canApprove = session?.user?.id === task?.creator?.id
-  // DEBUG: 临时日志，排查分配按钮不显示的原因
-  if (task) {
-    console.log('[DEBUG] session.user.id:', session?.user?.id)
-    console.log('[DEBUG] task.creator.id:', task?.creator?.id)
-    console.log('[DEBUG] canApprove:', canApprove)
-    console.log('[DEBUG] agents count:', agents.length)
-  }
 
   if (status === 'loading' || loading) {
     return (
