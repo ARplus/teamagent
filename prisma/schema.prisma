@@ -231,6 +231,12 @@ model TaskStep {
   rejectedAt  DateTime?
   rejectionReason String?
   
+  // 申诉机制
+  appealText       String?   // Agent 的申诉理由
+  appealStatus     String?   // null | "pending" | "upheld" | "dismissed"
+  appealedAt       DateTime? // 申诉时间
+  appealResolvedAt DateTime? // 申诉裁定时间
+  
   // ⏱️ 工作量追踪
   rejectionCount   Int      @default(0)  // 被打回次数
   agentDurationMs  Int?     // Agent 执行耗时（毫秒）

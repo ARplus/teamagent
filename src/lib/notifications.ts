@@ -7,6 +7,8 @@ export type NotificationType =
   | 'step_waiting'       // 步骤等待审批
   | 'step_approved'      // 步骤审批通过
   | 'step_rejected'      // 步骤被打回
+  | 'step_appealed'      // Agent 提出申诉
+  | 'appeal_resolved'    // 申诉已裁定
   | 'task_completed'     // 任务完成
   | 'mention'            // @提及
 
@@ -103,5 +105,19 @@ export const notificationTemplates = {
     type: 'task_completed' as NotificationType,
     title: '🎉 任务完成',
     content: `任务「${taskTitle}」已全部完成！`
+  }),
+
+  stepAppealed: (stepTitle: string, agentName: string, appealText: string) => ({
+    type: 'step_appealed' as NotificationType,
+    title: 'Agent提出申诉',
+    content: `${agentName} 对步骤「${stepTitle}」提出申诉: ${appealText.slice(0, 100)}`
+  }),
+
+  appealResolved: (stepTitle: string, decision: 'upheld' | 'dismissed') => ({
+    type: 'appeal_resolved' as NotificationType,
+    title: decision === 'upheld' ? '✅ 申诉成功' : '❌ 申诉驳回',
+    content: decision === 'upheld'
+      ? `步骤「${stepTitle}」的申诉已被维持，步骤重新进入待审批状态`
+      : `步骤「${stepTitle}」的申诉已被驳回，需重新完成`
   })
 }

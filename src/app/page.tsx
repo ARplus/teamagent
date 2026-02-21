@@ -57,6 +57,11 @@ interface TaskStep {
   completedAt?: string | null
   approvedAt?: string | null
   rejectedAt?: string | null
+  // 申诉机制
+  appealText?: string | null
+  appealStatus?: string | null
+  appealedAt?: string | null
+  appealResolvedAt?: string | null
   // 审批设置
   requiresApproval?: boolean   // false = Agent 提交后自动通过
   // 会议专用
@@ -415,8 +420,8 @@ function getTaskAlerts(task: Task): { type: 'warning' | 'success' | 'info'; mess
 
 // ============ Right Panel: Task Detail ============
 
-function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: { 
-  task: Task; onRefresh: () => void; canApprove: boolean; onDelete: () => void; myAgent?: { name: string; status: string } | null
+function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUserId }: { 
+  task: Task; onRefresh: () => void; canApprove: boolean; onDelete: () => void; myAgent?: { name: string; status: string } | null; currentUserId?: string
 }) {
   const status = statusConfig[task.status] || statusConfig.todo
   const alerts = getTaskAlerts(task)
@@ -644,7 +649,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
 
           {/* Right: Workflow */}
           <div className="flex-1 min-w-0">
-            <WorkflowPanel task={task} onRefresh={onRefresh} canApprove={canApprove} />
+            <WorkflowPanel task={task} onRefresh={onRefresh} canApprove={canApprove} currentUserId={currentUserId} />
           </div>
         </div>
       </div>
@@ -872,7 +877,7 @@ function SummaryCard({ task, onRefresh }: { task: Task; onRefresh: () => void })
 
 // ============ Workflow Panel ============
 
-function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh: () => void; canApprove: boolean }) {
+function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: Task; onRefresh: () => void; canApprove: boolean; currentUserId?: string }) {
   const [parsing, setParsing] = useState(false)
   const [showAddStep, setShowAddStep] = useState(false)
   const [newStepTitle, setNewStepTitle] = useState('')
@@ -1156,6 +1161,8 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
                 onReject={handleReject}
                 agents={agentList}
                 onAssign={handleAssign}
+                currentUserId={currentUserId}
+                onRefresh={onRefresh}
               />
             ))}
           </div>
@@ -1172,12 +1179,14 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
 }
 
 function StepCard({
-  step, index, isActive, canApprove, onApprove, onReject, agents, onAssign
+  step, index, isActive, canApprove, onApprove, onReject, agents, onAssign, currentUserId, onRefresh
 }: {
   step: TaskStep; index: number; isActive: boolean; canApprove: boolean
   onApprove: (id: string) => Promise<void>; onReject: (id: string, reason: string) => Promise<void>
   agents?: Array<{userId: string; name: string; capabilities: string[]; email: string}>
   onAssign?: (stepId: string, userId: string | null) => Promise<void>
+  currentUserId?: string
+  onRefresh?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [history, setHistory] = useState<Submission[]>([])
@@ -1187,6 +1196,11 @@ function StepCard({
   const [editingAssignee, setEditingAssignee] = useState(false)
   const [assigneeSelect, setAssigneeSelect] = useState<string>(step.assignee?.id || '')
   const [savingAssignee, setSavingAssignee] = useState(false)
+  // 申诉相关状态
+  const [showAppealForm, setShowAppealForm] = useState(false)
+  const [appealText, setAppealText] = useState('')
+  const [appealSubmitting, setAppealSubmitting] = useState(false)
+  const [resolveSubmitting, setResolveSubmitting] = useState(false)
 
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
@@ -1223,6 +1237,50 @@ function StepCard({
       setSavingAssignee(false)
     }
   }
+
+  const submitAppeal = async () => {
+    if (!appealText.trim()) return
+    setAppealSubmitting(true)
+    try {
+      const res = await fetch(`/api/steps/${step.id}/appeal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appealText: appealText.trim() })
+      })
+      if (res.ok) {
+        setShowAppealForm(false)
+        setAppealText('')
+        onRefresh?.()
+      } else {
+        const data = await res.json()
+        alert(data.error || '提交申诉失败')
+      }
+    } finally {
+      setAppealSubmitting(false)
+    }
+  }
+
+  const resolveAppeal = async (decision: 'upheld' | 'dismissed') => {
+    setResolveSubmitting(true)
+    try {
+      const res = await fetch(`/api/steps/${step.id}/resolve-appeal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision })
+      })
+      if (res.ok) {
+        onRefresh?.()
+      } else {
+        const data = await res.json()
+        alert(data.error || '裁定失败')
+      }
+    } finally {
+      setResolveSubmitting(false)
+    }
+  }
+
+  const isStepAssignee = currentUserId && step.assignee?.id === currentUserId
+  const isRejected = step.status === 'pending' && step.rejectedAt
 
   return (
     <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
@@ -1405,6 +1463,95 @@ function StepCard({
             <div className="mt-4 p-4 bg-red-50 rounded-xl border border-red-100">
               <div className="text-xs text-red-600 font-medium">🔄 打回原因</div>
               <div className="text-sm text-red-700 mt-1">{step.rejectionReason}</div>
+            </div>
+          )}
+
+          {/* ===== 申诉机制 UI ===== */}
+          {isRejected && (
+            <div className="mt-4">
+              {/* Agent 视角：可提交申诉 */}
+              {isStepAssignee && (
+                <div>
+                  {!step.appealStatus && (
+                    showAppealForm ? (
+                      <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+                        <div className="text-xs text-amber-700 font-medium">📋 提交申诉理由</div>
+                        <textarea
+                          value={appealText}
+                          onChange={e => setAppealText(e.target.value)}
+                          placeholder="请说明为什么认为此次打回不合理..."
+                          className="w-full px-3 py-2 border border-amber-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-amber-400/50 bg-white"
+                          rows={3}
+                          autoFocus
+                        />
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={submitAppeal}
+                            disabled={appealSubmitting || !appealText.trim()}
+                            className="px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+                          >
+                            {appealSubmitting ? '提交中...' : '提交申诉'}
+                          </button>
+                          <button
+                            onClick={() => { setShowAppealForm(false); setAppealText('') }}
+                            className="px-4 py-2 text-slate-600 text-sm hover:bg-slate-100 rounded-xl"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowAppealForm(true)}
+                        className="w-full px-4 py-2.5 bg-amber-50 text-amber-700 rounded-xl text-sm font-medium hover:bg-amber-100 border border-amber-200"
+                      >
+                        📋 提交申诉
+                      </button>
+                    )
+                  )}
+                  {step.appealStatus === 'pending' && (
+                    <div className="flex items-center space-x-2 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl border border-blue-200 text-sm">
+                      <span>⏳</span><span>申诉审核中</span>
+                    </div>
+                  )}
+                  {step.appealStatus === 'upheld' && (
+                    <div className="flex items-center space-x-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200 text-sm">
+                      <span>✅</span><span>申诉成功，待审批</span>
+                    </div>
+                  )}
+                  {step.appealStatus === 'dismissed' && (
+                    <div className="flex items-center space-x-2 px-4 py-2.5 bg-red-50 text-red-700 rounded-xl border border-red-200 text-sm">
+                      <span>❌</span><span>申诉驳回，需重做</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 创建者视角：裁定申诉 */}
+              {canApprove && step.appealStatus === 'pending' && step.appealText && (
+                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+                  <div className="text-xs text-amber-700 font-semibold">⚖️ Agent 提出申诉</div>
+                  <div className="text-sm text-slate-700 bg-white p-3 rounded-lg border border-amber-100">
+                    {step.appealText}
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => resolveAppeal('upheld')}
+                      disabled={resolveSubmitting}
+                      className="flex-1 px-4 py-2.5 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-600 disabled:opacity-50"
+                    >
+                      ✅ 维持申诉
+                    </button>
+                    <button
+                      onClick={() => resolveAppeal('dismissed')}
+                      disabled={resolveSubmitting}
+                      className="flex-1 px-4 py-2.5 bg-red-100 text-red-700 rounded-xl text-sm font-medium hover:bg-red-200 disabled:opacity-50 border border-red-200"
+                    >
+                      ❌ 驳回申诉
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1765,6 +1912,7 @@ export default function HomePage() {
             canApprove={session?.user?.id === selectedTask.creator?.id}
             onDelete={handleDelete}
             myAgent={myAgent}
+            currentUserId={session?.user?.id || ''}
           />
         ) : (
           <EmptyState onCreate={() => setShowCreateModal(true)} />

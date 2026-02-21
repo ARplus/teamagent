@@ -14,6 +14,8 @@ export type TeamAgentEvent =
   | { type: 'approval:granted'; taskId: string; stepId: string }
   | { type: 'approval:rejected'; taskId: string; stepId: string; reason?: string }
   | { type: 'workflow:changed'; taskId: string; change: string }
+  | { type: 'step:appealed'; taskId: string; stepId: string; title: string; appealText: string }
+  | { type: 'appeal:resolved'; taskId: string; stepId: string; decision: 'upheld' | 'dismissed'; note?: string }
   | { type: 'ping' }
 
 // 订阅者类型
