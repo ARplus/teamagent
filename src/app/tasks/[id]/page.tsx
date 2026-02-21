@@ -767,6 +767,13 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const canApprove = session?.user?.id === task?.creator?.id
+  // DEBUG: 临时日志，排查分配按钮不显示的原因
+  if (task) {
+    console.log('[DEBUG] session.user.id:', session?.user?.id)
+    console.log('[DEBUG] task.creator.id:', task?.creator?.id)
+    console.log('[DEBUG] canApprove:', canApprove)
+    console.log('[DEBUG] agents count:', agents.length)
+  }
 
   if (status === 'loading' || loading) {
     return (
