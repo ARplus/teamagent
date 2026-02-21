@@ -260,7 +260,8 @@ function StepCard({
   onApprove,
   onReject,
   canApprove,
-  onRefresh
+  onRefresh,
+  agents
 }: {
   step: TaskStep
   index: number
@@ -269,6 +270,7 @@ function StepCard({
   onReject?: (stepId: string, reason: string) => Promise<void>
   canApprove?: boolean
   onRefresh?: () => void
+  agents?: Agent[]
 }) {
   const [expanded, setExpanded] = useState(false)
   const [history, setHistory] = useState<Submission[]>([])
@@ -276,6 +278,9 @@ function StepCard({
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [editingAssignee, setEditingAssignee] = useState(false)
+  const [assigneeSelect, setAssigneeSelect] = useState<string>(step.assignee?.id || '')
+  const [savingAssignee, setSavingAssignee] = useState(false)
 
   const status = statusConfig[step.status] || statusConfig.pending
   const assigneeNames = parseJSON(step.assigneeNames)
@@ -330,6 +335,26 @@ function StepCard({
     }
   }
 
+  const saveAssignee = async () => {
+    setSavingAssignee(true)
+    try {
+      const res = await fetch(`/api/steps/${step.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigneeId: assigneeSelect || null })
+      })
+      if (res.ok) {
+        setEditingAssignee(false)
+        onRefresh?.()
+      } else {
+        const d = await res.json()
+        alert(d.error || '保存失败')
+      }
+    } finally {
+      setSavingAssignee(false)
+    }
+  }
+
   return (
     <div className="relative pl-8 pb-6">
       {/* 连接线 */}
@@ -360,14 +385,62 @@ function StepCard({
               </span>
             </div>
             <div className="flex items-center space-x-2">
-              {/* 责任人 */}
-              {assigneeNames.length > 0 && (
-                <div className="flex -space-x-1">
-                  {assigneeNames.slice(0, 3).map((name, i) => (
-                    <div key={i} className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-xs text-purple-700">
-                      {name.charAt(0)}
+              {/* 责任人 + 编辑按钮 */}
+              {!editingAssignee ? (
+                <div className="flex items-center space-x-1">
+                  {assigneeNames.length > 0 ? (
+                    <div className="flex -space-x-1">
+                      {assigneeNames.slice(0, 3).map((name, i) => (
+                        <div key={i} className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-xs text-purple-700">
+                          {name.charAt(0)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : step.assignee ? (
+                    <div className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-xs text-purple-700">
+                      {(step.assignee.name || '?').charAt(0)}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400 italic">未分配</span>
+                  )}
+                  {/* 创建者才能改分配 */}
+                  {canApprove && agents && agents.length > 0 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
+                      className="w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 text-xs"
+                      title="修改分配"
+                    >
+                      ✏️
+                    </button>
+                  )}
+                </div>
+              ) : (
+                /* 内联编辑分配 */
+                <div className="flex items-center space-x-1" onClick={e => e.stopPropagation()}>
+                  <select
+                    value={assigneeSelect}
+                    onChange={e => setAssigneeSelect(e.target.value)}
+                    className="text-xs border border-blue-300 rounded px-1 py-0.5 bg-white max-w-[130px]"
+                    autoFocus
+                  >
+                    <option value="">— 不分配 —</option>
+                    {(agents || []).map(a => (
+                      <option key={a.userId} value={a.userId}>{a.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={saveAssignee}
+                    disabled={savingAssignee}
+                    className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    {savingAssignee ? '...' : '✓'}
+                  </button>
+                  <button
+                    onClick={() => setEditingAssignee(false)}
+                    className="text-xs px-1.5 py-0.5 text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
               {/* 展开图标 */}
@@ -909,6 +982,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                       onReject={handleReject}
                       canApprove={canApprove}
                       onRefresh={fetchTask}
+                      agents={agents}
                     />
                   ))}
               </div>

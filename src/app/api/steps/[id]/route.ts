@@ -90,6 +90,8 @@ export async function PATCH(
     if (data.agentStatus !== undefined) updateData.agentStatus = data.agentStatus
     if (data.result !== undefined) updateData.result = data.result
     if (data.order !== undefined) updateData.order = data.order
+    // 分配 Agent：null 表示取消分配，string 表示分配给指定用户
+    if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId || null
 
     const updated = await prisma.taskStep.update({
       where: { id },
