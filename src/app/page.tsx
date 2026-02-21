@@ -907,6 +907,20 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
             autoFocus
           />
 
+          {/* 是否需要人工审批 */}
+          <button
+            type="button"
+            onClick={() => setNewStepRequiresApproval(!newStepRequiresApproval)}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all mb-2 ${
+              newStepRequiresApproval
+                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                : 'bg-green-50 text-green-700 border border-green-200'
+            }`}
+          >
+            <span>{newStepRequiresApproval ? '👤' : '🤖'}</span>
+            <span>{newStepRequiresApproval ? '需要人工审批' : 'Agent 完成自动通过'}</span>
+          </button>
+
           {newStepType === 'meeting' && (
             <div className="space-y-2">
               <input
