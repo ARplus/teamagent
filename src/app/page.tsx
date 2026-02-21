@@ -302,10 +302,10 @@ function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; sele
   const isCreator = task.creator?.id === currentUserId
   const isCollaborator = !isCreator && task.steps?.some(s => s.assignee?.id === currentUserId)
   const roleLabel = isCreator
-    ? { icon: '🏠', text: '我的', color: selected ? 'bg-white/25 text-white' : 'bg-orange-500 text-white' }
+    ? { icon: '🏠', text: '我的', color: 'bg-orange-500 text-white' }
     : isCollaborator
-    ? { icon: '🤝', text: '协作', color: selected ? 'bg-white/25 text-white' : 'bg-blue-500 text-white' }
-    : { icon: '👁', text: '查看', color: selected ? 'bg-white/25 text-white' : 'bg-slate-600 text-slate-300' }
+    ? { icon: '🤝', text: '协作', color: 'bg-blue-500 text-white' }
+    : { icon: '👁', text: '查看', color: 'bg-slate-500 text-slate-200' }
 
   return (
     <div
