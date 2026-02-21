@@ -148,10 +148,68 @@ export async function POST(
     })
 
     if (remainingSteps === 0) {
-      // 任务完成
+      // 任务完成 — 生成自动摘要
+      const allDoneSteps = await prisma.taskStep.findMany({
+        where: { taskId: step.taskId },
+        include: { assignee: { select: { name: true } } },
+        orderBy: { order: 'asc' }
+      })
+      
+      // 统计参与成员（去重）
+      const members = [...new Set(
+        allDoneSteps
+          .map(s => s.assignee?.name)
+          .filter(Boolean)
+      )]
+
+      // 格式化时间
+      const fmtTime = (ms: number | null) => {
+        if (!ms) return '—'
+        const h = Math.floor(ms / 3600000)
+        const m = Math.floor((ms % 3600000) / 60000)
+        return h > 0 ? `${h}h ${m}m` : `${m}m`
+      }
+
+      const finalTask = await prisma.task.findUnique({
+        where: { id: step.taskId },
+        select: { totalAgentTimeMs: true, totalHumanTimeMs: true, agentWorkRatio: true }
+      })
+
+      const agentPct = finalTask?.agentWorkRatio != null
+        ? `${Math.round(finalTask.agentWorkRatio * 100)}%`
+        : '—'
+      const humanPct = finalTask?.agentWorkRatio != null
+        ? `${Math.round((1 - finalTask.agentWorkRatio) * 100)}%`
+        : '—'
+
+      const doneCount = allDoneSteps.filter(s => s.status === 'done').length
+      const skippedCount = allDoneSteps.filter(s => s.status === 'skipped').length
+
+      // 取开始时间（最早步骤的 startedAt 或任务创建时间）
+      const taskFull = await prisma.task.findUnique({
+        where: { id: step.taskId },
+        select: { createdAt: true }
+      })
+      const startTime = taskFull?.createdAt
+        ? taskFull.createdAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '—'
+      const endTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+      // 产出物：done 步骤的标题（最多 6 个）
+      const outputs = allDoneSteps
+        .filter(s => s.status === 'done')
+        .slice(0, 6)
+        .map(s => s.title)
+
+      const autoSummary = [
+        `开始：${startTime}`,
+        `完成：${endTime}`,
+        `产出物：${outputs.join('、')}`,
+      ].join('\n')
+
       await prisma.task.update({
         where: { id: step.taskId },
-        data: { status: 'done' }
+        data: { status: 'done', autoSummary }
       })
       
       // 通知任务创建者任务已完成
@@ -163,6 +221,16 @@ export async function POST(
       })
     }
 
+    // 如果任务完成，读取 autoSummary 返回给前端
+    let taskAutoSummary: string | null = null
+    if (remainingSteps === 0) {
+      const completedTask = await prisma.task.findUnique({
+        where: { id: step.taskId },
+        select: { autoSummary: true }
+      })
+      taskAutoSummary = completedTask?.autoSummary ?? null
+    }
+
     return NextResponse.json({
       message: '审核通过',
       step: updated,
@@ -171,7 +239,8 @@ export async function POST(
         title: nextStep.title,
         assigneeId: nextStep.assigneeId
       } : null,
-      taskCompleted: remainingSteps === 0
+      taskCompleted: remainingSteps === 0,
+      autoSummary: taskAutoSummary
     })
 
   } catch (error) {

@@ -13,6 +13,7 @@ export default function NewTaskPage() {
     title: '',
     description: '',
     priority: 'medium',
+    mode: 'solo',
     assigneeEmail: '',
     dueDate: ''
   })
@@ -123,6 +124,55 @@ export default function NewTaskPage() {
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               required
             />
+          </div>
+
+          {/* 任务模式选择 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              任务模式
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, mode: 'solo' })}
+                className={`relative p-4 rounded-xl border-2 text-left transition ${
+                  form.mode === 'solo'
+                    ? 'border-orange-500 bg-orange-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">🤖</span>
+                  <span className={`font-semibold ${form.mode === 'solo' ? 'text-orange-700' : 'text-gray-700'}`}>
+                    Solo 模式
+                  </span>
+                  {form.mode === 'solo' && (
+                    <span className="ml-auto text-orange-500 text-xs font-medium bg-orange-100 px-2 py-0.5 rounded-full">已选</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">AI 团队内部协作，步骤由 Agent 自动认领执行</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, mode: 'team' })}
+                className={`relative p-4 rounded-xl border-2 text-left transition ${
+                  form.mode === 'team'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">👥</span>
+                  <span className={`font-semibold ${form.mode === 'team' ? 'text-blue-700' : 'text-gray-700'}`}>
+                    Team 模式
+                  </span>
+                  {form.mode === 'team' && (
+                    <span className="ml-auto text-blue-500 text-xs font-medium bg-blue-100 px-2 py-0.5 rounded-full">已选</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">外部人类协作，邀请团队成员共同完成任务</p>
+              </button>
+            </div>
           </div>
 
           <div>

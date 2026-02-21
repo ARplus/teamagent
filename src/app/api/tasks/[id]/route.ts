@@ -157,3 +157,5 @@ export async function DELETE(
     return NextResponse.json({ error: '删除任务失败' }, { status: 500 })
   }
 }
+
+// creatorComment 和 autoSummary 字段通过上方已有的 PATCH handler 支持

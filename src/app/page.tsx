@@ -81,6 +81,8 @@ interface Task {
   totalAgentTimeMs?: number | null
   totalHumanTimeMs?: number | null
   agentWorkRatio?: number | null
+  autoSummary?: string | null
+  creatorComment?: string | null
 }
 
 // ============ Utils ============
@@ -637,6 +639,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
           <div className="w-64 flex-shrink-0 space-y-4">
             <TeamCard task={task} />
             <StatsCard task={task} />
+            <SummaryCard task={task} onRefresh={onRefresh} />
           </div>
 
           {/* Right: Workflow */}
@@ -761,6 +764,107 @@ function StatsCard({ task }: { task: Task }) {
           <div className="text-lg font-bold text-purple-700">{100 - agentPercent}%</div>
           <div className="text-xs text-purple-500">{formatDuration(totalHuman)}</div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ============ Summary Card ============
+
+function SummaryCard({ task, onRefresh }: { task: Task; onRefresh: () => void }) {
+  const [comment, setComment] = useState(task.creatorComment || '')
+  const [editing, setEditing] = useState(!task.creatorComment)
+  const [saving, setSaving] = useState(false)
+
+  if (task.status !== 'done') return null
+
+  const saveComment = async () => {
+    if (!comment.trim()) return
+    setSaving(true)
+    try {
+      await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creatorComment: comment.trim() })
+      })
+      setEditing(false)
+      onRefresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border border-green-100 shadow-sm">
+      {/* 完成标题 */}
+      <div className="flex items-center space-x-2 mb-3">
+        <span className="text-lg">🎉</span>
+        <h3 className="text-sm font-semibold text-green-800">任务完成</h3>
+      </div>
+
+      {/* 自动摘要：时间 + 产出物 */}
+      {task.autoSummary && (
+        <div className="bg-white/70 rounded-xl p-3 mb-3 space-y-2">
+          {task.autoSummary.split('\n').filter(Boolean).map((line, i) => {
+            const [label, ...rest] = line.split('：')
+            const value = rest.join('：')
+            // 产出物单独渲染为 tag 列表
+            if (label === '产出物' && value) {
+              return (
+                <div key={i}>
+                  <div className="text-xs text-green-700 font-medium mb-1">📦 {label}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {value.split('、').map((item, j) => (
+                      <span key={j} className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">{item.trim()}</span>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
+            const icons: Record<string, string> = { '开始': '🕐', '完成': '🏁' }
+            return (
+              <div key={i} className="flex items-center space-x-1.5 text-xs text-slate-600">
+                <span>{icons[label] || '·'}</span>
+                <span className="text-slate-400">{label}</span>
+                <span className="font-medium text-slate-700">{value || line}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 发起者结语 */}
+      <div>
+        <div className="text-xs font-medium text-green-700 mb-1.5 flex items-center space-x-1">
+          <span>✍️</span>
+          <span>发起者结语</span>
+        </div>
+        {editing ? (
+          <div className="space-y-2">
+            <textarea
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              placeholder="写几句话记录这次任务的收获、感想或后续计划…"
+              className="w-full text-xs rounded-lg border border-green-200 bg-white/80 p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-green-300 text-slate-700 placeholder:text-slate-400"
+              rows={3}
+            />
+            <button
+              onClick={saveComment}
+              disabled={saving || !comment.trim()}
+              className="w-full py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 disabled:opacity-40 transition-colors"
+            >
+              {saving ? '保存中…' : '💾 保存结语'}
+            </button>
+          </div>
+        ) : (
+          <div
+            className="bg-white/70 rounded-xl p-3 text-xs text-slate-700 cursor-pointer hover:bg-white/90 transition-colors group"
+            onClick={() => setEditing(true)}
+          >
+            <p className="whitespace-pre-wrap">{task.creatorComment}</p>
+            <p className="text-slate-400 mt-1.5 group-hover:text-green-500 transition-colors">点击编辑 ✏️</p>
+          </div>
+        )}
       </div>
     </div>
   )

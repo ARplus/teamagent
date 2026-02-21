@@ -1,22 +1,26 @@
 import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
-// 找所有 Internal 开头的任务
-const tasks = await prisma.task.findMany({
-  where: { title: { startsWith: 'Internal' } },
+const task = await prisma.task.findFirst({
+  where: { title: { contains: '构建论文' } },
   include: {
     steps: {
-      select: { id: true, title: true, status: true, assigneeId: true, order: true },
+      include: {
+        assignee: { select: { id: true, name: true } }
+      },
       orderBy: { order: 'asc' }
     }
   }
 })
 
-for (const task of tasks) {
-  console.log(`\n=== ${task.title} (${task.id}) ===`)
+if (task) {
+  console.log(`Task: ${task.title}`)
   for (const s of task.steps) {
-    console.log(`  Step ${s.order}: "${s.title}" | status=${s.status} | assigneeId=${s.assigneeId || 'NULL'}`)
+    const name = s.assignee?.name || '未分配'
+    console.log(`  Step ${s.order}: [${s.status}] → ${name} | "${s.title}"`)
   }
+} else {
+  console.log('Task not found')
 }
 
 await prisma.$disconnect()

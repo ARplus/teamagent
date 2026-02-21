@@ -38,17 +38,23 @@ export async function GET(req: NextRequest) {
     const workspaceId = searchParams.get('workspaceId')
 
     // 只返回与当前用户相关的任务：
-    // - 我创建的任务
-    // - 我是步骤执行人的任务
-    // - 我是工作区 owner 的任务（自己的工作区全看到）
+    // 1. 我创建的任务
+    // 2. 我是步骤执行人的任务
+    // 3. 我是工作区 owner/admin（看整个工作区所有任务）
+    // 4. 我通过邀请链接被明确分享的任务（即使没有步骤也能看到）
+    //    → 接受邀请时会在 InviteToken 记录 inviteeId，永久保留可见性
     const visibilityFilter = {
       OR: [
         { creatorId: auth.userId },
         { steps: { some: { assigneeId: auth.userId } } },
         {
           workspace: {
-            members: { some: { userId: auth.userId, role: 'owner' } }
+            members: { some: { userId: auth.userId, role: { in: ['owner', 'admin'] } } }
           }
+        },
+        {
+          // 通过邀请链接被分享的任务（跨工作区可见性核心）
+          invites: { some: { inviteeId: auth.userId, taskId: { not: null } } }
         }
       ]
     }
@@ -97,7 +103,8 @@ export async function POST(req: NextRequest) {
       title, 
       description, 
       status, 
-      priority, 
+      priority,
+      mode,           // solo | team
       dueDate, 
       assigneeId,
       assigneeEmail,  // 支持通过邮箱分配
@@ -145,6 +152,7 @@ export async function POST(req: NextRequest) {
         description,
         status: status || 'todo',
         priority: priority || 'medium',
+        mode: mode || 'solo',
         dueDate: dueDate ? new Date(dueDate) : null,
         creatorId: auth.userId,
         assigneeId: finalAssigneeId,

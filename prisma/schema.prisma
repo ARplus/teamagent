@@ -38,7 +38,8 @@ model User {
   
   // 通知
   notifications Notification[]
-  invitesSent   InviteToken[] @relation("InvitesSent")
+  invitesSent     InviteToken[] @relation("InvitesSent")
+  invitesReceived InviteToken[] @relation("InvitesReceived")
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -113,6 +114,10 @@ model InviteToken {
   inviterId   String
   inviter     User      @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
 
+  // 接受邀请的人（接受时记录，永久保存任务可见性）
+  inviteeId   String?
+  invitee     User?     @relation("InvitesReceived", fields: [inviteeId], references: [id], onDelete: SetNull)
+
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -120,6 +125,7 @@ model InviteToken {
   task        Task?     @relation("TaskInvites", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([token])
+  @@index([inviteeId, taskId])
 }
 
 // 工作区成员
@@ -144,6 +150,7 @@ model Task {
   description String?
   status      String   @default("todo") // suggested, todo, in_progress, review, done
   priority    String   @default("medium") // low, medium, high, urgent
+  mode        String   @default("solo")   // solo（AI团队内部）| team（外部人类协作）
   dueDate     DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -152,6 +159,10 @@ model Task {
   totalAgentTimeMs  Int?    // 总 Agent 执行时间（毫秒）
   totalHumanTimeMs  Int?    // 总人类审批时间（毫秒）
   agentWorkRatio    Float?  // Agent 工作占比 (0-1)
+
+  // 任务完成总结
+  autoSummary       String?  // 系统自动生成的完成摘要
+  creatorComment    String?  // 发起者结语（人类填写）
 
   // 创建者
   creatorId   String

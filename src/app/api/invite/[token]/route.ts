@@ -60,9 +60,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         data: { workspaceId: invite.workspaceId, userId: user.id, role: invite.role }
       })
     }
+    // 记录接受邀请者，用于任务可见性（即使没有步骤也能看到被分享的任务）
     await tx.inviteToken.update({
       where: { id: invite.id },
-      data: { usedAt: new Date() }
+      data: { usedAt: new Date(), inviteeId: user.id }
     })
   })
 
