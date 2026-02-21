@@ -67,6 +67,10 @@ export function Navbar() {
               <Link href="/tasks/new" className="text-sm text-gray-600 hover:text-gray-900">
                 ➕ 创建任务
               </Link>
+              <Link href="/agent" className="text-sm text-gray-600 hover:text-orange-600 flex items-center space-x-1">
+                <span>🤖</span>
+                <span>我的 Agent</span>
+              </Link>
               <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
                 ⚙️ 设置
               </Link>
