@@ -8,6 +8,16 @@ import Link from 'next/link'
 
 // ============ Types ============
 
+interface Agent {
+  agentId: string
+  userId: string
+  name: string
+  email: string
+  capabilities: string[]
+  status: string
+  avatar: string | null
+}
+
 interface Submission {
   id: string
   result: string
@@ -561,8 +571,11 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true)
   const [showAddStep, setShowAddStep] = useState(false)
   const [newStepTitle, setNewStepTitle] = useState('')
+  const [newStepAssigneeId, setNewStepAssigneeId] = useState<string>('')
+  const [newStepRequiresApproval, setNewStepRequiresApproval] = useState(true)
   const [addingStep, setAddingStep] = useState(false)
   const [parsing, setParsing] = useState(false)
+  const [agents, setAgents] = useState<Agent[]>([])
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
 
@@ -575,8 +588,21 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   useEffect(() => {
     if (session && id) {
       fetchTask()
+      fetchAgents()
     }
   }, [session, id])
+
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch('/api/agents')
+      if (res.ok) {
+        const data = await res.json()
+        setAgents(data.agents || [])
+      }
+    } catch (e) {
+      console.error('获取 Agent 列表失败', e)
+    }
+  }
 
   const fetchTask = async () => {
     try {
@@ -598,13 +624,23 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     if (!newStepTitle.trim()) return
     setAddingStep(true)
     try {
+      const body: Record<string, unknown> = {
+        title: newStepTitle,
+        requiresApproval: newStepRequiresApproval,
+      }
+      // 如果选了 Agent，传 userId（API 用 assigneeId = userId）
+      if (newStepAssigneeId) {
+        body.assigneeId = newStepAssigneeId
+      }
       const res = await fetch(`/api/tasks/${id}/steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newStepTitle })
+        body: JSON.stringify(body)
       })
       if (res.ok) {
         setNewStepTitle('')
+        setNewStepAssigneeId('')
+        setNewStepRequiresApproval(true)
         setShowAddStep(false)
         fetchTask()
       }
@@ -784,21 +820,73 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
             {/* 添加步骤表单 */}
             {showAddStep && (
-              <div className="mb-6 p-4 bg-blue-50 rounded-xl">
+              <div className="mb-6 p-4 bg-blue-50 rounded-xl space-y-3">
+                {/* 步骤标题 */}
                 <input
                   type="text"
                   value={newStepTitle}
                   onChange={(e) => setNewStepTitle(e.target.value)}
-                  placeholder="步骤标题"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-3"
+                  placeholder="步骤标题（必填）"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm"
                   autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && addStep()}
                 />
+
+                {/* 分配给 Agent */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">🤖 分配给 Agent（可选）</label>
+                  <select
+                    value={newStepAssigneeId}
+                    onChange={(e) => setNewStepAssigneeId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                  >
+                    <option value="">— 不分配（待认领）—</option>
+                    {agents.map(agent => (
+                      <option key={agent.userId} value={agent.userId}>
+                        {agent.name}
+                        {agent.capabilities.length > 0 ? `  ·  ${agent.capabilities.slice(0, 3).join(' / ')}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {agents.length === 0 && (
+                    <p className="text-xs text-gray-400 mt-1">暂无已注册的 Agent</p>
+                  )}
+                </div>
+
+                {/* 审批设置 */}
+                <div className="flex items-center space-x-3">
+                  <label className="text-xs text-gray-500">完成后：</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewStepRequiresApproval(true)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                      newStepRequiresApproval
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                    }`}
+                  >
+                    👤 需要审批
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewStepRequiresApproval(false)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                      !newStepRequiresApproval
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                    }`}
+                  >
+                    🤖 自动通过
+                  </button>
+                </div>
+
+                {/* 操作按钮 */}
                 <div className="flex space-x-2">
                   <button onClick={addStep} disabled={addingStep || !newStepTitle.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm">
-                    {addingStep ? '添加中...' : '添加'}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+                    {addingStep ? '添加中...' : '✅ 添加步骤'}
                   </button>
-                  <button onClick={() => { setShowAddStep(false); setNewStepTitle('') }}
+                  <button onClick={() => { setShowAddStep(false); setNewStepTitle(''); setNewStepAssigneeId(''); setNewStepRequiresApproval(true) }}
                     className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm">
                     取消
                   </button>
