@@ -74,7 +74,7 @@ const t5 = await test('GET /api/steps/{id}', async () => {
 // ─── Test 6: GET /api/steps/{id}/history ───────────────────────────────────
 const t6 = await test('GET /api/steps/{id}/history', async () => {
   const r = await api(`/api/steps/${STEP1_ID}/history`, LOBSTER_TOKEN)
-  if (r.ok) r.detail = `历史记录 ${Array.isArray(r.data) ? r.data.length : '?'} 条`
+  if (r.ok) r.detail = `历史记录 ${Array.isArray(r.data?.history) ? r.data.history.length : r.data?.total ?? '?'} 条`
   return r
 })
 
