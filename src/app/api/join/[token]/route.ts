@@ -4,9 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
 // GET /api/join/[token] — 查询邀请信息（未登录也可预览）
-export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token: tokenParam } = await params
   const invite = await prisma.inviteToken.findUnique({
-    where: { token: params.token },
+    where: { token: tokenParam },
     include: {
       inviter: { select: { id: true, name: true, avatar: true } },
       workspace: { select: { id: true, name: true } },
@@ -27,7 +28,8 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
 }
 
 // POST /api/join/[token] — 接受邀请（需要登录）
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token: tokenParam } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return NextResponse.json({ error: '请先登录后接受邀请', needLogin: true }, { status: 401 })
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   if (!user) return NextResponse.json({ error: '用户不存在' }, { status: 404 })
 
   const invite = await prisma.inviteToken.findUnique({
-    where: { token: params.token },
+    where: { token: tokenParam },
     include: { task: true }
   })
 
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
 
   // 标记邀请已使用
   await prisma.inviteToken.update({
-    where: { token: params.token },
+    where: { token: tokenParam },
     data: { usedAt: new Date() }
   })
 

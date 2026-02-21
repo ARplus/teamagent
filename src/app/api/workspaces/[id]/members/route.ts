@@ -15,19 +15,20 @@ async function getWorkspaceAuth(workspaceId: string, userEmail: string) {
 }
 
 // GET /api/workspaces/[id]/members — 列出成员
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return NextResponse.json({ error: '请先登录' }, { status: 401 })
   }
 
-  const auth = await getWorkspaceAuth(params.id, session.user.email)
+  const auth = await getWorkspaceAuth(id, session.user.email)
   if (!auth) {
     return NextResponse.json({ error: '无权访问此工作区' }, { status: 403 })
   }
 
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: params.id },
+    where: { workspaceId: id },
     include: {
       user: {
         select: {
@@ -39,20 +40,21 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         }
       }
     },
-    orderBy: { createdAt: 'asc' }
+    orderBy: { joinedAt: 'asc' }
   })
 
   return NextResponse.json({ members })
 }
 
 // POST /api/workspaces/[id]/members — 邀请成员（by email）
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return NextResponse.json({ error: '请先登录' }, { status: 401 })
   }
 
-  const auth = await getWorkspaceAuth(params.id, session.user.email)
+  const auth = await getWorkspaceAuth(id, session.user.email)
   if (!auth) {
     return NextResponse.json({ error: '无权操作此工作区' }, { status: 403 })
   }
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // 检查是否已经是成员
   const existing = await prisma.workspaceMember.findFirst({
-    where: { workspaceId: params.id, userId: invitee.id }
+    where: { workspaceId: id, userId: invitee.id }
   })
   if (existing) {
     return NextResponse.json({ error: '该用户已经是工作区成员' }, { status: 400 })
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // 加入工作区
   const member = await prisma.workspaceMember.create({
     data: {
-      workspaceId: params.id,
+      workspaceId: id,
       userId: invitee.id,
       role
     },
@@ -109,13 +111,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 // DELETE /api/workspaces/[id]/members — 移除成员（body: { userId }）
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return NextResponse.json({ error: '请先登录' }, { status: 401 })
   }
 
-  const auth = await getWorkspaceAuth(params.id, session.user.email)
+  const auth = await getWorkspaceAuth(id, session.user.email)
   if (!auth || auth.membership.role !== 'owner') {
     return NextResponse.json({ error: '只有 Owner 可以移除成员' }, { status: 403 })
   }
@@ -128,7 +131,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 
   await prisma.workspaceMember.deleteMany({
-    where: { workspaceId: params.id, userId }
+    where: { workspaceId: id, userId }
   })
 
   return NextResponse.json({ message: '成员已移除' })

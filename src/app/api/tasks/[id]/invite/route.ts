@@ -5,7 +5,8 @@ import { prisma } from '@/lib/db'
 import crypto from 'crypto'
 
 // POST /api/tasks/[id]/invite — 生成任务邀请链接
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return NextResponse.json({ error: '请先登录' }, { status: 401 })
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // 验证任务存在且属于当前用户的工作区
   const task = await prisma.task.findFirst({
     where: {
-      id: params.id,
+      id,
       workspace: { members: { some: { userId: user.id, role: 'owner' } } }
     },
     include: { workspace: true }

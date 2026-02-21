@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
         select: { id: true, name: true, description: true, createdAt: true }
       }
     },
-    orderBy: { createdAt: 'asc' }
+    orderBy: { joinedAt: 'asc' }
   })
 
   if (!membership) {

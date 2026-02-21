@@ -573,7 +573,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
                               {(assignee.name || 'U')[0]}
                             </div>
                             <div className="text-xs">
-                              <div className="text-slate-700 font-medium">{assignee.name || assignee.email?.split('@')[0]}</div>
+                              <div className="text-slate-700 font-medium">{assignee.name || '成员'}</div>
                               {assignee.agent && (
                                 <div className="text-slate-400">🤖 {assignee.agent.name}</div>
                               )}
