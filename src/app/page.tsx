@@ -777,7 +777,17 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
   const [newStepParticipants, setNewStepParticipants] = useState('')
   const [newStepScheduledAt, setNewStepScheduledAt] = useState('')
   const [newStepRequiresApproval, setNewStepRequiresApproval] = useState(true)
+  const [newStepAssigneeId, setNewStepAssigneeId] = useState<string | null>(null)
   const [addingStep, setAddingStep] = useState(false)
+  const [agentList, setAgentList] = useState<Array<{userId: string, name: string, capabilities: string[], email: string}>>([])
+
+  // 加载已注册 Agent 列表
+  useEffect(() => {
+    fetch('/api/agents')
+      .then(r => r.ok ? r.json() : { agents: [] })
+      .then(d => setAgentList(d.agents || []))
+      .catch(() => {})
+  }, [])
 
   const parseTask = async () => {
     if (!task.description) return alert('任务没有描述')
@@ -808,6 +818,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
           participants: participants.length > 0 ? participants : undefined,
           scheduledAt: newStepScheduledAt || undefined,
           requiresApproval: newStepRequiresApproval,
+          assigneeId: newStepAssigneeId || undefined,
         })
       })
       if (res.ok) {
@@ -817,6 +828,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
         setNewStepParticipants('')
         setNewStepScheduledAt('')
         setNewStepRequiresApproval(true)
+        setNewStepAssigneeId(null)
         setShowAddStep(false)
         onRefresh()
       }
@@ -909,6 +921,24 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
             className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
             autoFocus
           />
+
+          {/* 分配给 Agent */}
+          {newStepType === 'task' && agentList.length > 0 && (
+            <div className="mb-2">
+              <select
+                value={newStepAssigneeId || ''}
+                onChange={(e) => setNewStepAssigneeId(e.target.value || null)}
+                className="w-full px-3 py-2 border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 bg-white text-slate-700"
+              >
+                <option value="">👤 不分配 Agent（人工执行）</option>
+                {agentList.map(a => (
+                  <option key={a.userId} value={a.userId}>
+                    🤖 {a.name}{a.capabilities?.length > 0 ? ` · ${a.capabilities.slice(0,2).join(', ')}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* 是否需要人工审批 */}
           <button
