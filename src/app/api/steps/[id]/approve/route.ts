@@ -69,6 +69,7 @@ export async function POST(
     }
 
     // 2. 更新步骤状态
+    // 注意：completedAt 不在这里更新——它在 submit 时已记录 Agent 提交时间，审批不应覆盖
     const updated = await prisma.taskStep.update({
       where: { id },
       data: {
@@ -76,7 +77,6 @@ export async function POST(
         agentStatus: null,
         approvedAt: now,
         approvedBy: user.id,
-        completedAt: now,
         humanDurationMs
       }
     })
