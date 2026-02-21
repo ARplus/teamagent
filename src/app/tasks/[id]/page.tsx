@@ -403,16 +403,14 @@ function StepCard({
                   ) : (
                     <span className="text-xs text-gray-400 italic">未分配</span>
                   )}
-                  {/* 已登录用户均可分配步骤 */}
-                  {agents && agents.length > 0 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
-                      className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200"
-                      title="修改分配"
-                    >
-                      分配
-                    </button>
-                  )}
+                  {/* 分配按钮：无论 agents 是否加载完都显示 */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
+                    className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200"
+                    title="修改分配"
+                  >
+                    分配
+                  </button>
                 </div>
               ) : (
                 /* 内联编辑分配 */
