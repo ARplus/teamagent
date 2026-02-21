@@ -1676,6 +1676,7 @@ function HistoryItem({ submission, defaultOpen }: { submission: Submission; defa
 function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [mode, setMode] = useState<'solo' | 'team'>('solo')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async () => {
@@ -1685,7 +1686,7 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description })
+        body: JSON.stringify({ title, description, mode })
       })
       if (res.ok) {
         const data = await res.json()
@@ -1705,6 +1706,39 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
         </div>
         
         <div className="space-y-4">
+          {/* 任务模式 */}
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-2 block">任务模式</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMode('solo')}
+                className={`p-3 rounded-xl border-2 text-left transition ${
+                  mode === 'solo' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span>🤖</span>
+                  <span className={`text-sm font-semibold ${mode === 'solo' ? 'text-orange-700' : 'text-slate-700'}`}>Solo</span>
+                </div>
+                <p className="text-xs text-slate-500">AI 团队执行</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('team')}
+                className={`p-3 rounded-xl border-2 text-left transition ${
+                  mode === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span>👥</span>
+                  <span className={`text-sm font-semibold ${mode === 'team' ? 'text-blue-700' : 'text-slate-700'}`}>Team</span>
+                </div>
+                <p className="text-xs text-slate-500">人类协作</p>
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">任务名称</label>
             <input
@@ -1718,7 +1752,7 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
           
           <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">任务描述（可选）</label>
+            <label className="text-sm font-medium text-slate-700 mb-2 block">任务描述</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
