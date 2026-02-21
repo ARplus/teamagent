@@ -54,6 +54,9 @@ interface TaskStep {
   humanDurationMs?: number | null
   rejectionCount?: number
   rejectionReason?: string | null
+  completedAt?: string | null
+  approvedAt?: string | null
+  rejectedAt?: string | null
   // 审批设置
   requiresApproval?: boolean   // false = Agent 提交后自动通过
   // 会议专用
@@ -1176,6 +1179,24 @@ function StepCard({
                 {isMeeting ? '📝 会议纪要' : '📝 提交结果'}
               </div>
               <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{step.result}</pre>
+            </div>
+          )}
+
+          {/* 时间线 */}
+          {(step.completedAt || step.approvedAt || step.rejectedAt) && (
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+              {step.completedAt && (
+                <span>📤 提交 {new Date(step.completedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+              )}
+              {step.approvedAt && (
+                <span className="text-emerald-600">✅ 通过 {new Date(step.approvedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+              )}
+              {step.rejectedAt && (
+                <span className="text-red-500">↩️ 打回 {new Date(step.rejectedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+              )}
+              {step.agentDurationMs && (
+                <span>⏱ 执行 {step.agentDurationMs < 60000 ? `${Math.round(step.agentDurationMs/1000)}秒` : `${Math.round(step.agentDurationMs/60000)}分钟`}</span>
+              )}
             </div>
           )}
 
