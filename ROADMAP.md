@@ -18,6 +18,23 @@
 
 ---
 
+## 技术债 🔧
+
+### 提取共享 StepCard 组件
+
+> 记录于 2026-02-22，Aurora 决策
+
+**背景：** `page.tsx`（主页）和 `tasks/[id]/page.tsx` 曾经各自有独立的 `StepCard` 组件，导致同一功能要改两处、改了寂寞。已做 Option A（删除 `tasks/[id]/page.tsx`，邀请跳转改为 `/`）。
+
+**待做 Option B：**
+- 将 `StepCard` 抽取为 `src/components/StepCard.tsx`（独立共享组件）
+- `page.tsx` 和任何其他页面都通过 import 使用
+- 好处：逻辑只有一份，再加新功能不会迷路
+
+**优先级：** 低（当前单路径已稳定），但下次 StepCard 需要改功能时就该做
+
+---
+
 ## V3 💡 规划中
 
 ### 人机协作评分系统

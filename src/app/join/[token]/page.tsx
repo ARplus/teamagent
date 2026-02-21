@@ -43,7 +43,7 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
     if (res.ok) {
       setJoined(true)
       setTimeout(() => {
-        router.push(data.taskId ? `/tasks/${data.taskId}` : '/')
+        router.push('/')
       }, 2000)
     } else {
       setError(data.error)
