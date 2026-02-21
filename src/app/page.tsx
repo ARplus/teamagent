@@ -853,6 +853,16 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
     else alert('打回失败')
   }
 
+  const handleAssign = async (stepId: string, userId: string | null) => {
+    const res = await fetch(`/api/steps/${stepId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assigneeId: userId })
+    })
+    if (res.ok) onRefresh()
+    else alert('分配失败')
+  }
+
   const steps = task.steps?.sort((a, b) => a.order - b.order) || []
   const currentIndex = steps.findIndex(s => s.status !== 'done')
   const progress = steps.length > 0 ? Math.round((steps.filter(s => s.status === 'done').length / steps.length) * 100) : 0
@@ -1040,6 +1050,8 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
                 canApprove={canApprove}
                 onApprove={handleApprove}
                 onReject={handleReject}
+                agents={agentList}
+                onAssign={handleAssign}
               />
             ))}
           </div>
@@ -1056,16 +1068,21 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
 }
 
 function StepCard({
-  step, index, isActive, canApprove, onApprove, onReject
+  step, index, isActive, canApprove, onApprove, onReject, agents, onAssign
 }: {
   step: TaskStep; index: number; isActive: boolean; canApprove: boolean
   onApprove: (id: string) => Promise<void>; onReject: (id: string, reason: string) => Promise<void>
+  agents?: Array<{userId: string; name: string; capabilities: string[]; email: string}>
+  onAssign?: (stepId: string, userId: string | null) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   const [history, setHistory] = useState<Submission[]>([])
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [editingAssignee, setEditingAssignee] = useState(false)
+  const [assigneeSelect, setAssigneeSelect] = useState<string>(step.assignee?.id || '')
+  const [savingAssignee, setSavingAssignee] = useState(false)
 
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
@@ -1089,6 +1106,18 @@ function StepCard({
     const next = !expanded
     setExpanded(next)
     if (next && history.length === 0) loadHistory()
+  }
+
+  const saveAssignee = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!onAssign) return
+    setSavingAssignee(true)
+    try {
+      await onAssign(step.id, assigneeSelect || null)
+      setEditingAssignee(false)
+    } finally {
+      setSavingAssignee(false)
+    }
   }
 
   return (
@@ -1139,8 +1168,46 @@ function StepCard({
                     </span>
                   )}
                 </>
+              ) : editingAssignee ? (
+                /* 内联分配下拉 */
+                <span className="flex items-center space-x-1" onClick={e => e.stopPropagation()}>
+                  <select
+                    value={assigneeSelect}
+                    onChange={e => setAssigneeSelect(e.target.value)}
+                    className="text-xs border border-blue-300 rounded px-1 py-0.5 bg-white max-w-[140px]"
+                    autoFocus
+                  >
+                    <option value="">— 不分配 —</option>
+                    {(agents || []).map(a => (
+                      <option key={a.userId} value={a.userId}>{a.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={saveAssignee}
+                    disabled={savingAssignee}
+                    className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    {savingAssignee ? '...' : '✓'}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingAssignee(false) }}
+                    className="text-xs px-1.5 py-0.5 text-slate-500 hover:text-slate-700"
+                  >
+                    ✕
+                  </button>
+                </span>
               ) : (
-                <span>🤖 {agentName}</span>
+                <span className="flex items-center space-x-1">
+                  <span>🤖 {agentName}</span>
+                  {agents && agents.length > 0 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
+                      className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200 ml-1"
+                    >
+                      分配
+                    </button>
+                  )}
+                </span>
               )}
               <span className={`px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
               {!isMeeting && step.requiresApproval === false && (
