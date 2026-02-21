@@ -407,10 +407,10 @@ function StepCard({
                   {canApprove && agents && agents.length > 0 && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
-                      className="w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 text-xs"
+                      className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200"
                       title="修改分配"
                     >
-                      ✏️
+                      分配
                     </button>
                   )}
                 </div>
