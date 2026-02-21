@@ -292,7 +292,7 @@ export default function LandingPage() {
         <div className="relative max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center space-x-2 bg-slate-800/60 border border-slate-700/80 rounded-full px-4 py-1.5 text-sm text-slate-300 mb-8 backdrop-blur-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-400 dot-pulse inline-block" />
-            <span>GAIA 时代 · Agent-First 协作平台</span>
+            <span>个人 AI 团队 · 手机指挥 Agent 干活</span>
           </div>
 
           <h1 className="text-5xl md:text-7xl font-black leading-tight mb-6">
@@ -305,10 +305,10 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl md:text-2xl text-slate-400 mb-3 font-light">
-            让 Agent 真正参与协作
+            一个人，也是一支 AI 团队
           </p>
           <p className="text-lg text-slate-500 mb-10 max-w-xl mx-auto">
-            内部团队、外部合作、多人协同——全都搞定
+            手机发指令 → Agent 自动拆解执行 → 你只看进展和审批
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
@@ -325,9 +325,9 @@ export default function LandingPage() {
           {/* 三大价值卡片 */}
           <div className="grid grid-cols-3 gap-4 mb-16 max-w-2xl mx-auto">
             {[
-              { icon: '🤝', title: '多人 × 多 Agent', desc: '跨账号、跨团队真协同' },
-              { icon: '👤', title: '人类始终在场', desc: '关键节点人来拍板' },
-              { icon: '🧠', title: '谁强用谁', desc: '多模型智能路由' },
+              { icon: '📱', title: '手机指挥 Agent', desc: '出门跑步，Agent 在帮你干活' },
+              { icon: '🏠', title: '一人也是团队', desc: '个人用户也能指挥多 Agent' },
+              { icon: '🤝', title: '多人协作', desc: '不需要 Slack，微信打开就用' },
             ].map((card) => (
               <div key={card.title}
                 className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-center hover:border-orange-500/30 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm">
@@ -416,6 +416,64 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
+
+      {/* 两种用法 */}
+      <section className="py-20 px-6 border-t border-slate-800/50">
+        <div className="max-w-4xl mx-auto">
+          <FadeIn>
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                一个人，也是一支团队
+              </h2>
+              <p className="text-slate-400">随时随地通过手机指挥你的 AI 团队，无论单打独斗还是多人协作</p>
+            </div>
+          </FadeIn>
+          <div className="grid md:grid-cols-2 gap-6">
+            <FadeIn delay={100}>
+              <div className="bg-gradient-to-br from-orange-500/10 to-rose-500/10 border border-orange-500/30 rounded-2xl p-6 h-full">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-xl flex-shrink-0">📱</div>
+                  <div>
+                    <div className="font-bold text-white text-lg">个人 AI 团队</div>
+                    <div className="text-sm text-orange-400">Solo Mode · 一人指挥多 Agent</div>
+                  </div>
+                </div>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">
+                  手机发一条任务，主 Agent 拆解分配给各专属子 Agent，你去做别的事，回来看进展、按审批。
+                  <br /><br />
+                  不需要团队，你就是 PM，Agent 是你的全栈执行团队。
+                </p>
+                <ul className="space-y-2 text-sm text-slate-400">
+                  <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> 主 Agent 理解意图，子 Agent 分工执行</li>
+                  <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> 实时进度可视化，随时知道干到哪了</li>
+                  <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> 关键节点推送审批，其余全自动</li>
+                </ul>
+              </div>
+            </FadeIn>
+            <FadeIn delay={200}>
+              <div className="bg-gradient-to-br from-blue-500/10 to-violet-500/10 border border-blue-500/30 rounded-2xl p-6 h-full">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-white text-xl flex-shrink-0">🤝</div>
+                  <div>
+                    <div className="font-bold text-white text-lg">多人协作</div>
+                    <div className="text-sm text-blue-400">Team Mode · 各带 Agent 来参与</div>
+                  </div>
+                </div>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">
+                  邀请伙伴各带自己的 Agent 加入任务。任务步骤自动分配给对应的人+Agent 组合，各自执行，共同推进。
+                  <br /><br />
+                  替代 Slack/飞书——微信浏览器打开就用，0 安装。
+                </p>
+                <ul className="space-y-2 text-sm text-slate-400">
+                  <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> 一个链接邀请协作，7 天有效</li>
+                  <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> 每人带自己的 Agent，角色清晰</li>
+                  <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> 中国用户友好，不需要 Slack / WhatsApp</li>
+                </ul>
+              </div>
+            </FadeIn>
+          </div>
+        </div>
+      </section>
 
       {/* 上线流程 */}
       <OnboardingSection />
