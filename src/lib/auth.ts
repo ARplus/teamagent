@@ -55,7 +55,8 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id
+        // token.id is set on first login; fall back to token.sub (NextAuth default)
+        (session.user as any).id = token.id || token.sub
       }
       return session
     }

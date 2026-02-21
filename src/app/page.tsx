@@ -228,7 +228,7 @@ function TaskList({
           <TaskGroup title="待办" tasks={todo} selectedId={selectedId} onSelect={onSelect} dot="bg-slate-400" currentUserId={currentUserId} />
         )}
         {done.length > 0 && (
-          <TaskGroup title="已完成" tasks={done} selectedId={selectedId} onSelect={onSelect} dot="bg-emerald-500" />
+          <TaskGroup title="已完成" tasks={done} selectedId={selectedId} onSelect={onSelect} dot="bg-emerald-500" currentUserId={currentUserId} />
         )}
         {filtered.length === 0 && (
           <div className="text-center py-8 text-slate-500 text-sm">
@@ -274,8 +274,8 @@ function TaskList({
   )
 }
 
-function TaskGroup({ title, tasks, selectedId, onSelect, dot, currentUserId }: { 
-  title: string; tasks: Task[]; selectedId: string | null; onSelect: (id: string) => void; dot: string; currentUserId: string
+function TaskGroup({ title, tasks, selectedId, onSelect, dot, currentUserId = '' }: { 
+  title: string; tasks: Task[]; selectedId: string | null; onSelect: (id: string) => void; dot: string; currentUserId?: string
 }) {
   return (
     <div>
@@ -302,10 +302,10 @@ function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; sele
   const isCreator = task.creator?.id === currentUserId
   const isCollaborator = !isCreator && task.steps?.some(s => s.assignee?.id === currentUserId)
   const roleLabel = isCreator
-    ? { icon: '🏠', text: '我的', color: selected ? 'bg-white/20 text-white' : 'bg-orange-500/15 text-orange-400' }
+    ? { icon: '🏠', text: '我的', color: selected ? 'bg-white/25 text-white' : 'bg-orange-500 text-white' }
     : isCollaborator
-    ? { icon: '🤝', text: '协作', color: selected ? 'bg-white/20 text-white' : 'bg-blue-500/15 text-blue-400' }
-    : { icon: '👁', text: '查看', color: selected ? 'bg-white/20 text-white' : 'bg-slate-500/15 text-slate-400' }
+    ? { icon: '🤝', text: '协作', color: selected ? 'bg-white/25 text-white' : 'bg-blue-500 text-white' }
+    : { icon: '👁', text: '查看', color: selected ? 'bg-white/25 text-white' : 'bg-slate-600 text-slate-300' }
 
   return (
     <div
