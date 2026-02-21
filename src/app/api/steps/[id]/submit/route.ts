@@ -92,15 +92,21 @@ export async function POST(
       })
 
       // 2. 更新步骤状态
+      // requiresApproval=false → 直接自动通过，跳过人工审核
+      const autoApprove = step.requiresApproval === false
+      const newStatus = autoApprove ? 'done' : 'waiting_approval'
+      const newAgentStatus = autoApprove ? 'done' : 'waiting_approval'
+
       const upd = await tx.taskStep.update({
         where: { id },
         data: {
-          status: 'waiting_approval',
-          agentStatus: 'waiting_approval',
+          status: newStatus,
+          agentStatus: newAgentStatus,
           result: resultText,
           summary: finalSummary || null,
           completedAt: now,
-          reviewStartedAt: now,
+          reviewStartedAt: autoApprove ? null : now,
+          approvedAt: autoApprove ? now : null,
           agentDurationMs
         }
       })
@@ -133,8 +139,9 @@ export async function POST(
     }
 
     // 🔔 发送实时通知
-    // 通知任务创建者：有步骤等待审核
-    if (step.task.creatorId) {
+    const autoApproved = step.requiresApproval === false
+    // 需要人工审核时才通知任务创建者
+    if (!autoApproved && step.task.creatorId) {
       sendToUser(step.task.creatorId, {
         type: 'approval:requested',
         taskId: step.task.id,
@@ -176,7 +183,8 @@ export async function POST(
     }
 
     return NextResponse.json({
-      message: '已提交，等待人类审核',
+      message: autoApproved ? '已提交并自动通过（无需人工审核）' : '已提交，等待人类审核',
+      autoApproved,
       step: updated,
       workflow: workflowResult
     })

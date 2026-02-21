@@ -48,7 +48,8 @@ export async function POST(
     }
 
     const { title, description, assigneeId, assigneeEmail,
-            stepType, agenda, participants, scheduledAt } = await req.json()
+            stepType, agenda, participants, scheduledAt,
+            requiresApproval } = await req.json()
 
     if (!title) {
       return NextResponse.json({ error: '步骤标题不能为空' }, { status: 400 })
@@ -79,6 +80,7 @@ export async function POST(
         agenda: agenda || null,
         participants: participants ? JSON.stringify(participants) : null,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        requiresApproval: requiresApproval !== false, // 默认 true，false 时自动通过
       },
       include: {
         assignee: { select: { id: true, name: true, avatar: true } },

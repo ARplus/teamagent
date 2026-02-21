@@ -54,6 +54,8 @@ interface TaskStep {
   humanDurationMs?: number | null
   rejectionCount?: number
   rejectionReason?: string | null
+  // 审批设置
+  requiresApproval?: boolean   // false = Agent 提交后自动通过
   // 会议专用
   stepType?: string        // 'task' | 'meeting'
   scheduledAt?: string | null
@@ -771,6 +773,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
   const [newStepAgenda, setNewStepAgenda] = useState('')
   const [newStepParticipants, setNewStepParticipants] = useState('')
   const [newStepScheduledAt, setNewStepScheduledAt] = useState('')
+  const [newStepRequiresApproval, setNewStepRequiresApproval] = useState(true)
   const [addingStep, setAddingStep] = useState(false)
 
   const parseTask = async () => {
@@ -801,6 +804,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
           agenda: newStepAgenda || undefined,
           participants: participants.length > 0 ? participants : undefined,
           scheduledAt: newStepScheduledAt || undefined,
+          requiresApproval: newStepRequiresApproval,
         })
       })
       if (res.ok) {
@@ -809,6 +813,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
         setNewStepAgenda('')
         setNewStepParticipants('')
         setNewStepScheduledAt('')
+        setNewStepRequiresApproval(true)
         setShowAddStep(false)
         onRefresh()
       }
@@ -925,6 +930,41 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
                 className="w-full px-4 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white"
               />
             </div>
+          )}
+
+          {/* 审批设置 */}
+          {newStepType === 'task' && (
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-xl mt-2 cursor-pointer select-none"
+              onClick={() => setNewStepRequiresApproval(!newStepRequiresApproval)}
+            >
+              <div>
+                <div className="text-xs font-medium text-slate-700">
+                  {newStepRequiresApproval ? '🔍 需要人工审批' : '⚡ 自动通过'}
+                </div>
+                <div className="text-xs text-slate-400 mt-0.5">
+                  {newStepRequiresApproval ? 'Agent 提交后等待你审批' : 'Agent 提交后直接完成'}
+                </div>
+              </div>
+              <div className={`w-10 h-5 rounded-full transition-colors relative ${newStepRequiresApproval ? 'bg-orange-400' : 'bg-green-400'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${newStepRequiresApproval ? 'left-0.5' : 'left-5'}`} />
+              </div>
+            </div>
+          )}
+
+          {/* 审批设置 */}
+          {newStepType === 'task' && (
+            <button
+              onClick={() => setNewStepRequiresApproval(!newStepRequiresApproval)}
+              className={`flex items-center space-x-2 text-xs px-3 py-1.5 rounded-lg border transition-all mt-2 mb-1 ${
+                newStepRequiresApproval
+                  ? 'bg-white border-slate-200 text-slate-600'
+                  : 'bg-green-50 border-green-200 text-green-700'
+              }`}
+            >
+              <span>{newStepRequiresApproval ? '🔍' : '✅'}</span>
+              <span>{newStepRequiresApproval ? '需要人工审批' : 'Agent 完成后自动通过'}</span>
+            </button>
           )}
 
           <div className="flex space-x-2 mt-3">
@@ -1056,6 +1096,9 @@ function StepCard({
                 <span>🤖 {agentName}</span>
               )}
               <span className={`px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
+              {!isMeeting && step.requiresApproval === false && (
+                <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 text-xs">✅ 自动通过</span>
+              )}
             </div>
           </div>
         </div>

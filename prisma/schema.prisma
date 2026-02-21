@@ -203,6 +203,9 @@ model TaskStep {
   outputs     String?  // JSON: ["产出物"]
   skills      String?  // JSON: ["需要的Skill"]
   
+  // 审批设置
+  requiresApproval Boolean @default(true)  // false = Agent 提交后自动通过，无需人工审批
+
   // 状态
   status      String   @default("pending") // pending, in_progress, waiting_approval, done, rejected
   agentStatus String?  // online, pending, working, waiting_approval, blocked, offline
@@ -241,6 +244,9 @@ model TaskStep {
   
   // 通知
   notifications Notification[]
+
+  @@index([assigneeId, status])  // Solo Mode 高频查询优化（CodeReviewer 建议）
+  @@index([taskId, order])
 }
 
 // 步骤提交记录 - 每次提交都是一条新记录，保留历史
