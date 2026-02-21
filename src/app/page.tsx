@@ -114,17 +114,17 @@ function formatTime(dateStr: string): string {
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   todo: { label: '待办', color: 'text-slate-600', bg: 'bg-slate-100', dot: 'bg-slate-400' },
-  in_progress: { label: '进行�?, color: 'text-blue-600', bg: 'bg-blue-50', dot: 'bg-blue-500' },
-  review: { label: '审核�?, color: 'text-amber-600', bg: 'bg-amber-50', dot: 'bg-amber-500' },
-  done: { label: '已完�?, color: 'text-emerald-600', bg: 'bg-emerald-50', dot: 'bg-emerald-500' },
+  in_progress: { label: '进行中', color: 'text-blue-600', bg: 'bg-blue-50', dot: 'bg-blue-500' },
+  review: { label: '审核中', color: 'text-amber-600', bg: 'bg-amber-50', dot: 'bg-amber-500' },
+  done: { label: '已完成', color: 'text-emerald-600', bg: 'bg-emerald-50', dot: 'bg-emerald-500' },
   pending: { label: '等待', color: 'text-slate-500', bg: 'bg-slate-100', dot: 'bg-slate-400' },
-  waiting_approval: { label: '待审�?, color: 'text-amber-600', bg: 'bg-amber-50', dot: 'bg-amber-500' }
+  waiting_approval: { label: '待审批', color: 'text-amber-600', bg: 'bg-amber-50', dot: 'bg-amber-500' }
 }
 
 const agentStatusConfig: Record<string, { dot: string; label: string }> = {
   online: { dot: 'bg-emerald-500', label: '在线' },
-  working: { dot: 'bg-blue-500', label: '工作�? },
-  waiting: { dot: 'bg-amber-500', label: '等待�? },
+  working: { dot: 'bg-blue-500', label: '工作中' },
+  waiting: { dot: 'bg-amber-500', label: '等待中' },
   offline: { dot: 'bg-slate-400', label: '离线' }
 }
 
@@ -168,11 +168,12 @@ function TaskList({
           onClick={onToggleCollapse}
           className="w-10 h-10 rounded-xl bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
         >
-          �?        </button>
+          ☰
+        </button>
         <div className="flex-1" />
         <button
           onClick={onPairAgent}
-          title={hasAgent ? '配对�?Agent' : '还没�?Agent，点击配�?}
+          title={hasAgent ? '配对新 Agent' : '还没有 Agent，点击配对'}
           className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm transition-colors shadow-lg ${
             hasAgent
               ? 'bg-slate-700 hover:bg-slate-600 text-slate-300'
@@ -221,17 +222,17 @@ function TaskList({
 
       <div className="flex-1 overflow-y-auto px-2 space-y-4">
         {inProgress.length > 0 && (
-          <TaskGroup title="进行�? tasks={inProgress} selectedId={selectedId} onSelect={onSelect} dot="bg-blue-500" currentUserId={currentUserId} />
+          <TaskGroup title="进行中" tasks={inProgress} selectedId={selectedId} onSelect={onSelect} dot="bg-blue-500" currentUserId={currentUserId} />
         )}
         {todo.length > 0 && (
           <TaskGroup title="待办" tasks={todo} selectedId={selectedId} onSelect={onSelect} dot="bg-slate-400" currentUserId={currentUserId} />
         )}
         {done.length > 0 && (
-          <TaskGroup title="已完�? tasks={done} selectedId={selectedId} onSelect={onSelect} dot="bg-emerald-500" currentUserId={currentUserId} />
+          <TaskGroup title="已完成" tasks={done} selectedId={selectedId} onSelect={onSelect} dot="bg-emerald-500" currentUserId={currentUserId} />
         )}
         {filtered.length === 0 && (
           <div className="text-center py-8 text-slate-500 text-sm">
-            {search ? '没有找到匹配的任�? : '暂无任务'}
+            {search ? '没有找到匹配的任务' : '暂无任务'}
           </div>
         )}
       </div>
@@ -257,7 +258,7 @@ function TaskList({
           }`}
         >
           <span>🤖</span>
-          <span>{hasAgent ? '�?配对�?Agent' : '�?配对我的 Agent'}</span>
+          <span>{hasAgent ? '⊕ 配对新 Agent' : '⊕ 配对我的 Agent'}</span>
           {!hasAgent && <span className="w-2 h-2 rounded-full bg-amber-400" />}
         </button>
 
@@ -345,29 +346,33 @@ function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; sele
 function getTaskAlerts(task: Task): { type: 'warning' | 'success' | 'info'; message: string }[] {
   const alerts: { type: 'warning' | 'success' | 'info'; message: string }[] = []
   
-  // 检查截止日�?  if (task.dueDate) {
+  // 检查截止日期
+  if (task.dueDate) {
     const due = new Date(task.dueDate)
     const now = new Date()
     const daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     
     if (daysLeft < 0 && task.status !== 'done') {
-      alerts.push({ type: 'warning', message: `⚠️ 已超�?${Math.abs(daysLeft)} 天！` })
+      alerts.push({ type: 'warning', message: `⚠️ 已超期 ${Math.abs(daysLeft)} 天！` })
     } else if (daysLeft <= 3 && daysLeft >= 0 && task.status !== 'done') {
-      alerts.push({ type: 'warning', message: `�?还剩 ${daysLeft} 天截止` })
+      alerts.push({ type: 'warning', message: `⏰ 还剩 ${daysLeft} 天截止` })
     }
   }
   
-  // 检查是否有待审�?  const waitingSteps = task.steps?.filter(s => s.status === 'waiting_approval') || []
+  // 检查是否有待审批
+  const waitingSteps = task.steps?.filter(s => s.status === 'waiting_approval') || []
   if (waitingSteps.length > 0) {
     alerts.push({ type: 'info', message: `👀 ${waitingSteps.length} 个步骤待审核` })
   }
   
-  // 检查打回次�?  const totalRejections = task.steps?.reduce((sum, s) => sum + (s.rejectionCount || 0), 0) || 0
+  // 检查打回次数
+  const totalRejections = task.steps?.reduce((sum, s) => sum + (s.rejectionCount || 0), 0) || 0
   if (totalRejections >= 3) {
-    alerts.push({ type: 'warning', message: `🔄 已打�?${totalRejections} 次，建议检查任务描述` })
+    alerts.push({ type: 'warning', message: `🔄 已打回 ${totalRejections} 次，建议检查任务描述` })
   }
   
-  // 检查是否提前完�?  if (task.status === 'done' && task.dueDate) {
+  // 检查是否提前完成
+  if (task.status === 'done' && task.dueDate) {
     const due = new Date(task.dueDate)
     const completed = new Date(task.updatedAt)
     if (completed < due) {
@@ -376,7 +381,8 @@ function getTaskAlerts(task: Task): { type: 'warning' | 'success' | 'info'; mess
     }
   }
   
-  // 如果没有任何警告，显示正常状�?  if (alerts.length === 0) {
+  // 如果没有任何警告，显示正常状态
+  if (alerts.length === 0) {
     const doneSteps = task.steps?.filter(s => s.status === 'done').length || 0
     const totalSteps = task.steps?.length || 0
     
@@ -388,7 +394,7 @@ function getTaskAlerts(task: Task): { type: 'warning' | 'success' | 'info'; mess
         const due = new Date(task.dueDate)
         const now = new Date()
         const daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-        alerts.push({ type: 'success', message: `🦞 进度 ${progress}%，还�?${daysLeft} 天，一切正常！` })
+        alerts.push({ type: 'success', message: `🦞 进度 ${progress}%，还有 ${daysLeft} 天，一切正常！` })
       } else {
         alerts.push({ type: 'success', message: `🦞 进度 ${progress}%，一切正常，我在监控着～` })
       }
@@ -413,7 +419,8 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
   const [generatingInvite, setGeneratingInvite] = useState(false)
 
   const generateInviteUrl = async () => {
-    if (inviteUrl) return inviteUrl // 已生成过，复�?    setGeneratingInvite(true)
+    if (inviteUrl) return inviteUrl // 已生成过，复用
+    setGeneratingInvite(true)
     try {
       const res = await fetch(`/api/tasks/${task.id}/invite`, { method: 'POST' })
       const data = await res.json()
@@ -421,7 +428,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
         setInviteUrl(data.inviteUrl)
         return data.inviteUrl
       } else {
-        alert(data.error || '生成邀请链接失�?)
+        alert(data.error || '生成邀请链接失败')
         return null
       }
     } finally {
@@ -456,7 +463,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
         {/* Top bar: workspace + my agent */}
         <div className="flex items-center justify-between mb-3 text-xs">
           <div className="flex items-center space-x-4 text-slate-500">
-            <span>📁 {task.workspace?.name || '默认工作�?}</span>
+            <span>📁 {task.workspace?.name || '默认工作区'}</span>
             <span>·</span>
             <span>👤 {task.creator?.name || task.creator?.email}</span>
             <span>·</span>
@@ -469,7 +476,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
                 {/* Agent 提醒气泡 */}
                 {alerts.length > 0 && (
                   <div className="flex items-center space-x-2 bg-white px-3 py-2 rounded-2xl shadow-lg border border-slate-200 relative">
-                    {/* 小三角指�?Agent */}
+                    {/* 小三角指向 Agent */}
                     <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[8px] border-l-white" />
                     <div className="absolute -right-[9px] top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[8px] border-l-slate-200" style={{zIndex: -1}} />
                     <div className="flex flex-wrap gap-1.5 max-w-md">
@@ -494,13 +501,13 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
                     <div className="text-sm font-semibold text-slate-800">{myAgent.name}</div>
                     <div className="flex items-center space-x-1">
                       <div className={`w-1.5 h-1.5 rounded-full ${myAgent.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                      <span className="text-xs text-slate-500">{myAgent.status === 'online' ? '守护�? : '离线'}</span>
+                      <span className="text-xs text-slate-500">{myAgent.status === 'online' ? '守护中' : '离线'}</span>
                     </div>
                   </div>
                 </div>
               </div>
             )}
-            {/* 邀请协作�?*/}
+            {/* 邀请协作者 */}
             <div className="relative" data-invite-popup>
               <button
                 onClick={() => { setShowInvite(v => !v); if (!showInvite) generateInviteUrl() }}
@@ -509,27 +516,27 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
                     ? 'bg-blue-100 text-blue-700 border border-blue-200'
                     : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent'
                 }`}
-                title="邀请协作�?
+                title="邀请协作者"
               >
                 <span>👥</span>
-                <span className="text-xs font-medium">邀�?/span>
+                <span className="text-xs font-medium">邀请</span>
               </button>
 
-              {/* 邀请弹�?*/}
+              {/* 邀请弹窗 */}
               {showInvite && (
                 <div className="absolute right-0 top-10 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 z-30">
-                  {/* 小箭�?*/}
+                  {/* 小箭头 */}
                   <div className="absolute -top-2 right-4 w-4 h-4 bg-white border-l border-t border-slate-200 rotate-45" />
 
                   <div className="mb-4">
-                    <h3 className="font-semibold text-slate-900 text-sm mb-1">邀请协作�?/h3>
+                    <h3 className="font-semibold text-slate-900 text-sm mb-1">邀请协作者</h3>
                     <p className="text-xs text-slate-500">7天有效，对方点击后加入工作区即可协作</p>
                   </div>
 
-                  {/* 链接复制�?*/}
+                  {/* 链接复制区 */}
                   <div className="flex items-center space-x-2 mb-4">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-600 truncate font-mono">
-                      {generatingInvite ? '生成�?..' : (inviteUrl || '点击复制生成链接')}
+                      {generatingInvite ? '生成中...' : (inviteUrl || '点击复制生成链接')}
                     </div>
                     <button
                       onClick={handleCopyLink}
@@ -539,16 +546,16 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
                           : 'bg-gradient-to-r from-orange-500 to-rose-500 text-white hover:from-orange-400 hover:to-rose-400'
                       }`}
                     >
-                      {copied ? '�?已复�? : '复制'}
+                      {copied ? '✓ 已复制' : '复制'}
                     </button>
                   </div>
 
-                  {/* 当前协作�?*/}
+                  {/* 当前协作者 */}
                   {(task.steps?.some(s => s.assignee)) && (
                     <div>
-                      <div className="text-xs text-slate-400 mb-2 font-medium">当前协作�?/div>
+                      <div className="text-xs text-slate-400 mb-2 font-medium">当前协作者</div>
                       <div className="flex flex-wrap gap-2">
-                        {/* 去重显示已参与的�?Agent */}
+                        {/* 去重显示已参与的人+Agent */}
                         {Array.from(
                           new Map(
                             task.steps
@@ -590,7 +597,8 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent }: {
               className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"
               title="删除任务"
             >
-              🗑�?            </button>
+              🗑️
+            </button>
           </div>
         </div>
 
@@ -662,7 +670,7 @@ function TeamCard({ task }: { task: Task }) {
         }
       } else {
         agentMap.set(key, {
-          agentName: agent?.name || '未绑�?,
+          agentName: agent?.name || '未绑定',
           humanName: step.assignee.name || '未知',
           status: step.status,
           done: step.status === 'done' ? 1 : 0,
@@ -729,7 +737,7 @@ function StatsCard({ task }: { task: Task }) {
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
       <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center space-x-2">
         <span>⏱️</span>
-        <span>工作�?/span>
+        <span>工作量</span>
       </h3>
       
       <div className="h-3 bg-slate-100 rounded-full overflow-hidden mb-4 flex">
@@ -854,7 +862,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
               disabled={parsing}
               className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-4 py-2 rounded-xl hover:from-orange-400 hover:to-rose-400 disabled:opacity-50 shadow-md shadow-orange-500/20 font-medium"
             >
-              {parsing ? '🤖 拆解�?..' : '🤖 AI 拆解'}
+              {parsing ? '🤖 拆解中...' : '🤖 AI 拆解'}
             </button>
           )}
           <button
@@ -875,7 +883,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
               onClick={() => setNewStepType('task')}
               className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${newStepType === 'task' ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
             >
-              <span>📋</span><span>普通步�?/span>
+              <span>📋</span><span>普通步骤</span>
             </button>
             <button
               onClick={() => setNewStepType('meeting')}
@@ -889,7 +897,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
             type="text"
             value={newStepTitle}
             onChange={(e) => setNewStepTitle(e.target.value)}
-            placeholder={newStepType === 'meeting' ? '会议名称，如：Q2 复盘�? : '步骤标题'}
+            placeholder={newStepType === 'meeting' ? '会议名称，如：Q2 复盘会' : '步骤标题'}
             className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
             autoFocus
           />
@@ -906,7 +914,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
               <textarea
                 value={newStepAgenda}
                 onChange={(e) => setNewStepAgenda(e.target.value)}
-                placeholder="议程（选填�?#10;1. 回顾Q1进展&#10;2. 讨论Q2目标&#10;3. 确定行动�?
+                placeholder="议程（选填）&#10;1. 回顾Q1进展&#10;2. 讨论Q2目标&#10;3. 确定行动项"
                 className="w-full px-4 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white resize-none"
                 rows={3}
               />
@@ -922,7 +930,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
           <div className="flex space-x-2 mt-3">
             <button onClick={addStep} disabled={addingStep || !newStepTitle.trim()}
               className={`px-4 py-2 text-white rounded-xl text-xs font-medium disabled:opacity-50 ${newStepType === 'meeting' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-orange-500 hover:bg-orange-600'}`}>
-              {addingStep ? '添加�?..' : newStepType === 'meeting' ? '📅 添加会议' : '添加步骤'}
+              {addingStep ? '添加中...' : newStepType === 'meeting' ? '📅 添加会议' : '添加步骤'}
             </button>
             <button onClick={() => { setShowAddStep(false); setNewStepTitle(''); setNewStepType('task') }}
               className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-xl">
@@ -952,7 +960,7 @@ function WorkflowPanel({ task, onRefresh, canApprove }: { task: Task; onRefresh:
           <div className="flex flex-col items-center justify-center h-full text-slate-400">
             <div className="text-5xl mb-3">📝</div>
             <div className="text-sm font-medium">暂无步骤</div>
-            <div className="text-xs mt-1">点击"AI 拆解"�?添加步骤"开�?/div>
+            <div className="text-xs mt-1">点击"AI 拆解"或"添加步骤"开始</div>
           </div>
         )}
       </div>
@@ -975,7 +983,7 @@ function StepCard({
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
-  const agentName = step.assignee?.agent?.name || parseJSON(step.assigneeNames)[0] || '未分�?
+  const agentName = step.assignee?.agent?.name || parseJSON(step.assigneeNames)[0] || '未分配'
   const participantList = parseJSON(step.participants)
 
   const loadHistory = async () => {
@@ -1018,7 +1026,7 @@ function StepCard({
                 ? isActive ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-blue-500/30' : 'bg-blue-100 text-blue-600'
                 : isActive ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-orange-500/30' : 'bg-slate-200 text-slate-500'
           }`}>
-            {step.status === 'done' ? '�? : isMeeting ? '📅' : index + 1}
+            {step.status === 'done' ? '✓' : isMeeting ? '📅' : index + 1}
           </div>
           <div>
             <div className="flex items-center space-x-2">
@@ -1051,17 +1059,17 @@ function StepCard({
             </div>
           </div>
         </div>
-        <span className={`text-slate-400 text-sm transition-transform ${expanded ? 'rotate-180' : ''}`}>�?/span>
+        <span className={`text-slate-400 text-sm transition-transform ${expanded ? 'rotate-180' : ''}`}>▼</span>
       </div>
 
       {/* Expanded Content */}
       {expanded && (
         <div className="px-5 pb-5 border-t border-slate-100/50">
 
-          {/* 会议专属信息�?*/}
+          {/* 会议专属信息块 */}
           {isMeeting && (
             <div className="mt-4 space-y-3">
-              {/* 参会�?*/}
+              {/* 参会人 */}
               {participantList.length > 0 && (
                 <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
                   <div className="text-xs text-blue-600 font-medium mb-2">👥 参会人员</div>
@@ -1139,7 +1147,7 @@ function StepCard({
                   <textarea
                     value={rejectReason}
                     onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="请说明打回原�?.."
+                    placeholder="请说明打回原因..."
                     className="w-full px-4 py-3 border border-red-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-red-500/50 bg-red-50/50"
                     rows={2}
                     autoFocus
@@ -1172,14 +1180,14 @@ function StepCard({
                     disabled={submitting}
                     className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl text-sm font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 shadow-lg shadow-emerald-500/20"
                   >
-                    �?通过审核
+                    ✅ 通过审核
                   </button>
                   <button
                     onClick={() => setShowRejectForm(true)}
                     disabled={submitting}
                     className="flex-1 px-4 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-100 disabled:opacity-50 border border-red-200"
                   >
-                    �?打回修改
+                    ❌ 打回修改
                   </button>
                 </div>
               )}
@@ -1191,7 +1199,7 @@ function StepCard({
               {step.agentDurationMs && <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-lg">🤖 {formatDuration(step.agentDurationMs)}</span>}
               {step.humanDurationMs && <span className="bg-purple-50 text-purple-600 px-2 py-1 rounded-lg">👤 {formatDuration(step.humanDurationMs)}</span>}
               {(step.rejectionCount || 0) > 0 && (
-                <span className="bg-red-50 text-red-500 px-2 py-1 rounded-lg">🔄 {step.rejectionCount}次打�?/span>
+                <span className="bg-red-50 text-red-500 px-2 py-1 rounded-lg">🔄 {step.rejectionCount}次打回</span>
               )}
             </div>
           )}
@@ -1219,7 +1227,7 @@ function HistoryItem({ submission, defaultOpen }: { submission: Submission; defa
           </span>
           <span className="text-slate-500">{formatTime(submission.createdAt)}</span>
         </div>
-        <span className={`text-slate-400 text-xs transition-transform ${open ? 'rotate-180' : ''}`}>�?/span>
+        <span className={`text-slate-400 text-xs transition-transform ${open ? 'rotate-180' : ''}`}>▼</span>
       </div>
       {open && (
         <div className="px-4 py-3 text-sm">
@@ -1304,7 +1312,7 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
             disabled={loading || !title.trim()}
             className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl hover:from-orange-400 hover:to-rose-400 disabled:opacity-50 font-semibold shadow-lg shadow-orange-500/25"
           >
-            {loading ? '创建�?..' : '创建任务'}
+            {loading ? '创建中...' : '创建任务'}
           </button>
         </div>
       </div>
@@ -1324,7 +1332,8 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         onClick={onCreate}
         className="px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-2xl hover:from-orange-400 hover:to-rose-400 font-semibold shadow-xl shadow-orange-500/30 text-lg"
       >
-        + 创建第一个任�?      </button>
+        + 创建第一个任务
+      </button>
     </div>
   )
 }
@@ -1345,7 +1354,8 @@ export default function HomePage() {
   const [agentChecked, setAgentChecked] = useState(false)
   const [showPairingModal, setShowPairingModal] = useState(false)
 
-  // 未登录由下方 LandingPage 处理，不再强制跳�?
+  // 未登录由下方 LandingPage 处理，不再强制跳转
+
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch('/api/tasks')
@@ -1399,7 +1409,7 @@ export default function HomePage() {
   }
 
   const handleDelete = async () => {
-    if (!selectedTask || !confirm('确定删除�?)) return
+    if (!selectedTask || !confirm('确定删除？')) return
     const res = await fetch(`/api/tasks/${selectedTask.id}`, { method: 'DELETE' })
     if (res.ok) {
       setSelectedId(null)
@@ -1413,13 +1423,13 @@ export default function HomePage() {
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
         <div className="text-center">
           <div className="text-5xl mb-4 animate-bounce">🦞</div>
-          <div className="text-white">加载�?..</div>
+          <div className="text-white">加载中...</div>
         </div>
       </div>
     )
   }
 
-  // 未登�?�?显示营销首页
+  // 未登录 → 显示营销首页
   if (status === 'unauthenticated') {
     return <LandingPage />
   }
@@ -1429,7 +1439,7 @@ export default function HomePage() {
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
         <div className="text-center">
           <div className="text-5xl mb-4 animate-bounce">🦞</div>
-          <div className="text-white">加载�?..</div>
+          <div className="text-white">加载中...</div>
         </div>
       </div>
     )
@@ -1437,32 +1447,27 @@ export default function HomePage() {
 
   return (
     <div className="h-screen flex flex-col">
-      {/* �?Agent 引导 Banner */}
+      {/* 无 Agent 引导 Banner */}
       {agentChecked && !myAgent && (
         <div className="bg-gradient-to-r from-orange-500 to-rose-500 text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
             <span className="text-xl">🤖</span>
             <div>
-              <span className="font-semibold">还没有配对的 Agent�?/span>
-              <span className="text-orange-100 ml-2 text-sm">配对一�?Agent，让它帮你自动完成任务步�?/span>
+              <span className="font-semibold">还没有配对的 Agent！</span>
+              <span className="text-orange-100 ml-2 text-sm">配对一个 Agent，让它帮你自动完成任务步骤</span>
             </div>
           </div>
           <button
             onClick={() => setShowPairingModal(true)}
             className="bg-white text-orange-600 font-semibold px-4 py-2 rounded-xl text-sm hover:bg-orange-50 transition-colors flex items-center space-x-2 flex-shrink-0"
           >
-            <span>�?/span>
-            <span>输入配对�?/span>
+            <span>⊕</span>
+            <span>输入配对码</span>
           </button>
         </div>
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        {process.env.NODE_ENV === 'development' && (
-          <div className="fixed bottom-2 left-2 bg-black/80 text-green-400 text-xs px-2 py-1 rounded z-50 font-mono">
-            uid: {session?.user?.id || '�?空！需要重新登�?}
-          </div>
-        )}
         <TaskList
           tasks={tasks}
           selectedId={selectedId}
