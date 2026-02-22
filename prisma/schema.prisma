@@ -62,6 +62,9 @@ model Agent {
   userId      String?   @unique      // 🆕 改为可选
   user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  // 是否是用户的主Agent（总指挥）
+  isMainAgent     Boolean  @default(false)
+
   // 🆕 Agent 独立能力
   capabilities    String?  // JSON: ["coding", "writing", "analysis"]
   workHistory     String?  // JSON: 工作历史统计

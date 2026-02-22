@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
-// GET /api/agents/team — 获取当前用户工作区的所有 Agent
+// GET /api/agents/team — 获取司令官 + 主Agent + 子Agent们
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   try {
     // 查找当前用户
     const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email }
+      where: { email: session.user.email },
+      include: { agent: true }
     })
     if (!currentUser) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 })
@@ -26,81 +27,100 @@ export async function GET(req: NextRequest) {
     })
     const workspaceIds = memberships.map(m => m.workspaceId)
 
-    if (workspaceIds.length === 0) {
-      return NextResponse.json({ agents: [] })
+    // === Commander（当前用户信息） ===
+    const commander = {
+      id: currentUser.id,
+      name: currentUser.name,
+      email: currentUser.email,
+      avatar: currentUser.avatar,
+      createdAt: currentUser.createdAt,
     }
 
-    // 找到这些工作区的所有任务里出现过的 assigneeId
-    const steps = await prisma.taskStep.findMany({
-      where: {
-        assigneeId: { not: null },
-        task: { workspaceId: { in: workspaceIds } }
-      },
-      select: { assigneeId: true },
-      distinct: ['assigneeId']
-    })
-
-    const assigneeIds = steps
-      .map(s => s.assigneeId)
-      .filter((id): id is string => id !== null)
-
-    // 合并当前用户自己（如果还没有步骤也要显示）
-    if (!assigneeIds.includes(currentUser.id)) {
-      assigneeIds.push(currentUser.id)
-    }
-
-    // 批量查询这些用户及其 Agent
-    const users = await prisma.user.findMany({
-      where: { id: { in: assigneeIds } },
-      include: {
-        agent: true
+    // === 主 Agent（当前用户配对的 Agent） ===
+    let mainAgent = null
+    if (currentUser.agent) {
+      const agent = currentUser.agent
+      const doneSteps = await prisma.taskStep.count({
+        where: { assigneeId: currentUser.id, status: 'done' }
+      })
+      const pendingSteps = await prisma.taskStep.count({
+        where: {
+          assigneeId: currentUser.id,
+          status: { in: ['pending', 'in_progress', 'waiting_approval'] }
+        }
+      })
+      mainAgent = {
+        id: agent.id,
+        name: agent.name,
+        personality: agent.personality,
+        avatar: agent.avatar,
+        status: agent.status,
+        capabilities: agent.capabilities,
+        reputation: agent.reputation,
+        claimedAt: agent.claimedAt,
+        isMainAgent: true,
+        stats: { doneSteps, pendingSteps }
       }
-    })
+    }
 
-    // 对每个用户查询简单 stats
-    const result = await Promise.all(
-      users
-        .filter(u => u.agent !== null)  // 只返回有 Agent 的用户
-        .map(async (u) => {
-          const agentUser = u
+    // === 子 Agent们（工作区内其他 Agent） ===
+    let subAgents: object[] = []
 
-          const doneSteps = await prisma.taskStep.count({
-            where: { assigneeId: agentUser.id, status: 'done' }
-          })
+    if (workspaceIds.length > 0) {
+      // 找到工作区内有步骤的用户（不是自己）
+      const steps = await prisma.taskStep.findMany({
+        where: {
+          assigneeId: { not: null },
+          task: { workspaceId: { in: workspaceIds } }
+        },
+        select: { assigneeId: true },
+        distinct: ['assigneeId']
+      })
 
-          const pendingSteps = await prisma.taskStep.count({
-            where: {
-              assigneeId: agentUser.id,
-              status: { in: ['pending', 'in_progress', 'waiting_approval'] }
-            }
-          })
+      const assigneeIds = steps
+        .map(s => s.assigneeId)
+        .filter((id): id is string => id !== null && id !== currentUser.id)
 
-          return {
-            agent: {
-              id: agentUser.agent!.id,
-              name: agentUser.agent!.name,
-              personality: agentUser.agent!.personality,
-              avatar: agentUser.agent!.avatar,
-              status: agentUser.agent!.status,
-              capabilities: agentUser.agent!.capabilities,
-              reputation: agentUser.agent!.reputation,
-              claimedAt: agentUser.agent!.claimedAt,
-            },
-            user: {
-              id: agentUser.id,
-              name: agentUser.name,
-              email: agentUser.email,
-            },
-            stats: {
-              doneSteps,
-              pendingSteps,
-            },
-            isCurrentUser: agentUser.id === currentUser.id,
-          }
+      if (assigneeIds.length > 0) {
+        const users = await prisma.user.findMany({
+          where: { id: { in: assigneeIds } },
+          include: { agent: true }
         })
-    )
 
-    return NextResponse.json({ agents: result })
+        subAgents = await Promise.all(
+          users
+            .filter(u => u.agent !== null)
+            .map(async (u) => {
+              const doneSteps = await prisma.taskStep.count({
+                where: { assigneeId: u.id, status: 'done' }
+              })
+              const pendingSteps = await prisma.taskStep.count({
+                where: {
+                  assigneeId: u.id,
+                  status: { in: ['pending', 'in_progress', 'waiting_approval'] }
+                }
+              })
+              return {
+                id: u.agent!.id,
+                name: u.agent!.name,
+                personality: u.agent!.personality,
+                avatar: u.agent!.avatar,
+                status: u.agent!.status,
+                capabilities: u.agent!.capabilities,
+                reputation: u.agent!.reputation,
+                claimedAt: u.agent!.claimedAt,
+                isMainAgent: false,
+                userId: u.id,
+                userName: u.name,
+                userEmail: u.email,
+                stats: { doneSteps, pendingSteps }
+              }
+            })
+        )
+      }
+    }
+
+    return NextResponse.json({ commander, mainAgent, subAgents })
   } catch (error) {
     console.error('获取战队 Agent 失败:', error)
     return NextResponse.json({ error: '服务器错误' }, { status: 500 })

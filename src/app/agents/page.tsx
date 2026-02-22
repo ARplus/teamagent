@@ -7,27 +7,37 @@ import { Navbar } from '@/components/Navbar'
 
 // ============ Types ============
 
-interface AgentEntry {
-  agent: {
-    id: string
-    name: string
-    personality: string | null
-    avatar: string | null
-    status: string
-    capabilities: string | null
-    reputation: number | null
-    claimedAt: string | null
-  }
-  user: {
-    id: string
-    name: string | null
-    email: string
-  }
+interface Commander {
+  id: string
+  name: string | null
+  email: string
+  avatar: string | null
+  createdAt: string
+}
+
+interface AgentData {
+  id: string
+  name: string
+  personality: string | null
+  avatar: string | null
+  status: string
+  capabilities: string | null
+  reputation: number | null
+  claimedAt: string | null
+  isMainAgent: boolean
+  userId?: string
+  userName?: string | null
+  userEmail?: string
   stats: {
     doneSteps: number
     pendingSteps: number
   }
-  isCurrentUser: boolean
+}
+
+interface TeamData {
+  commander: Commander
+  mainAgent: AgentData | null
+  subAgents: AgentData[]
 }
 
 // ============ Utils ============
@@ -42,132 +52,236 @@ function parseCapabilities(cap: string | null): string[] {
   }
 }
 
-const statusMap: Record<string, { dot: string; label: string; color: string }> = {
-  online:  { dot: 'bg-emerald-500', label: '在线',   color: 'text-emerald-600' },
-  working: { dot: 'bg-blue-500',    label: '工作中', color: 'text-blue-600'    },
-  waiting: { dot: 'bg-amber-500',   label: '等待中', color: 'text-amber-600'   },
-  offline: { dot: 'bg-slate-400',   label: '离线',   color: 'text-slate-500'   },
-}
-
-// 渐变色池（按 agent.id 的 hash 选）
-const gradients = [
-  'from-orange-500 via-rose-500 to-pink-500',
-  'from-violet-500 via-purple-500 to-indigo-500',
-  'from-emerald-500 via-teal-500 to-cyan-500',
-  'from-blue-500 via-indigo-500 to-violet-500',
-  'from-amber-500 via-orange-500 to-red-500',
-  'from-pink-500 via-rose-500 to-red-500',
-  'from-teal-500 via-cyan-500 to-sky-500',
+const avatarColors = [
+  'from-orange-400 to-rose-500',
+  'from-blue-400 to-purple-500',
+  'from-green-400 to-teal-500',
+  'from-yellow-400 to-orange-500',
+  'from-pink-400 to-rose-500',
 ]
 
-function pickGradient(id: string): string {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff
-  }
-  return gradients[Math.abs(hash) % gradients.length]
+function getAvatarColor(name: string): string {
+  const idx = name.charCodeAt(0) % avatarColors.length
+  return avatarColors[idx]
 }
 
-// ============ Agent Card ============
+function formatJoinDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`
+}
 
-function AgentCard({ entry, onClick }: { entry: AgentEntry; onClick: () => void }) {
-  const { agent, user, stats, isCurrentUser } = entry
-  const capabilities = parseCapabilities(agent.capabilities)
-  const statusInfo = statusMap[agent.status] ?? statusMap.offline
-  const gradient = pickGradient(agent.id)
+function getStatusInfo(status: string): { dot: string; label: string } {
+  const map: Record<string, { dot: string; label: string }> = {
+    online:  { dot: 'bg-emerald-400', label: '在线' },
+    working: { dot: 'bg-blue-400',    label: '工作中' },
+    waiting: { dot: 'bg-amber-400',   label: '等待中' },
+    offline: { dot: 'bg-slate-400',   label: '离线' },
+  }
+  return map[status] ?? map.offline
+}
+
+// ============ Commander Card ============
+
+function CommanderCard({ commander }: { commander: Commander }) {
+  const initial = (commander.name || commander.email).charAt(0).toUpperCase()
 
   return (
-    <div
-      onClick={onClick}
-      className="group relative bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden cursor-pointer hover:shadow-xl hover:shadow-orange-500/10 hover:-translate-y-1 transition-all duration-300"
-    >
-      {/* 顶部渐变头像区 */}
-      <div className={`relative h-28 bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-        {/* 装饰圆 */}
-        <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full" />
-        <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-white/10 rounded-full" />
+    <div className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 overflow-hidden">
+      {/* 背景装饰 */}
+      <div className="absolute -top-10 -right-10 w-48 h-48 bg-orange-500/10 rounded-full blur-2xl" />
+      <div className="absolute -bottom-8 -left-8 w-40 h-40 bg-rose-500/10 rounded-full blur-xl" />
 
-        {agent.avatar ? (
-          <img
-            src={agent.avatar}
-            alt={agent.name}
-            className="relative w-20 h-20 rounded-2xl object-cover shadow-xl border-4 border-white/30"
-          />
-        ) : (
-          <div className="relative w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-3xl font-bold text-white shadow-xl border-4 border-white/30">
-            {agent.name.charAt(0)}
-          </div>
-        )}
-
-        {/* 自己的标签 */}
-        {isCurrentUser && (
-          <div className="absolute top-3 left-3 bg-white/20 backdrop-blur text-white text-xs px-2 py-0.5 rounded-full font-medium border border-white/30">
-            我的
-          </div>
-        )}
+      {/* 右上角标题 */}
+      <div className="absolute top-4 right-5 text-orange-400 text-xs font-semibold tracking-widest uppercase opacity-80">
+        🌊 我的数字军团
       </div>
 
-      {/* 内容区 */}
-      <div className="p-5">
-        {/* 名字 + 状态灯 */}
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-lg font-bold text-slate-900 truncate">{agent.name}</h3>
-          <div className="flex items-center space-x-1.5 flex-shrink-0 ml-2">
-            <span className={`w-2 h-2 rounded-full ${statusInfo.dot}`} />
-            <span className={`text-xs font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
-          </div>
+      <div className="relative flex items-center space-x-5">
+        {/* 头像 */}
+        <div className="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-2xl font-bold text-white shadow-xl shadow-orange-500/30">
+          {commander.avatar ? (
+            <img src={commander.avatar} alt="" className="w-full h-full rounded-2xl object-cover" />
+          ) : (
+            initial
+          )}
         </div>
 
-        {/* 用户名 */}
-        <div className="text-xs text-slate-400 mb-3 truncate">
-          {user.name || user.email}
+        {/* 信息 */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center space-x-3 mb-1.5">
+            <h2 className="text-white text-xl font-bold truncate">
+              {commander.name || commander.email.split('@')[0]}
+            </h2>
+            <span className="flex-shrink-0 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 text-xs px-2.5 py-0.5 rounded-full font-semibold">
+              👑 总司令
+            </span>
+          </div>
+          <p className="text-white/50 text-sm">
+            数字军团创始人 · 自 {formatJoinDate(commander.createdAt)} 起
+          </p>
         </div>
+      </div>
+    </div>
+  )
+}
 
-        {/* 能力标签 */}
-        {capabilities.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {capabilities.slice(0, 4).map((cap, i) => (
-              <span
-                key={i}
-                className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-lg font-medium"
-              >
-                {cap}
-              </span>
-            ))}
-            {capabilities.length > 4 && (
-              <span className="bg-slate-100 text-slate-400 text-xs px-2 py-0.5 rounded-lg">
-                +{capabilities.length - 4}
-              </span>
-            )}
-          </div>
-        )}
+// ============ Main Agent Card ============
 
-        {/* 步骤统计 */}
-        <div className="flex items-center space-x-4 pt-3 border-t border-slate-50">
-          <div className="flex items-center space-x-1.5">
-            <span className="text-base">✅</span>
-            <span className="text-sm font-semibold text-slate-800">{stats.doneSteps}</span>
-            <span className="text-xs text-slate-400">已完成</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="text-base">🔄</span>
-            <span className="text-sm font-semibold text-slate-800">{stats.pendingSteps}</span>
-            <span className="text-xs text-slate-400">进行中</span>
-          </div>
-          {agent.reputation !== null && agent.reputation !== undefined && (
-            <div className="flex items-center space-x-1 ml-auto">
-              <span className="text-amber-400 text-sm">★</span>
-              <span className="text-xs font-medium text-slate-600">{(agent.reputation ?? 0).toFixed(1)}</span>
-            </div>
+function MainAgentCard({ agent }: { agent: AgentData }) {
+  const capabilities = parseCapabilities(agent.capabilities)
+  const statusInfo = getStatusInfo(agent.status)
+  const initial = agent.name.charAt(0).toUpperCase()
+  const reputation = agent.reputation ?? 0
+  const reputationStars = Math.round(reputation)
+
+  return (
+    <div className="relative bg-gradient-to-br from-orange-500 to-rose-500 rounded-2xl p-6 overflow-hidden shadow-2xl shadow-orange-500/30">
+      {/* 装饰圆 */}
+      <div className="absolute -top-12 -right-12 w-52 h-52 bg-white/10 rounded-full" />
+      <div className="absolute -bottom-8 -left-8 w-36 h-36 bg-white/5 rounded-full" />
+      <div className="absolute top-1/2 right-8 w-24 h-24 bg-white/5 rounded-full" />
+
+      {/* 总指挥 badge */}
+      <div className="relative flex items-center justify-between mb-5">
+        <span className="bg-white/20 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full font-semibold border border-white/20">
+          ⚡ 总指挥
+        </span>
+        {/* 信誉星 */}
+        <div className="flex items-center space-x-1">
+          {Array.from({ length: Math.max(1, reputationStars) }).map((_, i) => (
+            <span key={i} className="text-yellow-300 text-sm">⭐</span>
+          ))}
+          {reputation > 0 && (
+            <span className="text-white/70 text-xs ml-1">{reputation.toFixed(1)}</span>
           )}
         </div>
       </div>
 
-      {/* Hover 箭头 */}
-      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="w-7 h-7 bg-white/80 backdrop-blur rounded-full flex items-center justify-center shadow text-slate-600 text-sm">
-          →
+      {/* 头像 + 状态 */}
+      <div className="relative flex items-center space-x-4 mb-5">
+        <div className="flex-shrink-0 w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-4xl font-bold text-white shadow-xl border-2 border-white/30">
+          {agent.avatar ? (
+            <img src={agent.avatar} alt="" className="w-full h-full rounded-2xl object-cover" />
+          ) : (
+            initial
+          )}
         </div>
+        <div>
+          <h3 className="text-white text-2xl font-bold mb-1">{agent.name}</h3>
+          <div className="flex items-center space-x-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${statusInfo.dot} shadow-lg`} />
+            <span className="text-white/80 text-sm font-medium">{statusInfo.label}</span>
+          </div>
+          {agent.personality && (
+            <p className="text-white/60 text-xs mt-1 truncate max-w-[200px]">{agent.personality}</p>
+          )}
+        </div>
+      </div>
+
+      {/* 能力标签 */}
+      {capabilities.length > 0 && (
+        <div className="relative flex flex-wrap gap-2 mb-5">
+          {capabilities.slice(0, 5).map((cap, i) => (
+            <span
+              key={i}
+              className="bg-white/20 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full font-medium border border-white/20"
+            >
+              {cap}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* 战绩 */}
+      <div className="relative flex items-center space-x-6 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3">
+        <div className="text-center">
+          <div className="text-white text-2xl font-bold">{agent.stats.doneSteps}</div>
+          <div className="text-white/60 text-xs mt-0.5">步骤完成</div>
+        </div>
+        <div className="w-px h-8 bg-white/20" />
+        <div className="text-center">
+          <div className="text-white text-2xl font-bold">{agent.stats.pendingSteps}</div>
+          <div className="text-white/60 text-xs mt-0.5">进行中</div>
+        </div>
+        {agent.claimedAt && (
+          <>
+            <div className="w-px h-8 bg-white/20" />
+            <div className="text-center">
+              <div className="text-white text-xs font-semibold">{formatJoinDate(agent.claimedAt)}</div>
+              <div className="text-white/60 text-xs mt-0.5">入伍时间</div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============ Sub Agent Card ============
+
+function SubAgentCard({ agent, onClick }: { agent: AgentData; onClick: () => void }) {
+  const capabilities = parseCapabilities(agent.capabilities)
+  const statusInfo = getStatusInfo(agent.status)
+  const initial = agent.name.charAt(0).toUpperCase()
+  const avatarGrad = getAvatarColor(agent.name)
+
+  return (
+    <div
+      onClick={onClick}
+      className="group bg-white rounded-2xl shadow-sm border border-slate-100 p-4 cursor-pointer hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5 transition-all duration-200"
+    >
+      {/* 头像 + 名字 + 状态 */}
+      <div className="flex items-center space-x-3 mb-3">
+        <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-xl font-bold text-white shadow-md`}>
+          {agent.avatar ? (
+            <img src={agent.avatar} alt="" className="w-full h-full rounded-xl object-cover" />
+          ) : (
+            initial
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center space-x-2">
+            <h4 className="text-slate-900 font-bold text-sm truncate">{agent.name}</h4>
+            <span className={`flex-shrink-0 w-2 h-2 rounded-full ${statusInfo.dot}`} />
+          </div>
+          {agent.userName && (
+            <p className="text-slate-400 text-xs truncate mt-0.5">{agent.userName}</p>
+          )}
+        </div>
+      </div>
+
+      {/* 能力标签（1-2个） */}
+      {capabilities.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {capabilities.slice(0, 2).map((cap, i) => (
+            <span
+              key={i}
+              className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-lg font-medium"
+            >
+              {cap}
+            </span>
+          ))}
+          {capabilities.length > 2 && (
+            <span className="bg-slate-100 text-slate-400 text-xs px-2 py-0.5 rounded-lg">
+              +{capabilities.length - 2}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* 底部：完成步骤 */}
+      <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+        <div className="flex items-center space-x-1.5">
+          <span className="text-sm">✅</span>
+          <span className="text-slate-700 text-sm font-semibold">{agent.stats.doneSteps}</span>
+          <span className="text-slate-400 text-xs">步完成</span>
+        </div>
+        {agent.stats.pendingSteps > 0 && (
+          <div className="flex items-center space-x-1">
+            <span className="text-xs">🔄</span>
+            <span className="text-slate-500 text-xs">{agent.stats.pendingSteps}</span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -177,20 +291,19 @@ function AgentCard({ entry, onClick }: { entry: AgentEntry; onClick: () => void 
 
 function EmptyState({ onPair }: { onPair: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-32">
-      <div className="w-28 h-28 bg-gradient-to-br from-slate-200 to-slate-300 rounded-3xl flex items-center justify-center text-5xl mb-6 shadow-inner">
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="w-24 h-24 bg-gradient-to-br from-slate-100 to-slate-200 rounded-3xl flex items-center justify-center text-4xl mb-5 shadow-inner">
         🌊
       </div>
-      <h2 className="text-2xl font-bold text-slate-800 mb-2">战队还是空的</h2>
-      <p className="text-slate-500 mb-8 text-center max-w-sm">
-        工作区里还没有 Agent 出现过。先去配对一个，让它开始执行任务吧！
+      <h2 className="text-xl font-bold text-slate-800 mb-2">还没有战队成员</h2>
+      <p className="text-slate-400 text-sm mb-6 max-w-xs">
+        配对你的第一个 Agent，让它加入你的数字军团！
       </p>
       <button
         onClick={onPair}
-        className="flex items-center space-x-2 px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-2xl font-semibold text-lg shadow-xl shadow-orange-500/30 hover:from-orange-400 hover:to-rose-400 transition-all"
+        className="px-6 py-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold shadow-lg shadow-orange-500/30 hover:from-orange-400 hover:to-rose-400 transition-all"
       >
-        <span>⊕</span>
-        <span>去配对 Agent</span>
+        ⊕ 配对我的第一个 Agent
       </button>
     </div>
   )
@@ -201,7 +314,7 @@ function EmptyState({ onPair }: { onPair: () => void }) {
 export default function AgentsTeamPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [agents, setAgents] = useState<AgentEntry[]>([])
+  const [team, setTeam] = useState<TeamData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -213,7 +326,7 @@ export default function AgentsTeamPage() {
       fetch('/api/agents/team')
         .then(r => r.json())
         .then(data => {
-          setAgents(data.agents ?? [])
+          setTeam(data)
         })
         .catch(console.error)
         .finally(() => setLoading(false))
@@ -222,49 +335,72 @@ export default function AgentsTeamPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white">
+      <div className="h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="text-5xl mb-4 animate-bounce">🌊</div>
-          <div className="text-slate-500 text-sm">加载战队中...</div>
+          <div className="text-slate-400 text-sm font-medium">数字军团集结中...</div>
         </div>
       </div>
     )
   }
 
+  const hasNoAgents = !team?.mainAgent && (!team?.subAgents || team.subAgents.length === 0)
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
 
-        {/* 标题区 */}
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">
-            🌊 我的战队
-          </h1>
-          <p className="text-slate-500 text-lg">深海无声，代码不停</p>
-          {agents.length > 0 && (
-            <div className="mt-3 text-sm text-slate-400">
-              共 {agents.length} 位 Agent 战友
-            </div>
-          )}
-        </div>
-
-        {/* 空状态 */}
-        {agents.length === 0 && (
-          <EmptyState onPair={() => router.push('/agent')} />
+        {/* ① 司令官卡 */}
+        {team?.commander && (
+          <CommanderCard commander={team.commander} />
         )}
 
-        {/* Agent 卡片 Grid */}
-        {agents.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {agents.map(entry => (
-              <AgentCard
-                key={entry.agent.id}
-                entry={entry}
-                onClick={() => router.push(`/agent/${entry.agent.id}`)}
-              />
-            ))}
+        {/* 空状态 */}
+        {hasNoAgents && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
+            <EmptyState onPair={() => router.push('/agent')} />
+          </div>
+        )}
+
+        {/* ② 主 Agent 大卡 */}
+        {team?.mainAgent && (
+          <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => router.push(`/agent/${team.mainAgent!.id}`)}
+            >
+              <MainAgentCard agent={team.mainAgent} />
+            </div>
+          </div>
+        )}
+
+        {/* ③ 子 Agent 战队 */}
+        {team?.subAgents && team.subAgents.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-slate-800 font-bold text-lg">🌊 战队成员</h2>
+              <span className="text-slate-400 text-sm">{team.subAgents.length} 位</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {team.subAgents.map(agent => (
+                <SubAgentCard
+                  key={agent.id}
+                  agent={agent}
+                  onClick={() => router.push(`/agent/${agent.id}`)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ⑤ 底部分享提示 */}
+        {!hasNoAgents && (
+          <div className="text-center pt-4 pb-8">
+            <p className="text-slate-400 text-sm">
+              截图分享你的数字军团 🌊
+            </p>
           </div>
         )}
 
