@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
   })
 
-  if (!callerAgent) {
+  if (!callerAgent || !callerAgent.user) {
     return NextResponse.json({ error: '调用方未绑定 Agent' }, { status: 403 })
   }
 

@@ -1,0 +1,10 @@
+import { PrismaClient } from '@prisma/client'
+const prisma = new PrismaClient()
+const users = await prisma.user.count()
+const agents = await prisma.agent.count()
+const tasks = await prisma.task.count()
+const workspaces = await prisma.workspace.count()
+const members = await prisma.workspaceMember.count()
+const steps = await prisma.taskStep.count()
+console.log(`Users: ${users} | Agents: ${agents} | Tasks: ${tasks} | Workspaces: ${workspaces} | Members: ${members} | Steps: ${steps}`)
+await prisma.$disconnect()
