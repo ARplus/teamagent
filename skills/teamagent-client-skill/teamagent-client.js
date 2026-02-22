@@ -359,7 +359,10 @@ if (require.main === module) {
   const cliHub = hubIdx !== -1 ? rawArgs[hubIdx + 1] : null
   // 过滤掉 --token / --hub 及其值，剩余作为命令参数
   const args = rawArgs.filter((_, i) =>
-    !(i === tokenIdx || i === tokenIdx + 1 || i === hubIdx || i === hubIdx + 1)
+    !(
+      (tokenIdx !== -1 && (i === tokenIdx || i === tokenIdx + 1)) ||
+      (hubIdx !== -1 && (i === hubIdx || i === hubIdx + 1))
+    )
   )
   const client = new TeamAgentClient(
     cliToken || cliHub
