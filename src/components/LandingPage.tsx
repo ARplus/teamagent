@@ -103,7 +103,6 @@ function OnboardingSection() {
               </ol>
               <a
                 href="/build-agent"
-                target="_blank"
                 className="mt-4 w-full flex items-center justify-center space-x-2 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 transition-all"
               >
                 <span>🤖</span>
@@ -271,7 +270,7 @@ export default function LandingPage() {
             <Link href="/login" className="text-slate-400 hover:text-white transition-colors duration-200 text-sm font-medium">
               登录
             </Link>
-            <Link href="/register"
+            <Link href="/build-agent"
               className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105">
               免费开始
             </Link>
