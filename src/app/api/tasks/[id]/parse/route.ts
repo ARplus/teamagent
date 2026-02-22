@@ -201,6 +201,8 @@ ${task.description}
           order, taskId, assigneeId,
           assigneeNames: JSON.stringify(assignees),
           inputs: JSON.stringify(inputs), outputs: JSON.stringify(outputs), skills: JSON.stringify(skills),
+          requiresApproval: step.requiresApproval !== false, // 默认 true，千问明确返回 false 才自动通过
+          parallelGroup: step.parallelGroup || null,
           status: 'pending', agentStatus: assigneeId ? 'pending' : null,
           stepType: step.stepType || 'task',
           agenda: step.agenda || null,
@@ -217,9 +219,21 @@ ${task.description}
     if (involvedUserIds.size > 0) {
       const userIds = Array.from(involvedUserIds)
       sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
-      const firstStep = createdSteps[0]
-      if (firstStep?.assigneeId) {
-        sendToUsers([firstStep.assigneeId], { type: 'step:ready', taskId: task.id, stepId: firstStep.id, title: firstStep.title })
+
+      // 通知所有可以立刻开始的步骤（第一顺序步骤 或 各并行组第一步）
+      const sorted = [...createdSteps].sort((a, b) => a.order - b.order)
+      const seenGroups = new Set<string>()
+      for (const s of sorted) {
+        const pg = (s as any).parallelGroup as string | null
+        if (!pg) {
+          // 顺序步骤：只通知第一个，然后停止
+          if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
+          break
+        } else if (!seenGroups.has(pg)) {
+          // 并行组：每组通知第一个
+          seenGroups.add(pg)
+          if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
+        }
       }
     }
 
