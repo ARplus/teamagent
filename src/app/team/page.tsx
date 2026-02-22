@@ -558,11 +558,11 @@ export default function TeamPage() {
       </div>
 
       {/* ── Main Content: Left + Right ── */}
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex gap-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col lg:flex-row gap-6">
 
           {/* ── LEFT: Main Agent + Links ── */}
-          <div className="w-72 flex-shrink-0 space-y-4">
+          <div className="lg:w-72 flex-shrink-0 space-y-4">
             {/* Main Agent card */}
             {mainAgent
               ? <a href="/agent"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>

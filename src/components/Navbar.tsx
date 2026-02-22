@@ -13,7 +13,7 @@ const agentStatusConfig: Record<string, { label: string; color: string; bgColor:
   waiting: { label: '等待中', color: 'text-yellow-700', bgColor: 'bg-yellow-50', icon: '🟡' },
   offline: { label: '离线', color: 'text-gray-500', bgColor: 'bg-gray-100', icon: '⚫' },
   error: { label: '出错了', color: 'text-red-700', bgColor: 'bg-red-50', icon: '🔴' },
-  active: { label: '在线', color: 'text-green-700', bgColor: 'bg-green-50', icon: '🟢' } // 默认
+  active: { label: '在线', color: 'text-green-700', bgColor: 'bg-green-50', icon: '🟢' }
 }
 
 export function Navbar() {
@@ -21,12 +21,11 @@ export function Navbar() {
   const [agentStatus, setAgentStatus] = useState<string>('offline')
   const [agentName, setAgentName] = useState<string>('Lobster')
   const [showPairingModal, setShowPairingModal] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // 获取 Agent 状态
   useEffect(() => {
     if (session) {
       fetchAgentStatus()
-      // 每 10 秒刷新一次状态
       const interval = setInterval(fetchAgentStatus, 10000)
       return () => clearInterval(interval)
     }
@@ -49,18 +48,19 @@ export function Navbar() {
 
   return (
     <>
-    <nav className="bg-white border-b border-gray-200 px-6 py-4">
+    <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-8">
-          <Link href="/" className="flex items-center space-x-3">
-            <span className="text-2xl">🤝</span>
-            <h1 className="text-xl font-bold text-gray-900">TeamAgent</h1>
-            <span className="text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white px-2 py-0.5 rounded-full">Beta</span>
+        {/* Logo + Desktop Nav */}
+        <div className="flex items-center space-x-4 sm:space-x-8 min-w-0">
+          <Link href="/" className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+            <span className="text-xl sm:text-2xl">🤝</span>
+            <h1 className="text-base sm:text-xl font-bold text-gray-900">TeamAgent</h1>
+            <span className="text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white px-2 py-0.5 rounded-full hidden sm:inline">Beta</span>
           </Link>
 
-          {/* 导航链接 */}
+          {/* 桌面端导航链接 */}
           {session && (
-            <div className="flex items-center space-x-6">
+            <div className="hidden md:flex items-center space-x-6">
               <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
                 📋 看板
               </Link>
@@ -78,10 +78,11 @@ export function Navbar() {
           )}
         </div>
 
-        <div className="flex items-center space-x-4">
-          {/* Agent 状态 - 真实状态！ */}
+        {/* 右侧操作区 */}
+        <div className="flex items-center space-x-2 sm:space-x-4">
+          {/* Agent 状态 - 桌面端显示完整，移动端简化 */}
           {session && (
-            <div className={`flex items-center space-x-2 ${statusInfo.bgColor} px-3 py-1.5 rounded-full`}>
+            <div className={`hidden sm:flex items-center space-x-2 ${statusInfo.bgColor} px-3 py-1.5 rounded-full`}>
               <span className="text-lg">🦞</span>
               <span className={`text-sm font-medium ${statusInfo.color}`}>
                 {agentName} {statusInfo.label}
@@ -89,12 +90,19 @@ export function Navbar() {
               <span className="text-sm">{statusInfo.icon}</span>
             </div>
           )}
+          {/* 移动端 Agent 状态简化版 */}
+          {session && (
+            <div className={`sm:hidden flex items-center space-x-1 ${statusInfo.bgColor} px-2 py-1 rounded-full`}>
+              <span className="text-base">🦞</span>
+              <span className="text-xs">{statusInfo.icon}</span>
+            </div>
+          )}
 
-          {/* 配对 Agent 按钮 */}
+          {/* 配对 Agent 按钮 - 桌面端显示 */}
           {session && (
             <button
               onClick={() => setShowPairingModal(true)}
-              className="flex items-center space-x-1.5 text-sm text-slate-600 hover:text-orange-600 border border-slate-200 hover:border-orange-300 px-3 py-1.5 rounded-xl transition-colors hover:bg-orange-50"
+              className="hidden sm:flex items-center space-x-1.5 text-sm text-slate-600 hover:text-orange-600 border border-slate-200 hover:border-orange-300 px-3 py-1.5 rounded-xl transition-colors hover:bg-orange-50"
               title="配对新 Agent"
             >
               <span>⊕</span>
@@ -105,16 +113,16 @@ export function Navbar() {
           {/* 通知铃铛 */}
           {session && <NotificationBell />}
 
-          {/* 用户信息 */}
+          {/* 用户信息 - 桌面端 */}
           {status === 'loading' ? (
             <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
           ) : session?.user ? (
-            <div className="flex items-center space-x-3">
+            <div className="hidden sm:flex items-center space-x-3">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                   {session.user.name?.[0] || session.user.email?.[0] || 'U'}
                 </div>
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-sm font-medium text-gray-700 hidden lg:inline">
                   {session.user.name || session.user.email?.split('@')[0]}
                 </span>
               </div>
@@ -126,23 +134,61 @@ export function Navbar() {
               </button>
             </div>
           ) : (
-            <div className="flex items-center space-x-2">
-              <Link
-                href="/login"
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                登录
-              </Link>
-              <Link
-                href="/register"
-                className="text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-red-600"
-              >
-                注册
-              </Link>
+            <div className="hidden sm:flex items-center space-x-2">
+              <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900">登录</Link>
+              <Link href="/register" className="text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-red-600">注册</Link>
             </div>
           )}
+
+          {/* 移动端汉堡菜单 */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden text-gray-600 p-2 hover:bg-gray-100 rounded-lg"
+            aria-label="菜单"
+          >
+            {mobileMenuOpen ? '✕' : '☰'}
+          </button>
         </div>
       </div>
+
+      {/* 移动端展开菜单 */}
+      {mobileMenuOpen && (
+        <div className="md:hidden mt-3 pt-3 border-t border-gray-100 space-y-1">
+          {session ? (
+            <>
+              <Link href="/" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                <span>📋</span><span>看板</span>
+              </Link>
+              <Link href="/agent" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                <span>🤖</span><span>我的 Agent</span>
+              </Link>
+              <button
+                onClick={() => { setShowPairingModal(true); setMobileMenuOpen(false) }}
+                className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 w-full text-left"
+              >
+                <span>⊕</span><span>配对 Agent</span>
+              </button>
+              <Link href="/settings" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                <span>⚙️</span><span>设置</span>
+              </Link>
+              <div className="flex items-center justify-between px-3 py-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                    {session.user?.name?.[0] || session.user?.email?.[0] || 'U'}
+                  </div>
+                  <span className="text-sm text-gray-700">{session.user?.name || session.user?.email?.split('@')[0]}</span>
+                </div>
+                <button onClick={() => signOut()} className="text-sm text-red-500 hover:text-red-700">退出</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="flex items-center px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>登录</Link>
+              <Link href="/register" className="flex items-center px-3 py-2 rounded-lg text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white mx-3" onClick={() => setMobileMenuOpen(false)}>注册</Link>
+            </>
+          )}
+        </div>
+      )}
     </nav>
 
     {/* 配对 Modal */}

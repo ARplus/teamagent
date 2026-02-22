@@ -1,30 +1,9 @@
-const { PrismaClient } = require('@prisma/client')
-const p = new PrismaClient()
-
-async function main() {
-  const tasks = await p.task.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 3,
-    include: {
-      steps: {
-        include: { assignee: { select: { id: true, name: true, nickname: true } } },
-        orderBy: { order: 'asc' }
-      },
-      creator: { select: { name: true } }
-    }
-  })
-  
-  for (const t of tasks) {
-    console.log(`\n任务: ${t.title} (${t.id})`)
-    console.log(`  创建者: ${t.creator?.name}`)
-    console.log(`  状态: ${t.status}`)
-    console.log(`  步骤:`)
-    for (const s of t.steps) {
-      console.log(`    - [${s.status}] ${s.title}`)
-      console.log(`      负责人: ${s.assignee?.nickname || s.assignee?.name || s.assigneeNames || '无'}`)
-      console.log(`      步骤ID: ${s.id}`)
-    }
-  }
-}
-
-main().finally(() => p.$disconnect())
+const { PrismaClient } = require('./node_modules/@prisma/client');
+const prisma = new PrismaClient();
+prisma.task.findMany({ include: { steps: { orderBy: { order: 'asc' } } } }).then(tasks => {
+  tasks.forEach(t => {
+    console.log('\nTask:', t.title, '| mode:', t.mode, '| status:', t.status);
+    t.steps.forEach(s => console.log('  Step', s.order, '['+s.status+']', s.title.substring(0, 50)));
+  });
+  console.log('\nTotal tasks:', tasks.length);
+}).catch(console.error).finally(() => prisma.$disconnect());

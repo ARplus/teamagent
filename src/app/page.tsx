@@ -552,7 +552,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
 
               {/* 邀请弹窗 */}
               {showInvite && (
-                <div className="absolute right-0 top-10 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 z-30">
+                <div className="absolute right-0 top-10 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 z-30">
                   {/* 小箭头 */}
                   <div className="absolute -top-2 right-4 w-4 h-4 bg-white border-l border-t border-slate-200 rotate-45" />
 
@@ -2293,7 +2293,9 @@ export default function HomePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  )
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [myAgent, setMyAgent] = useState<{ name: string; status: string } | null>(null)
   const [agentChecked, setAgentChecked] = useState(false)
@@ -2348,6 +2350,20 @@ export default function HomePage() {
     if (selectedId) window.history.replaceState(null, '', `#${selectedId}`)
   }, [selectedId])
 
+  // 移动端自适应：屏幕旋转 / 窗口缩放时自动折叠/展开侧边栏
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth < 768
+      if (isMobile) {
+        // 手机端始终折叠侧边栏（用抽屉模式）
+        setSidebarCollapsed(true)
+      }
+      // 桌面端不强制展开，尊重用户手动操作
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const handleRefresh = () => {
     if (selectedId) fetchTaskDetail(selectedId)
     fetchTasks()
@@ -2398,7 +2414,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-[100svh] flex flex-col overflow-hidden">
       {/* 无 Agent 引导 Banner */}
       {agentChecked && !myAgent && tasks.length > 0 && (
         <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between flex-shrink-0">
@@ -2420,23 +2436,43 @@ export default function HomePage() {
       )}
 
       {/* 移动端顶部导航栏 */}
-      <div className="md:hidden bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center space-x-2">
-          <span className="text-xl">🦞</span>
-          <span className="font-bold text-white text-sm">TeamAgent</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {selectedTask && (
-            <span className="text-xs text-slate-400 max-w-[140px] truncate">{selectedTask.title}</span>
-          )}
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="text-white p-2 hover:bg-white/10 rounded-lg text-lg leading-none"
-            aria-label="打开菜单"
-          >
-            ☰
-          </button>
-        </div>
+      <div className="md:hidden bg-gradient-to-r from-slate-900 to-slate-800 px-3 py-3 flex items-center justify-between flex-shrink-0 min-h-[52px]">
+        {selectedTask ? (
+          /* 任务详情模式：显示返回按钮 + 任务标题 */
+          <>
+            <button
+              onClick={() => { setSelectedId(null); setSelectedTask(null) }}
+              className="flex items-center space-x-1.5 text-slate-300 hover:text-white px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+              aria-label="返回任务列表"
+            >
+              <span className="text-base">←</span>
+              <span className="text-xs">列表</span>
+            </button>
+            <span className="text-sm font-semibold text-white truncate max-w-[160px] mx-2">{selectedTask.title}</span>
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="text-slate-300 hover:text-white p-2 hover:bg-white/10 rounded-lg text-base leading-none flex-shrink-0"
+              aria-label="打开菜单"
+            >
+              ☰
+            </button>
+          </>
+        ) : (
+          /* 列表/空状态模式：显示 logo + 菜单按钮 */
+          <>
+            <div className="flex items-center space-x-2">
+              <span className="text-xl">🦞</span>
+              <span className="font-bold text-white text-sm">TeamAgent</span>
+            </div>
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="text-white p-2 hover:bg-white/10 rounded-lg text-lg leading-none"
+              aria-label="打开菜单"
+            >
+              ☰
+            </button>
+          </>
+        )}
       </div>
 
       <div className="flex-1 flex overflow-hidden relative">
