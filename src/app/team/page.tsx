@@ -44,6 +44,12 @@ const gradients = [
 ]
 const grad = (name: string) => gradients[name.charCodeAt(0) % gradients.length]
 
+// Extract emoji from agent name, fallback to first letter
+function agentAvatar(name: string): string {
+  const match = name.match(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/u)
+  return match ? match[0] : name.charAt(0).toUpperCase()
+}
+
 function msToHours(ms: number) {
   const h = Math.round(ms / 3600000)
   return h > 0 ? `${h}小时` : `${Math.round(ms / 60000)}分钟`
@@ -56,8 +62,8 @@ function AgentRow({ agent }: { agent: AgentData }) {
   const pct = total > 0 ? Math.round((agent.stats.doneSteps / total) * 100) : 0
   return (
     <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
-      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${grad(agent.name)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
-        {agent.name.charAt(0).toUpperCase()}
+      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${grad(agent.name)} flex items-center justify-center text-white font-bold text-base flex-shrink-0`}>
+        {agentAvatar(agent.name)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -109,8 +115,8 @@ function MainAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: st
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-xl font-bold border border-white/30">
-            {agent.name.charAt(0).toUpperCase()}
+          <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-2xl font-bold border border-white/30">
+            {agentAvatar(agent.name)}
           </div>
           <div>
             <div className="text-white font-bold text-lg">{agent.name}</div>
@@ -155,17 +161,17 @@ function InlineMission({ value, onSave }: { value: string; onSave: (v: string) =
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+  useEffect(() => { if (editing) { ref.current?.focus(); ref.current?.select() } }, [editing])
   const save = () => { setEditing(false); onSave(draft) }
   if (editing) return (
     <textarea ref={ref} value={draft} onChange={e => setDraft(e.target.value)}
-      onBlur={save} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && save()}
-      className="bg-transparent text-slate-300 text-sm resize-none w-full outline-none border-b border-slate-600 pb-0.5 max-w-md"
-      rows={2} />
+      onBlur={save}
+      className="bg-transparent text-slate-200 text-sm resize-none w-full max-w-xl outline-none border-b border-orange-400/60 pb-0.5 leading-relaxed"
+      rows={3} style={{ minWidth: 320 }} />
   )
   return (
     <p onClick={() => setEditing(true)}
-      className="text-slate-400 text-sm italic cursor-pointer hover:text-slate-300 transition max-w-md truncate">
+      className="text-slate-400 text-sm italic cursor-pointer hover:text-slate-300 transition max-w-xl leading-relaxed line-clamp-3">
       {value || '「点击填写你的使命宣言」'}
     </p>
   )
@@ -255,8 +261,7 @@ export default function TeamPage() {
           {/* Top row */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-orange-500/30 flex-shrink-0 cursor-pointer"
-                onClick={() => setEditingName(true)}>
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-orange-500/30 flex-shrink-0">
                 {initials}
               </div>
               <div>
@@ -267,12 +272,17 @@ export default function TeamPage() {
                       autoFocus
                       className="bg-transparent text-white text-2xl font-bold outline-none border-b border-orange-400 w-48" />
                   ) : (
-                    <h1 className="text-2xl font-bold text-white cursor-pointer hover:text-orange-300 transition"
-                      onClick={() => setEditingName(true)}>{displayName}</h1>
+                    <h1 className="text-2xl font-bold text-white">{displayName}</h1>
                   )}
                   <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-medium flex-shrink-0">
                     👑 总司令
                   </span>
+                  {!editingName && (
+                    <button onClick={() => setEditingName(true)}
+                      className="text-slate-500 hover:text-slate-300 transition flex-shrink-0" title="编辑名字">
+                      ✏️
+                    </button>
+                  )}
                 </div>
                 <InlineMission value={mission} onSave={saveMission} />
                 <p className="text-slate-600 text-xs mt-1.5">
@@ -305,27 +315,8 @@ export default function TeamPage() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="flex gap-6">
 
-          {/* ── LEFT: Commander + Main Agent + Links ── */}
+          {/* ── LEFT: Main Agent + Links ── */}
           <div className="w-72 flex-shrink-0 space-y-4">
-            {/* Commander card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-xl font-bold mx-auto mb-3 shadow-lg cursor-pointer"
-                  onClick={() => setEditingName(true)}>
-                  {initials}
-                </div>
-                <div className="text-white font-bold">{displayName}</div>
-                <div className="mt-2 inline-flex">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">👑 总司令</span>
-                </div>
-              </div>
-              <div className="p-4 space-y-2.5 text-xs">
-                <div className="flex justify-between text-slate-500"><span>邮箱</span><span className="text-slate-700 truncate ml-2 max-w-[130px]">{c?.email}</span></div>
-                <div className="flex justify-between text-slate-500"><span>创建于</span><span className="text-slate-700">{c ? new Date(c.createdAt).toLocaleDateString('zh-CN') : '-'}</span></div>
-                <div className="flex justify-between text-slate-500"><span>战队规模</span><span className="text-slate-700">{allAgents.length} 位成员</span></div>
-              </div>
-            </div>
-
             {/* Main Agent card */}
             {mainAgent
               ? <MainAgentCard agent={mainAgent} liveStatus={liveStatus} />
