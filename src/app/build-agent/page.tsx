@@ -5,9 +5,30 @@ import Link from 'next/link'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    // HTTP 环境 fallback（clipboard API 需要 HTTPS）
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
+    } else {
+      fallbackCopy(text)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  const fallbackCopy = (t: string) => {
+    const el = document.createElement('textarea')
+    el.value = t
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.focus()
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+  }
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+      onClick={handleCopy}
       className={`text-xs px-2.5 py-1 rounded-lg transition-all font-mono ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-600 hover:bg-slate-500 text-slate-300'}`}
     >
       {copied ? '✓ 已复制' : '复制'}

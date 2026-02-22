@@ -2126,12 +2126,34 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
           </button>
         </div>
       ) : (
-        <div className="mt-3 flex items-center gap-3 flex-wrap">
-          <button onClick={onPairAgent} className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
-          <button type="button" onClick={() => window.location.href = '/build-agent'}
-            className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1 underline underline-offset-2">
-            📖 查看安装指引 →
-          </button>
+        <div className="mt-3 space-y-3">
+          {/* /ta-register 命令 */}
+          <div className="flex items-center gap-2 bg-slate-800 rounded-xl px-4 py-2.5 w-fit max-w-full">
+            <span className="text-emerald-400 font-mono text-sm">/ta-register</span>
+            <button
+              onClick={() => {
+                const text = '/ta-register'
+                if (navigator.clipboard && window.isSecureContext) {
+                  navigator.clipboard.writeText(text).catch(() => {
+                    const el = document.createElement('textarea'); el.value = text; el.style.position = 'fixed'; el.style.opacity = '0'; document.body.appendChild(el); el.focus(); el.select(); document.execCommand('copy'); document.body.removeChild(el)
+                  })
+                } else {
+                  const el = document.createElement('textarea'); el.value = text; el.style.position = 'fixed'; el.style.opacity = '0'; document.body.appendChild(el); el.focus(); el.select(); document.execCommand('copy'); document.body.removeChild(el)
+                }
+              }}
+              className="text-xs px-2 py-1 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded-lg transition font-mono"
+              title="复制命令">
+              📋 复制
+            </button>
+            <span className="text-slate-400 text-xs">← 在 OpenClaw 里运行</span>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button onClick={onPairAgent} className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
+            <button type="button" onClick={() => window.location.href = '/build-agent'}
+              className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1 underline underline-offset-2">
+              📖 查看安装指引 →
+            </button>
+          </div>
         </div>
       ),
     },
