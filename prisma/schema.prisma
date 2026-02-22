@@ -188,6 +188,9 @@ model Task {
   steps       TaskStep[]
   invites     InviteToken[] @relation("TaskInvites")
   
+  // 任务级附件（参考资料、背景文档）
+  attachments Attachment[]
+
   // 通知
   notifications Notification[]
 }
@@ -308,6 +311,10 @@ model Attachment {
   type        String?  // 文件类型 (mime type)
   size        Int?     // 文件大小 (bytes)
   createdAt   DateTime @default(now())
+
+  // 所属任务（任务级背景文档）
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   // 所属步骤（直接附件）
   stepId      String?

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -653,6 +653,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
           <div className="w-64 flex-shrink-0 space-y-4">
             <TeamCard task={task} />
             <StatsCard task={task} />
+            <AttachmentsCard taskId={task.id} />
             <SummaryCard task={task} onRefresh={onRefresh} />
           </div>
 
@@ -779,6 +780,123 @@ function StatsCard({ task }: { task: Task }) {
           <div className="text-xs text-purple-500">{formatDuration(totalHuman)}</div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ============ Attachments Card ============
+
+interface AttachmentItem {
+  id: string; name: string; url: string; type: string | null; size: number | null
+  uploader: { name: string | null; email: string }
+  createdAt: string
+}
+
+function fileIcon(type: string | null) {
+  if (!type) return '📎'
+  if (type.includes('pdf')) return '📄'
+  if (type.includes('word') || type.includes('doc')) return '📝'
+  if (type.includes('image')) return '🖼️'
+  if (type.includes('text') || type.includes('markdown')) return '📃'
+  if (type.includes('sheet') || type.includes('csv')) return '📊'
+  return '📎'
+}
+function fmtSize(bytes: number | null) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+}
+
+function AttachmentsCard({ taskId }: { taskId: string }) {
+  const [items, setItems] = useState<AttachmentItem[]>([])
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/tasks/${taskId}/attachments`)
+    if (r.ok) { const d = await r.json(); setItems(d.attachments) }
+  }, [taskId])
+
+  useEffect(() => { load() }, [load])
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length) return
+    setUploading(true)
+    try {
+      for (const f of Array.from(files)) {
+        const form = new FormData()
+        form.append('file', f)
+        await fetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', body: form })
+      }
+      await load()
+    } finally { setUploading(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('删除这个附件？')) return
+    await fetch(`/api/tasks/${taskId}/attachments?attachmentId=${id}`, { method: 'DELETE' })
+    await load()
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">📎 参考资料</h3>
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="text-xs px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-lg font-medium transition disabled:opacity-50"
+        >
+          {uploading ? '上传中…' : '+ 上传'}
+        </button>
+        <input ref={inputRef} type="file" multiple className="hidden"
+          onChange={e => handleUpload(e.target.files)}
+          accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.png,.jpg,.jpeg"
+        />
+      </div>
+
+      {items.length === 0 ? (
+        <div
+          className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors"
+          onClick={() => inputRef.current?.click()}
+          onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files) }}
+          onDragOver={e => e.preventDefault()}
+        >
+          <div className="text-2xl mb-1">📁</div>
+          <p className="text-xs text-slate-400">拖拽或点击上传参考文档</p>
+          <p className="text-xs text-slate-300 mt-0.5">PDF / Word / TXT / 图片 · 最大 20MB</p>
+        </div>
+      ) : (
+        <div
+          className="space-y-1.5"
+          onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files) }}
+          onDragOver={e => e.preventDefault()}
+        >
+          {items.map(item => (
+            <div key={item.id} className="flex items-center gap-2 group px-2 py-1.5 rounded-lg hover:bg-slate-50">
+              <span className="text-base flex-shrink-0">{fileIcon(item.type)}</span>
+              <div className="flex-1 min-w-0">
+                <a href={item.url} target="_blank" rel="noreferrer"
+                  className="text-xs font-medium text-slate-700 hover:text-orange-500 truncate block transition">
+                  {item.name}
+                </a>
+                <span className="text-xs text-slate-400">{fmtSize(item.size)}</span>
+              </div>
+              <button onClick={() => handleDelete(item.id)}
+                className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition text-xs flex-shrink-0">
+                ✕
+              </button>
+            </div>
+          ))}
+          <div className="pt-1 border-t border-slate-50 text-center">
+            <button onClick={() => inputRef.current?.click()}
+              className="text-xs text-slate-400 hover:text-orange-500 transition">
+              + 继续添加文件
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
