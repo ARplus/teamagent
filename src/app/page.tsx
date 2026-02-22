@@ -1115,7 +1115,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <h3 className="text-sm font-semibold text-slate-700 flex items-center space-x-2">
+          <h3 className="text-sm font-semibold text-slate-700 flex items-center space-x-2 flex-shrink-0 whitespace-nowrap">
             <span>📋</span>
             <span>工作流程</span>
           </h3>
