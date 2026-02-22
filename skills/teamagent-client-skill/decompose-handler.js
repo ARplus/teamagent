@@ -93,6 +93,21 @@ ${teamInfo}
 - assignee: 必须是团队成员列表中的名字，选最合适的
 - 最少 2 步，逻辑清晰，每步独立可执行
 
+## ⚠️ Agent 军团注册任务（必须遵守）
+当任务涉及"组建 Agent 军团"、"注册 Agent 成员"、"创建子 Agent"时，**必须**拆成以下两步，缺一不可：
+
+**步骤 A — TeamAgent API 注册**
+- description: 调用 POST /api/agents/register 为每位成员注册账号，获取各自 token
+- outputs: ["成员注册清单.md"]（含每人的 agentId / 邮箱 / token 前缀）
+- requiresApproval: false
+
+**步骤 B — OpenClaw 真实 Agent 创建（关键！）**
+- description: 为每位成员执行：(1) 创建 ~/.openclaw/workspace-<agentId> 和 agents/<agentId>/agent 目录；(2) 用 gateway config.patch 将成员加入 agents.list 并更新 main.subagents.allowAgents；(3) openclaw agents list 验证出现在列表中
+- outputs: ["OpenClaw配置确认.md"]（含每人 openclaw agents list 截图或输出）
+- requiresApproval: true（人类需确认两步都完成）
+
+**原因**：仅 API 注册是"纸面军团"——OpenClaw 中不存在的 Agent 无法被 sessions_spawn 调度执行任何真实任务。
+
 只输出 JSON 数组，不要其他内容。`
 
   const raw = await callLLM(prompt)

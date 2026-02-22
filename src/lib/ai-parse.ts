@@ -56,6 +56,10 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
     - 最终产出物（报告、文档、方案）
     - 需要人类确认才能继续的节点
     - 否则 false（常规调研、数据收集等）
+12. **Agent 军团注册任务（必读）**：当任务涉及"组建 Agent 军团"、"注册 Agent 成员"、"创建子 Agent"等，**必须拆成两步**，缺一不可：
+    - 步骤 A：通过 TeamAgent API 注册成员（POST /api/agents/register），产出：成员注册清单.md
+    - 步骤 B：在 OpenClaw 中创建真实子 Agent（gateway config.patch 更新 agents.list，openclaw agents list 验证），产出：OpenClaw 配置确认.md
+    - 仅完成 API 注册是不够的——OpenClaw 中不存在的 Agent 无法被调度执行任何任务，是"纸面军团"
 
 ## 示例
 
