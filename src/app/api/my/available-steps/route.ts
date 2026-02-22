@@ -31,19 +31,27 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const workspaceId = searchParams.get('workspaceId')
 
+    // 获取用户所在的工作区列表（用于过滤步骤）
+    const userWorkspaces = await prisma.workspaceMember.findMany({
+      where: { userId },
+      select: { workspaceId: true }
+    })
+    const userWorkspaceIds = userWorkspaces.map(w => w.workspaceId)
+
     // 获取所有可领取的步骤：
     // 1. assigneeId 为 null（未分配）
     // 2. 状态为 pending
     // 3. 所属任务状态为 in_progress 或 todo
+    // 4. 只返回用户所在工作区的步骤（workspace isolation）
     const where: any = {
       assigneeId: null,
       status: 'pending',
       task: {
-        status: { in: ['todo', 'in_progress'] }
+        status: { in: ['todo', 'in_progress'] },
+        workspaceId: workspaceId
+          ? workspaceId  // 指定工作区
+          : { in: userWorkspaceIds }  // 默认：只看自己的工作区
       }
-    }
-    if (workspaceId) {
-      where.task.workspaceId = workspaceId
     }
 
     const steps = await prisma.taskStep.findMany({
