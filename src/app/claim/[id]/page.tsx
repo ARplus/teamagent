@@ -11,6 +11,41 @@ interface AgentInfo {
   createdAt: string
 }
 
+// HTTP 环境下 clipboard API 不可用，用 textarea fallback
+function CopyTokenButton({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    const fallback = () => {
+      const el = document.createElement('textarea')
+      el.value = token
+      el.style.position = 'fixed'
+      el.style.opacity = '0'
+      document.body.appendChild(el)
+      el.focus()
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(token).catch(fallback)
+    } else {
+      fallback()
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className={`px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap ${
+        copied ? 'bg-emerald-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white'
+      }`}
+    >
+      {copied ? '✓ 已复制' : '复制'}
+    </button>
+  )
+}
+
 export default function ClaimPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -121,12 +156,7 @@ export default function ClaimPage() {
               <code className="flex-1 text-sm bg-white p-2 rounded-lg border border-slate-200 break-all">
                 {result.apiToken}
               </code>
-              <button
-                onClick={() => navigator.clipboard.writeText(result.apiToken)}
-                className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600"
-              >
-                复制
-              </button>
+              <CopyTokenButton token={result.apiToken} />
             </div>
           </div>
 

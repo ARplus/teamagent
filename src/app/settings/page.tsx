@@ -169,7 +169,22 @@ export default function SettingsPage() {
 
   const copyToken = () => {
     if (newToken) {
-      navigator.clipboard.writeText(newToken)
+      const fallback = () => {
+        const el = document.createElement('textarea')
+        el.value = newToken
+        el.style.position = 'fixed'
+        el.style.opacity = '0'
+        document.body.appendChild(el)
+        el.focus()
+        el.select()
+        document.execCommand('copy')
+        document.body.removeChild(el)
+      }
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(newToken).catch(fallback)
+      } else {
+        fallback()
+      }
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
