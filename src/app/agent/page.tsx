@@ -239,7 +239,7 @@ export default function AgentProfilePage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-orange-50/20">
       <Navbar />
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
         {/* ===== 空状态 ===== */}
         {!agent && (

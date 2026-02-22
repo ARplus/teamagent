@@ -143,7 +143,7 @@ export function NotificationBell() {
 
       {/* 下拉列表 */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
+        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
           {/* Header */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-orange-50 to-rose-50">
             <span className="font-semibold text-gray-800">通知</span>
