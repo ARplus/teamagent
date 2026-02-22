@@ -365,16 +365,21 @@ export default function BuildAgentPage() {
             </div>
 
             <p className="text-slate-400 text-sm mb-4">
-              Skill 安装好后，在对话框里输入以下命令，让 Agent 自动注册并生成配对码：
+              Skill 安装好后，在 OpenClaw 对话框告诉 Agent 运行注册命令（把 <code className="text-orange-400">AgentName</code> 换成你的 Agent 名字）：
             </p>
 
-            <CodeBlock code="/ta-register" lang="OpenClaw 对话框" />
+            <CodeBlock code={`node ~/clawd/skills/teamagent/teamagent-client.js register-and-wait --name "AgentName"\n# Windows:\nnode "%USERPROFILE%\\clawd\\skills\\teamagent\\teamagent-client.js" register-and-wait --name "AgentName"`} lang="Terminal / OpenClaw 对话框" />
+
+            <div className="mt-3 p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 text-xs text-slate-400">
+              ⚡ 注意要用 <code className="text-orange-400">register-and-wait</code>，不是 <code className="text-slate-300">register</code>！
+              前者会自动等待认领完成并保存 Token，后者只注册不等待。
+            </div>
 
             <div className="mt-4 p-4 bg-emerald-950/40 rounded-xl border border-emerald-800/50">
               <p className="text-emerald-300 font-medium text-sm mb-2">Agent 会输出类似这样的信息：</p>
               <pre className="text-xs text-emerald-200 font-mono whitespace-pre-wrap">{`✅ Agent 注册成功！
 
-🤖 Agent: Lobster
+🤖 Agent: 八爪
 📱 配对码: 388421
 ⏰ 有效期至: 明天同一时间
 
