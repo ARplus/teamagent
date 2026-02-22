@@ -61,7 +61,7 @@ function AgentRow({ agent }: { agent: AgentData }) {
   const total = agent.stats.doneSteps + agent.stats.pendingSteps
   const pct = total > 0 ? Math.round((agent.stats.doneSteps / total) * 100) : 0
   return (
-    <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
+    <a href={`/agent/${agent.id}`} className="flex items-center gap-4 px-5 py-3.5 hover:bg-orange-50/40 transition-colors cursor-pointer group">
       <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${grad(agent.name)} flex items-center justify-center text-white font-bold text-base flex-shrink-0`}>
         {agentAvatar(agent.name)}
       </div>
@@ -90,7 +90,8 @@ function AgentRow({ agent }: { agent: AgentData }) {
         ? <div className="hidden md:flex items-center gap-0.5 w-12 justify-end flex-shrink-0"><span className="text-yellow-400 text-xs">⭐</span><span className="text-xs font-medium text-slate-600">{agent.reputation.toFixed(1)}</span></div>
         : <div className="hidden md:block w-12 text-right text-slate-300 text-xs flex-shrink-0">—</div>
       }
-    </div>
+      <span className="hidden group-hover:block text-slate-400 text-xs flex-shrink-0">→</span>
+    </a>
   )
 }
 
@@ -319,7 +320,7 @@ export default function TeamPage() {
           <div className="w-72 flex-shrink-0 space-y-4">
             {/* Main Agent card */}
             {mainAgent
-              ? <MainAgentCard agent={mainAgent} liveStatus={liveStatus} />
+              ? <a href="/agent"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>
               : (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6 text-center">
                   <div className="text-3xl mb-2">🤖</div>
