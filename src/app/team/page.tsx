@@ -178,6 +178,178 @@ function InlineMission({ value, onSave }: { value: string; onSave: (v: string) =
   )
 }
 
+// ============ Build Team Modal ============
+const WORK_TYPE_OPTIONS = [
+  { label: '✍️ 写作/内容', value: 'writing' },
+  { label: '💻 代码/技术', value: 'coding' },
+  { label: '🎨 设计/创意', value: 'design' },
+  { label: '📣 运营/推广', value: 'marketing' },
+  { label: '🔬 研究/分析', value: 'research' },
+  { label: '💼 销售/商务', value: 'sales' },
+  { label: '🏗️ 一人公司', value: 'solo-company' },
+  { label: '✨ 其他', value: 'other' },
+]
+
+function BuildTeamModal({ onClose, onDone }: { onClose: () => void; onDone: (taskId: string) => void }) {
+  const [companyName, setCompanyName] = useState('')
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [goal, setGoal] = useState('')
+  const [agentCount, setAgentCount] = useState(3)
+  const [submitting, setSubmitting] = useState(false)
+
+  const toggleType = (v: string) =>
+    setSelectedTypes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
+
+  const handleBuild = async () => {
+    if (!companyName.trim() || !goal.trim()) return
+    setSubmitting(true)
+    try {
+      const typeLabels = WORK_TYPE_OPTIONS
+        .filter(o => selectedTypes.includes(o.value))
+        .map(o => o.label).join('、') || '待定'
+
+      const desc =
+        `军团名称：${companyName}\n` +
+        `工作类型：${typeLabels}\n` +
+        `核心目标：${goal}\n` +
+        `期望规模：${agentCount} 名 Agent 成员\n\n` +
+        `---\n` +
+        `请根据以上信息，为我规划并组建最合适的 Agent 军团：\n` +
+        `1. 分析工作类型，为每位成员设计专属职责分工\n` +
+        `2. 为每位成员取一个有个性的名字 + 专属 emoji（参考风格：🦑 Quill 乌贼文书官、🐡 PufferQA 河豚测试官）\n` +
+        `3. 通过 TeamAgent API 注册各成员账号（POST /api/agents/register）\n` +
+        `4. 配置各成员的能力标签（capabilities）\n` +
+        `5. 汇报军团建设完成，附成员名单与职责表`
+
+      const taskRes = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `🌊 组建「${companyName}」Agent 军团`,
+          description: desc,
+          mode: 'solo',
+        }),
+      })
+      if (!taskRes.ok) { alert('创建失败，请重试'); return }
+      const task = await taskRes.json()
+
+      await fetch(`/api/tasks/${task.id}/steps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '🌊 规划军团架构，完成成员注册',
+          description:
+            `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人\n` +
+            `工作类型：${typeLabels}\n\n` +
+            `请设计成员名单并通过 API 完成注册，最后提交成员名单供审批。`,
+          requiresApproval: true,
+        }),
+      })
+
+      onDone(task.id)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}>
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-7 py-6">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🌊</span>
+              <h2 className="text-lg font-bold text-white">组建你的 Agent 军团</h2>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-white text-xl transition">×</button>
+          </div>
+          <p className="text-slate-400 text-sm">告诉主 Agent 你的需求，它来规划成员架构并完成注册</p>
+        </div>
+
+        {/* Form */}
+        <div className="p-7 space-y-5">
+          {/* 军团名 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-1.5 block">🏢 军团 / 公司名称</label>
+            <input
+              type="text"
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              placeholder="如：Aurora 宇宙艺术团、极光创作工作室..."
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+              autoFocus
+            />
+          </div>
+
+          {/* 工作类型 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">💼 主要工作类型（可多选）</label>
+            <div className="flex flex-wrap gap-2">
+              {WORK_TYPE_OPTIONS.map(opt => (
+                <button key={opt.value} type="button" onClick={() => toggleType(opt.value)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all border ${
+                    selectedTypes.includes(opt.value)
+                      ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-orange-300 hover:text-orange-600'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 核心目标 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-1.5 block">🎯 核心目标（一句话）</label>
+            <input
+              type="text"
+              value={goal}
+              onChange={e => setGoal(e.target.value)}
+              placeholder="如：用 AI 军团独立完成产品开发和运营..."
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+            />
+          </div>
+
+          {/* Agent 数量 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">
+              👥 期望 Agent 人数 <span className="text-orange-500 font-bold">{agentCount} 名</span>
+            </label>
+            <div className="flex gap-2">
+              {[2, 3, 4, 5, 6].map(n => (
+                <button key={n} type="button" onClick={() => setAgentCount(n)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
+                    agentCount === n
+                      ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                      : 'bg-white text-slate-400 border-slate-200 hover:border-orange-300'
+                  }`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-7 pb-7 flex gap-3">
+          <button onClick={handleBuild}
+            disabled={submitting || !companyName.trim() || !goal.trim()}
+            className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold hover:from-orange-400 hover:to-rose-400 disabled:opacity-50 shadow-lg shadow-orange-500/25 transition-all text-sm">
+            {submitting ? '🌊 组建中...' : '🌊 让主 Agent 帮我组建'}
+          </button>
+          <button onClick={onClose}
+            className="px-5 py-3 text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors text-sm font-medium">
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ============ StatPill ============
 function StatPill({ a, b, labelA, labelB, icon }: { a: number; b: number; labelA: string; labelB: string; icon: string }) {
   return (
@@ -200,6 +372,7 @@ export default function TeamPage() {
   const [data, setData] = useState<TeamData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showPairing, setShowPairing] = useState(false)
+  const [showBuildTeam, setShowBuildTeam] = useState(false)
   const [liveStatus, setLiveStatus] = useState('online')
   const [mission, setMission] = useState('')
   const [editingName, setEditingName] = useState(false)
@@ -333,6 +506,17 @@ export default function TeamPage() {
               )
             }
 
+            {/* Build Team button — only when main agent exists */}
+            {mainAgent && (
+              <button
+                onClick={() => setShowBuildTeam(true)}
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-blue-200 hover:border-blue-400 text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-all text-sm font-semibold flex items-center justify-center gap-2 group"
+              >
+                <span className="text-lg group-hover:animate-bounce">🌊</span>
+                <span>AI 帮我组建成员军团</span>
+              </button>
+            )}
+
             {/* Quick links */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-1">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">快捷操作</div>
@@ -398,6 +582,15 @@ export default function TeamPage() {
       </div>
 
       {showPairing && <PairingModal onClose={() => setShowPairing(false)} />}
+      {showBuildTeam && (
+        <BuildTeamModal
+          onClose={() => setShowBuildTeam(false)}
+          onDone={(taskId) => {
+            setShowBuildTeam(false)
+            window.location.href = `/#${taskId}`
+          }}
+        />
+      )}
     </div>
   )
 }
