@@ -1799,9 +1799,13 @@ function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => voi
       action: (
         <div className="mt-3 flex items-center gap-3 flex-wrap">
           <button onClick={onPairAgent} className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
-          <a href="/landing" target="_blank" className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => window.open('/landing', '_blank')}
+            className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1 underline underline-offset-2"
+          >
             📖 查看安装指引 →
-          </a>
+          </button>
         </div>
       )
     },
@@ -1863,7 +1867,8 @@ function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => voi
 
         {/* Footer hint */}
         <p className="text-center text-xs text-slate-400 mt-8">
-          已有 Agent？直接输入配对码 · 没有 Agent？先去 <a href="/landing" target="_blank" className="text-orange-400 hover:text-orange-500">查看安装指引</a>
+          已有 Agent？直接输入配对码 · 没有 Agent？先去{' '}
+          <button type="button" onClick={() => window.open('/landing', '_blank')} className="text-orange-400 hover:text-orange-500 underline underline-offset-2">查看安装指引</button>
         </p>
       </div>
     </div>
