@@ -110,7 +110,6 @@ export async function GET(req: NextRequest) {
               }
             })
         )
-      }
     }
 
     // === 任务统计 ===
