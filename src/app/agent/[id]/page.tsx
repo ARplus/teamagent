@@ -122,11 +122,23 @@ function EditAgentModal({ agent, onClose, onSaved }: { agent: AgentData; onClose
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
+    if (!name.trim()) return
     setSaving(true)
     try {
-      await new Promise(r => setTimeout(r, 500))
+      const res = await fetch('/api/agent/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), personality: personality.trim() })
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        alert(err.error || '保存失败')
+        return
+      }
       onSaved()
       onClose()
+    } catch (e) {
+      alert('网络错误，请重试')
     } finally {
       setSaving(false)
     }

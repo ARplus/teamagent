@@ -124,12 +124,23 @@ function EditAgentModal({ agent, onClose, onSaved }: { agent: AgentData; onClose
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
+    if (!name.trim()) return
     setSaving(true)
     try {
-      // 暂时 placeholder — 直接关闭
-      await new Promise(r => setTimeout(r, 500))
+      const res = await fetch('/api/agent/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), personality: personality.trim() })
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        alert(err.error || '保存失败')
+        return
+      }
       onSaved()
       onClose()
+    } catch (e) {
+      alert('网络错误，请重试')
     } finally {
       setSaving(false)
     }
@@ -162,7 +173,7 @@ function EditAgentModal({ agent, onClose, onSaved }: { agent: AgentData; onClose
               className="w-full px-4 py-3 border border-slate-200 rounded-xl resize-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-400"
             />
           </div>
-          <p className="text-xs text-slate-400">⚠️ 编辑功能即将上线，目前为预览模式</p>
+          <p className="text-xs text-slate-400">修改后立即生效，刷新页面可看到最新名字。</p>
         </div>
         <div className="flex justify-end space-x-3 mt-6">
           <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:text-slate-800 font-medium">

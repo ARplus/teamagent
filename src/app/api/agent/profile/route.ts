@@ -126,3 +126,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '服务器错误' }, { status: 500 })
   }
 }
+
+// PATCH /api/agent/profile - 更新当前用户的 Agent 信息（名字、性格描述）
+export async function PATCH(req: NextRequest) {
+  try {
+    const auth = await authenticate(req)
+    if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
+
+    const agent = await prisma.agent.findUnique({ where: { userId: auth.userId } })
+    if (!agent) return NextResponse.json({ error: '你还没有 Agent' }, { status: 404 })
+
+    const body = await req.json()
+    const { name, personality, capabilities } = body
+
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
+      return NextResponse.json({ error: '名字不能为空' }, { status: 400 })
+    }
+
+    const updated = await prisma.agent.update({
+      where: { id: agent.id },
+      data: {
+        ...(name !== undefined && { name: name.trim() }),
+        ...(personality !== undefined && { personality: personality.trim() || null }),
+        ...(capabilities !== undefined && { capabilities: JSON.stringify(capabilities) }),
+      }
+    })
+
+    return NextResponse.json({ ok: true, agent: { id: updated.id, name: updated.name, personality: updated.personality } })
+  } catch (error) {
+    console.error('更新 Agent 档案失败:', error)
+    return NextResponse.json({ error: '服务器错误' }, { status: 500 })
+  }
+}
