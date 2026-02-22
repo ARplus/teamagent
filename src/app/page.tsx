@@ -1789,6 +1789,76 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
   )
 }
 
+// ============ Onboarding Guide (新用户引导) ============
+
+function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => void; onCreateTask: () => void }) {
+  const steps = [
+    {
+      num: 1, icon: '🤖', title: '配对你的 Agent', done: false,
+      desc: '把你的 AI 助手接入平台，它会自动认领并执行任务步骤',
+      action: <button onClick={onPairAgent} className="mt-3 px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
+    },
+    {
+      num: 2, icon: '📋', title: '创建第一个任务', done: false,
+      desc: '用 Solo 模式创建任务，添加描述，Agent 会帮你拆解成执行步骤',
+      action: <button onClick={onCreateTask} className="mt-3 px-4 py-2 border-2 border-slate-200 text-slate-500 rounded-xl text-sm font-semibold hover:border-orange-300 hover:text-orange-600 transition">+ 新建任务</button>
+    },
+    {
+      num: 3, icon: '🌊', title: 'Agent 开始工作', done: false,
+      desc: 'Agent 自动轮询步骤、认领、执行、提交，你只需要审批关键节点',
+      action: null
+    },
+  ]
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/20 px-8">
+      <div className="max-w-xl w-full">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="text-5xl mb-4">🦞</div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">欢迎来到 TeamAgent</h2>
+          <p className="text-slate-500 text-sm">三步启动你的数字军团，让 AI Agent 替你干活</p>
+        </div>
+
+        {/* Steps */}
+        <div className="space-y-4">
+          {steps.map((step, i) => (
+            <div key={step.num} className="relative">
+              {/* connector line */}
+              {i < steps.length - 1 && (
+                <div className="absolute left-6 top-14 w-0.5 h-6 bg-slate-200" />
+              )}
+              <div className="flex gap-4 bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:border-orange-200 transition-colors">
+                {/* Step num */}
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl flex-shrink-0 ${
+                  i === 0 ? 'bg-gradient-to-br from-orange-400 to-rose-500 shadow-md shadow-orange-500/25' : 'bg-slate-100'
+                }`}>
+                  <span>{step.icon}</span>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${i === 0 ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'}`}>
+                      STEP {step.num}
+                    </span>
+                    <h3 className="font-semibold text-slate-800">{step.title}</h3>
+                  </div>
+                  <p className="text-slate-500 text-sm mt-1">{step.desc}</p>
+                  {step.action}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer hint */}
+        <p className="text-center text-xs text-slate-400 mt-8">
+          已有配对码？直接点「配对 Agent」开始 · Agent 会自动接入你的工作区
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ============ Empty State ============
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
@@ -1917,21 +1987,21 @@ export default function HomePage() {
   return (
     <div className="h-screen flex flex-col">
       {/* 无 Agent 引导 Banner */}
-      {agentChecked && !myAgent && (
-        <div className="bg-gradient-to-r from-orange-500 to-rose-500 text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
+      {agentChecked && !myAgent && tasks.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
-            <span className="text-xl">🤖</span>
+            <span className="text-lg">⚡</span>
             <div>
-              <span className="font-semibold">还没有配对的 Agent！</span>
-              <span className="text-orange-100 ml-2 text-sm">配对一个 Agent，让它帮你自动完成任务步骤</span>
+              <span className="font-semibold text-sm">还没有配对 Agent</span>
+              <span className="text-amber-100 ml-2 text-xs">配对后任务步骤可以自动执行，不用手动操作</span>
             </div>
           </div>
           <button
             onClick={() => setShowPairingModal(true)}
-            className="bg-white text-orange-600 font-semibold px-4 py-2 rounded-xl text-sm hover:bg-orange-50 transition-colors flex items-center space-x-2 flex-shrink-0"
+            className="bg-white text-orange-600 font-semibold px-4 py-1.5 rounded-xl text-xs hover:bg-orange-50 transition-colors flex items-center space-x-1.5 flex-shrink-0"
           >
             <span>⊕</span>
-            <span>输入配对码</span>
+            <span>配对我的 Agent</span>
           </button>
         </div>
       )}
@@ -1956,6 +2026,11 @@ export default function HomePage() {
             onDelete={handleDelete}
             myAgent={myAgent}
             currentUserId={session?.user?.id || ''}
+          />
+        ) : agentChecked && !myAgent && tasks.length === 0 ? (
+          <OnboardingGuide
+            onPairAgent={() => setShowPairingModal(true)}
+            onCreateTask={() => setShowCreateModal(true)}
           />
         ) : (
           <EmptyState onCreate={() => setShowCreateModal(true)} />
