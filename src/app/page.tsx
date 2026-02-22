@@ -1802,12 +1802,13 @@ const WORK_TYPE_OPTIONS = [
   { label: '✨ 其他', value: 'other' },
 ]
 
-function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask }: {
+function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = false }: {
   onPairAgent: () => void
   onCreateTask: () => void
   onSelectTask: (id: string) => void
+  hasAgent?: boolean
 }) {
-  const [showTeamForm, setShowTeamForm] = useState(false)
+  const [showTeamForm, setShowTeamForm] = useState(hasAgent) // 有 Agent 时自动展开 Step 2
   const [companyName, setCompanyName] = useState('')
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [goal, setGoal] = useState('')
@@ -1968,31 +1969,49 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask }: {
     </button>
   )
 
+  // 步骤完成状态：有 Agent = Step 1 完成；Step 2 完成需要有任务（提交后会离开这个页面）
+  const step1Done = hasAgent
+
   const steps = [
     {
-      num: 1, icon: '🤖', title: '配对你的主 Agent',
-      desc: '把你的 AI 助手接入平台，它将成为你的数字总指挥，自动认领并执行任务步骤',
-      action: (
+      num: 1, icon: step1Done ? '✓' : '🤖',
+      title: '配对你的主 Agent',
+      desc: step1Done ? '主 Agent 已就位，随时待命 🎉' : '把你的 AI 助手接入平台，它将成为你的数字总指挥，自动认领并执行任务步骤',
+      done: step1Done,
+      action: step1Done ? (
+        <div className="mt-3 flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium border border-emerald-200">
+            ✅ 配对成功
+          </span>
+          <button onClick={onPairAgent}
+            className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition">
+            换绑其他 Agent
+          </button>
+        </div>
+      ) : (
         <div className="mt-3 flex items-center gap-3 flex-wrap">
           <button onClick={onPairAgent} className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
-          <button
-            type="button"
-            onClick={() => window.location.href = '/build-agent'}
-            className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1 underline underline-offset-2"
-          >
+          <button type="button" onClick={() => window.location.href = '/build-agent'}
+            className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1 underline underline-offset-2">
             📖 查看安装指引 →
           </button>
         </div>
-      )
+      ),
     },
     {
-      num: 2, icon: '🌊', title: '告诉主 Agent，你想建什么样的团队',
+      num: 2, icon: '🌊',
+      title: '告诉主 Agent，你想建什么样的团队',
       desc: '说出你的目标和工作方向，主 Agent 将自动规划军团架构，帮你注册成员、分配职责',
-      action: step2Action,
+      done: false,
+      action: step1Done ? step2Action : (
+        <p className="mt-2 text-xs text-slate-400 italic">先完成 Step 1 配对后解锁</p>
+      ),
     },
     {
-      num: 3, icon: '📋', title: '创建第一个任务，出发！',
+      num: 3, icon: '📋',
+      title: '创建第一个任务，出发！',
       desc: '用 Solo 模式创建任务，描述你要做什么，Agent 战队开始自动认领执行，你只需审批关键节点',
+      done: false,
       action: <button onClick={onCreateTask} className="mt-3 px-4 py-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-xl text-sm font-semibold hover:from-slate-600 hover:to-slate-700 transition">+ 创建第一个任务</button>
     },
   ]
@@ -2004,50 +2023,71 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask }: {
         <div className="text-center mb-10">
           <div className="text-5xl mb-4">🦞</div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">欢迎来到 TeamAgent</h2>
-          <p className="text-slate-500 text-sm">三步启动你的数字军团，让 AI Agent 替你干活</p>
+          <p className="text-slate-500 text-sm">
+            {step1Done ? '🎉 主 Agent 已就位！接下来组建你的军团' : '三步启动你的数字军团，让 AI Agent 替你干活'}
+          </p>
         </div>
 
         {/* Steps */}
         <div className="space-y-4">
-          {steps.map((step, i) => (
-            <div key={step.num} className="relative">
-              {i < steps.length - 1 && (
-                <div className="absolute left-6 top-14 w-0.5 h-6 bg-slate-200" />
-              )}
-              <div className={`flex gap-4 bg-white rounded-2xl p-5 shadow-sm border transition-colors ${
-                i === 1 && showTeamForm ? 'border-orange-300 shadow-md shadow-orange-50' : 'border-slate-100 hover:border-orange-200'
-              }`}>
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl flex-shrink-0 ${
-                  i === 0 ? 'bg-gradient-to-br from-orange-400 to-rose-500 shadow-md shadow-orange-500/25'
-                  : i === 1 && showTeamForm ? 'bg-gradient-to-br from-blue-400 to-indigo-500 shadow-md shadow-blue-500/25'
-                  : 'bg-slate-100'
+          {steps.map((step, i) => {
+            const isActive = (i === 0 && !step1Done) || (i === 1 && step1Done && !step.done)
+            const isDone = step.done
+            const isLocked = i === 1 && !step1Done
+
+            return (
+              <div key={step.num} className="relative">
+                {/* Connector line */}
+                {i < steps.length - 1 && (
+                  <div className={`absolute left-6 top-14 w-0.5 h-6 ${isDone || (i === 0 && step1Done) ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                )}
+                <div className={`flex gap-4 bg-white rounded-2xl p-5 shadow-sm border transition-all ${
+                  isDone ? 'border-emerald-200 bg-emerald-50/30 opacity-80'
+                  : isActive && showTeamForm ? 'border-blue-300 shadow-md shadow-blue-50'
+                  : isActive ? 'border-orange-200 shadow-md shadow-orange-50'
+                  : isLocked ? 'border-slate-100 opacity-50'
+                  : 'border-slate-100 hover:border-orange-200'
                 }`}>
-                  <span>{step.icon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${
-                      i === 0 ? 'bg-orange-100 text-orange-600'
-                      : i === 1 && showTeamForm ? 'bg-blue-100 text-blue-600'
-                      : 'bg-slate-100 text-slate-400'
-                    }`}>
-                      STEP {step.num}
-                    </span>
-                    <h3 className="font-semibold text-slate-800">{step.title}</h3>
+                  {/* Step icon */}
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-lg ${
+                    isDone ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+                    : isActive && showTeamForm ? 'bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-md shadow-blue-500/25'
+                    : isActive ? 'bg-gradient-to-br from-orange-400 to-rose-500 text-white shadow-md shadow-orange-500/25'
+                    : 'bg-slate-100 text-slate-400 text-xl'
+                  }`}>
+                    {isDone ? '✓' : <span className="text-xl">{step.icon}</span>}
                   </div>
-                  <p className="text-slate-500 text-sm mt-1">{step.desc}</p>
-                  {step.action}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${
+                        isDone ? 'bg-emerald-100 text-emerald-600'
+                        : isActive && showTeamForm ? 'bg-blue-100 text-blue-600'
+                        : isActive ? 'bg-orange-100 text-orange-600'
+                        : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {isDone ? '✓ 完成' : `STEP ${step.num}`}
+                      </span>
+                      <h3 className={`font-semibold ${isDone ? 'text-emerald-700' : 'text-slate-800'}`}>
+                        {step.title}
+                      </h3>
+                    </div>
+                    <p className="text-slate-500 text-sm mt-1">{step.desc}</p>
+                    {step.action}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Footer hint */}
-        <p className="text-center text-xs text-slate-400 mt-8">
-          已有 Agent？直接输入配对码 · 没有 Agent？先去{' '}
-          <button type="button" onClick={() => window.location.href = '/build-agent'} className="text-orange-400 hover:text-orange-500 underline underline-offset-2">查看安装指引</button>
-        </p>
+        {!step1Done && (
+          <p className="text-center text-xs text-slate-400 mt-8">
+            已有 Agent？直接输入配对码 · 没有 Agent？先去{' '}
+            <button type="button" onClick={() => window.location.href = '/build-agent'} className="text-orange-400 hover:text-orange-500 underline underline-offset-2">查看安装指引</button>
+          </p>
+        )}
       </div>
     </div>
   )
@@ -2221,8 +2261,9 @@ export default function HomePage() {
             myAgent={myAgent}
             currentUserId={session?.user?.id || ''}
           />
-        ) : agentChecked && !myAgent && tasks.length === 0 ? (
+        ) : agentChecked && tasks.length === 0 ? (
           <OnboardingGuide
+            hasAgent={!!myAgent}
             onPairAgent={() => setShowPairingModal(true)}
             onCreateTask={() => setShowCreateModal(true)}
             onSelectTask={(id) => { fetchTasks(); setSelectedId(id) }}
