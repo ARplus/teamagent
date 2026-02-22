@@ -63,34 +63,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // === 子 Agent们（工作区内其他 Agent） ===
+    // === 子 Agent们（工作区内所有成员，不含自己） ===
     let subAgents: object[] = []
 
     if (workspaceIds.length > 0) {
-      // 找到工作区内有步骤的用户（不是自己）
-      const steps = await prisma.taskStep.findMany({
+      // 取工作区内所有成员（不含自己）
+      const teamMemberships = await prisma.workspaceMember.findMany({
         where: {
-          assigneeId: { not: null },
-          task: { workspaceId: { in: workspaceIds } }
+          workspaceId: { in: workspaceIds },
+          userId: { not: currentUser.id }
         },
-        select: { assigneeId: true },
-        distinct: ['assigneeId']
+        include: {
+          user: { include: { agent: true } }
+        }
       })
 
-      const assigneeIds = steps
-        .map(s => s.assigneeId)
-        .filter((id): id is string => id !== null && id !== currentUser.id)
+      const members = teamMemberships
+        .map(m => m.user)
+        .filter(u => u.agent !== null)
 
-      if (assigneeIds.length > 0) {
-        const users = await prisma.user.findMany({
-          where: { id: { in: assigneeIds } },
-          include: { agent: true }
-        })
-
-        subAgents = await Promise.all(
-          users
-            .filter(u => u.agent !== null)
-            .map(async (u) => {
+      subAgents = await Promise.all(
+        members.map(async (u) => {
               const doneSteps = await prisma.taskStep.count({
                 where: { assigneeId: u.id, status: 'done' }
               })
