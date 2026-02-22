@@ -260,13 +260,13 @@ function TaskList({
           <span>查看官网首页</span>
         </a>
 
-        {/* 我的 Agent 主页 */}
+        {/* 我的战队 */}
         <a
-          href="/agent"
+          href="/agents"
           className="w-full py-2 rounded-xl text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/40 flex items-center justify-center space-x-1.5 transition-colors"
         >
-          <span>🤖</span>
-          <span>我的 Agent</span>
+          <span>🌊</span>
+          <span>我的战队</span>
         </a>
 
         {/* 配对 Agent 按钮 */}
