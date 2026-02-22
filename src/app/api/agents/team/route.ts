@@ -120,7 +120,39 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ commander, mainAgent, subAgents })
+    // === 任务统计 ===
+    let taskStats = {
+      inProgressTasks: 0,
+      doneTasks: 0,
+      soloTasks: 0,       // 内部（solo mode）
+      teamTasks: 0,       // 外部（team mode）
+      totalAgentMs: 0,
+      totalHumanMs: 0,
+    }
+
+    if (workspaceIds.length > 0) {
+      const [inProgress, done, tasks] = await Promise.all([
+        prisma.task.count({
+          where: { workspaceId: { in: workspaceIds }, status: { in: ['todo', 'in_progress'] } }
+        }),
+        prisma.task.count({
+          where: { workspaceId: { in: workspaceIds }, status: 'done' }
+        }),
+        prisma.task.findMany({
+          where: { workspaceId: { in: workspaceIds } },
+          select: { mode: true, totalAgentTimeMs: true, totalHumanTimeMs: true }
+        })
+      ])
+
+      taskStats.inProgressTasks = inProgress
+      taskStats.doneTasks = done
+      taskStats.soloTasks = tasks.filter(t => t.mode === 'solo').length
+      taskStats.teamTasks = tasks.filter(t => t.mode === 'team').length
+      taskStats.totalAgentMs = tasks.reduce((s, t) => s + (t.totalAgentTimeMs || 0), 0)
+      taskStats.totalHumanMs = tasks.reduce((s, t) => s + (t.totalHumanTimeMs || 0), 0)
+    }
+
+    return NextResponse.json({ commander, mainAgent, subAgents, taskStats })
   } catch (error) {
     console.error('获取战队 Agent 失败:', error)
     return NextResponse.json({ error: '服务器错误' }, { status: 500 })
