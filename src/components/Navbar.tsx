@@ -74,6 +74,12 @@ export function Navbar() {
               <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
                 ⚙️ 设置
               </Link>
+              {session?.user?.email === 'aurora@arplus.top' && (
+                <Link href="/admin" className="text-sm text-red-500 hover:text-red-700 flex items-center space-x-1">
+                  <span>🛡️</span>
+                  <span>管理</span>
+                </Link>
+              )}
             </div>
           )}
         </div>
@@ -171,6 +177,11 @@ export function Navbar() {
               <Link href="/settings" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
                 <span>⚙️</span><span>设置</span>
               </Link>
+              {session?.user?.email === 'aurora@arplus.top' && (
+                <Link href="/admin" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50" onClick={() => setMobileMenuOpen(false)}>
+                  <span>🛡️</span><span>系统管理</span>
+                </Link>
+              )}
               <div className="flex items-center justify-between px-3 py-2">
                 <div className="flex items-center space-x-2">
                   <div className="w-7 h-7 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
