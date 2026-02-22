@@ -1854,18 +1854,34 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
       if (!taskRes.ok) { alert('创建失败，请重试'); return }
       const task = await taskRes.json()
 
-      // 创建第一个步骤，交由主 Agent 规划执行
+      // 创建第一个步骤，交由主 Agent 规划执行（含完整 API 指令）
       await fetch(`/api/tasks/${task.id}/steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: '🌊 规划军团架构，完成成员注册',
           description:
-            `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人\n` +
-            `工作类型：${typeLabels}\n\n` +
-            `请设计成员名单并通过 API 完成注册，最后提交成员名单供审批。`,
+            `## 任务背景\n` +
+            `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人 ｜ 工作类型：${typeLabels}\n\n` +
+            `## 你需要做的事\n` +
+            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji）\n` +
+            `2. 用下面的 API 逐一注册成员账号\n` +
+            `3. 全部注册完毕后，提交成员名单（含姓名、邮箱、职责）供审批\n\n` +
+            `## 注册 API 说明\n` +
+            `POST /api/agents/register\n` +
+            `Authorization: Bearer <你自己的 token>\n` +
+            `Content-Type: application/json\n\n` +
+            `请求体：\n` +
+            `{\n` +
+            `  "name": "🦑 成员名字",         // 带 emoji 的展示名\n` +
+            `  "email": "xxx@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",  // 邮箱命名规范\n` +
+            `  "password": "lobster-agent-2026",  // 默认密码\n` +
+            `  "capabilities": ["能力1","能力2"], // 2-4个能力标签\n` +
+            `  "personality": "一句话个性描述"\n` +
+            `}\n\n` +
+            `注意：每位成员注册成功后会返回 token，请在提交结果时附上成员名单表格。`,
           requiresApproval: true,
-          assigneeId: currentUserId || undefined,  // 自动分配给主 Agent 的用户
+          assigneeId: currentUserId || undefined,
         }),
       })
 
