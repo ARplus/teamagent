@@ -64,13 +64,47 @@ export async function POST(
 
     console.log('AI 拆解结果:', parseResult.steps.length, '个步骤')
 
-    // 获取工作区内所有用户（用于匹配责任人）
+    // 获取工作区内所有用户（含 Agent 能力标签，用于匹配责任人）
     const workspaceMembers = await prisma.workspaceMember.findMany({
       where: { workspaceId: task.workspaceId },
       include: {
-        user: { select: { id: true, name: true, nickname: true } }
+        user: {
+          select: {
+            id: true, name: true, nickname: true,
+            agent: { select: { name: true, capabilities: true } }
+          }
+        }
       }
     })
+
+    // 能力匹配函数：根据步骤标题/描述找最合适的 Agent
+    function matchByCapabilities(stepTitle: string, stepDesc: string): string | null {
+      const haystack = `${stepTitle} ${stepDesc}`.toLowerCase()
+      let best: { userId: string; score: number } | null = null
+
+      for (const m of workspaceMembers) {
+        const rawCaps: string = (m.user.agent as any)?.capabilities || '[]'
+        let caps: string[] = []
+        try { caps = JSON.parse(rawCaps) } catch { caps = [] }
+        if (!Array.isArray(caps) || caps.length === 0) continue
+
+        let score = 0
+        for (const cap of caps) {
+          if (haystack.includes(cap.toLowerCase())) score += 2
+          // 部分匹配
+          if (cap.length > 2 && haystack.split('').filter((_, i) =>
+            haystack.slice(i).startsWith(cap.slice(0, 2))).length > 0) score += 1
+        }
+        // 也检查 Agent 名字关键词
+        const agentName = ((m.user.agent as any)?.name || '').toLowerCase()
+        if (agentName && haystack.includes(agentName.replace(/[^\u4e00-\u9fa5a-z]/g, ''))) score += 3
+
+        if (score > 0 && (!best || score > best.score)) {
+          best = { userId: m.user.id, score }
+        }
+      }
+      return best?.userId ?? null
+    }
 
     // 创建步骤
     const createdSteps = []
@@ -79,19 +113,24 @@ export async function POST(
     for (const step of parseResult.steps) {
       order++
       
-      // 尝试匹配主责任人
+      // 1. 先按 AI 返回的 assignees 名字匹配
       let assigneeId: string | null = null
       for (const assigneeName of step.assignees) {
-        const member = workspaceMembers.find(m => 
-          m.user.nickname === assigneeName || 
+        const member = workspaceMembers.find(m =>
+          m.user.nickname === assigneeName ||
           m.user.name === assigneeName ||
           m.user.name?.includes(assigneeName) ||
-          assigneeName.includes(m.user.name || '')
+          assigneeName.includes(m.user.name || '') ||
+          (m.user.agent as any)?.name?.includes(assigneeName) ||
+          assigneeName.includes((m.user.agent as any)?.name || '')
         )
-        if (member) {
-          assigneeId = member.user.id
-          break
-        }
+        if (member) { assigneeId = member.user.id; break }
+      }
+
+      // 2. 名字匹配失败 → 按 Agent 能力标签匹配
+      if (!assigneeId) {
+        assigneeId = matchByCapabilities(step.title, step.description || '')
+        if (assigneeId) console.log(`[Parse] 能力匹配: "${step.title}" → userId:${assigneeId}`)
       }
 
       // 确保是数组格式
