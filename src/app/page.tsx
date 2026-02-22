@@ -479,21 +479,21 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
   return (
     <div className="flex-1 flex flex-col bg-gradient-to-br from-slate-50 to-orange-50/30 overflow-hidden">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 px-8 py-4">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 px-4 sm:px-8 py-3 sm:py-4">
         <div>
         {/* Top bar: workspace + my agent */}
-        <div className="flex items-center justify-between mb-3 text-xs">
-          <div className="flex items-center space-x-4 text-slate-500">
-            <span>📁 {task.workspace?.name || '默认工作区'}</span>
-            <span>·</span>
+        <div className="flex items-center justify-between mb-2 sm:mb-3 text-xs flex-wrap gap-2">
+          <div className="flex items-center space-x-2 sm:space-x-4 text-slate-500 flex-wrap gap-1">
+            <span className="hidden sm:inline">📁 {task.workspace?.name || '默认工作区'}</span>
+            <span className="hidden sm:inline">·</span>
             <span>👤 {task.creator?.name || task.creator?.email}</span>
             <span>·</span>
             <span>{formatTime(task.createdAt)}</span>
           </div>
-          <div className="flex items-center space-x-3">
-            {/* My Agent with Alerts */}
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* My Agent with Alerts - 只在 sm+ 屏幕显示复杂的 Agent 气泡 */}
             {myAgent && (
-              <div className="flex items-center space-x-3">
+              <div className="hidden sm:flex items-center space-x-3">
                 {/* Agent 提醒气泡 */}
                 {alerts.length > 0 && (
                   <div className="flex items-center space-x-2 bg-white px-3 py-2 rounded-2xl shadow-lg border border-slate-200 relative">
@@ -526,6 +526,13 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+            {/* 移动端简化版 Agent 状态 */}
+            {myAgent && (
+              <div className="sm:hidden flex items-center space-x-1 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">
+                <span className="text-sm">🦞</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${myAgent.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
               </div>
             )}
             {/* 邀请协作者 */}
@@ -625,9 +632,9 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
 
         {/* Title row */}
         <div className="flex items-start justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3">
-              <span className={`text-xs px-3 py-1 rounded-full font-medium ${status.bg} ${status.color}`}>
+          <div className="space-y-1.5 sm:space-y-2 min-w-0 flex-1">
+            <div className="flex items-center space-x-2 sm:space-x-3 flex-wrap gap-1">
+              <span className={`text-xs px-2 sm:px-3 py-1 rounded-full font-medium ${status.bg} ${status.color}`}>
                 {status.label}
               </span>
               {task.dueDate && (
@@ -637,9 +644,9 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                 </span>
               )}
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">{task.title}</h1>
+            <h1 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">{task.title}</h1>
             {task.description && (
-              <p className="text-slate-600 text-sm max-w-2xl">{task.description}</p>
+              <p className="text-slate-600 text-xs sm:text-sm max-w-2xl line-clamp-2 sm:line-clamp-none">{task.description}</p>
             )}
           </div>
         </div>
@@ -647,10 +654,10 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8">
-        <div className="flex gap-8">
-          {/* Left: Team & Stats */}
-          <div className="w-64 flex-shrink-0 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-8">
+          {/* Left: Team & Stats - 移动端全宽，桌面端固定宽 */}
+          <div className="w-full lg:w-64 lg:flex-shrink-0 space-y-4">
             <TeamCard task={task} />
             <StatsCard task={task} />
             <AttachmentsCard taskId={task.id} />
@@ -1825,8 +1832,8 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg p-5 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center space-x-3 mb-6">
           <span className="text-3xl">🦞</span>
           <h2 className="text-xl font-bold text-slate-900">新建任务</h2>
@@ -1981,23 +1988,29 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
           description:
             `## 任务背景\n` +
             `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人 ｜ 工作类型：${typeLabels}\n\n` +
-            `## 你需要做的事\n` +
-            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji）\n` +
-            `2. 用下面的 API 逐一注册成员账号\n` +
-            `3. 全部注册完毕后，提交成员名单（含姓名、邮箱、职责）供审批\n\n` +
-            `## 注册 API 说明\n` +
-            `POST /api/agents/register\n` +
-            `Authorization: Bearer <你自己的 token>\n` +
+            `## 第一步：在 TeamAgent 注册成员账号\n` +
+            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji），并为每位成员确定一个简短英文小写的 agentId（如 galileo、compass）\n` +
+            `2. 用下面的 API 逐一注册成员账号\n\n` +
+            `POST ${typeof window !== 'undefined' ? window.location.origin : ''}/api/agents/register\n` +
+            `Authorization: Bearer <你的 TeamAgent token>\n` +
             `Content-Type: application/json\n\n` +
-            `请求体：\n` +
             `{\n` +
-            `  "name": "🦑 成员名字",         // 带 emoji 的展示名\n` +
-            `  "email": "xxx@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",  // 邮箱命名规范\n` +
-            `  "password": "lobster-agent-2026",  // 默认密码\n` +
-            `  "capabilities": ["能力1","能力2"], // 2-4个能力标签\n` +
+            `  "name": "🦑 成员名字",\n` +
+            `  "email": "agentId@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",\n` +
+            `  "password": "lobster-agent-2026",\n` +
+            `  "capabilities": ["能力1","能力2"],\n` +
             `  "personality": "一句话个性描述"\n` +
             `}\n\n` +
-            `注意：每位成员注册成功后会返回 token，请在提交结果时附上成员名单表格。`,
+            `## 第二步：在 OpenClaw 创建真正的子 Agent（必须做！）\n` +
+            `TeamAgent 注册只是建账号，子 Agent 必须在 OpenClaw 中创建才能真正执行任务。\n\n` +
+            `对每位成员：\n` +
+            `a. 创建 workspace 和 agentDir 目录（用 exec 工具）：\n` +
+            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\workspace-<agentId>"\n` +
+            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\agents\\<agentId>\\agent"\n\n` +
+            `b. 用 gateway config.patch 工具将所有新成员加入 agents.list，并把他们的 agentId 加入 main.subagents.allowAgents：\n` +
+            `   { "agents": { "list": [ { "id": "main", "subagents": { "allowAgents": [...原有成员, "<agentId>"] } }, ...原有成员配置, { "id": "<agentId>", "name": "<全名>", "workspace": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\workspace-<agentId>", "agentDir": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\agents\\\\<agentId>\\\\agent" } ] } }\n\n` +
+            `## 第三步：提交成员名单供审批\n` +
+            `提交内容：成员名单表格（名字 / 邮箱 / agentId / 职责 / OpenClaw ✅）`,
           requiresApproval: true,
           assigneeId: currentUserId || undefined,
         }),
@@ -2176,7 +2189,7 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
   ]
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/20 px-8 py-8 overflow-y-auto">
+    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/20 px-4 sm:px-8 py-6 sm:py-8 overflow-y-auto">
       <div className="max-w-xl w-full">
         {/* Header */}
         <div className="text-center mb-10">
@@ -2256,13 +2269,13 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/30">
-      <div className="text-7xl mb-6">🦞</div>
-      <h2 className="text-2xl font-bold text-slate-800 mb-2">欢迎使用 TeamAgent</h2>
-      <p className="text-slate-500 mb-8">AI 与人类协作的任务管理平台</p>
+    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/30 px-4">
+      <div className="text-5xl sm:text-7xl mb-4 sm:mb-6">🦞</div>
+      <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2 text-center">欢迎使用 TeamAgent</h2>
+      <p className="text-slate-500 mb-6 sm:mb-8 text-sm text-center">AI 与人类协作的任务管理平台</p>
       <button
         onClick={onCreate}
-        className="px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-2xl hover:from-orange-400 hover:to-rose-400 font-semibold shadow-xl shadow-orange-500/30 text-lg"
+        className="px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-2xl hover:from-orange-400 hover:to-rose-400 font-semibold shadow-xl shadow-orange-500/30 text-base sm:text-lg"
       >
         + 创建第一个任务
       </button>
@@ -2377,61 +2390,107 @@ export default function HomePage() {
     )
   }
 
+  // 移动端：选择任务/创建/配对后自动关闭侧边栏
+  const handleMobileClose = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarCollapsed(true)
+    }
+  }
+
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* 无 Agent 引导 Banner */}
       {agentChecked && !myAgent && tasks.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <span className="text-lg">⚡</span>
-            <div>
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+            <span className="text-lg flex-shrink-0">⚡</span>
+            <div className="min-w-0">
               <span className="font-semibold text-sm">还没有配对 Agent</span>
-              <span className="text-amber-100 ml-2 text-xs">配对后任务步骤可以自动执行，不用手动操作</span>
+              <span className="text-amber-100 ml-2 text-xs hidden sm:inline">配对后任务步骤可以自动执行，不用手动操作</span>
             </div>
           </div>
           <button
             onClick={() => setShowPairingModal(true)}
-            className="bg-white text-orange-600 font-semibold px-4 py-1.5 rounded-xl text-xs hover:bg-orange-50 transition-colors flex items-center space-x-1.5 flex-shrink-0"
+            className="bg-white text-orange-600 font-semibold px-3 sm:px-4 py-1.5 rounded-xl text-xs hover:bg-orange-50 transition-colors flex items-center space-x-1.5 flex-shrink-0 ml-2"
           >
             <span>⊕</span>
-            <span>配对我的 Agent</span>
+            <span>配对</span>
           </button>
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
-        <TaskList
-          tasks={tasks}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onCreateNew={() => setShowCreateModal(true)}
-          onPairAgent={() => setShowPairingModal(true)}
-          currentUserId={session?.user?.id || ''}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          hasAgent={!!myAgent}
-        />
-        {selectedTask ? (
-          <TaskDetail
-            task={selectedTask}
-            onRefresh={handleRefresh}
-            canApprove={session?.user?.id === selectedTask.creator?.id}
-            onDelete={handleDelete}
-            myAgent={myAgent}
-            currentUserId={session?.user?.id || ''}
+      {/* 移动端顶部导航栏 */}
+      <div className="md:hidden bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center space-x-2">
+          <span className="text-xl">🦞</span>
+          <span className="font-bold text-white text-sm">TeamAgent</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {selectedTask && (
+            <span className="text-xs text-slate-400 max-w-[140px] truncate">{selectedTask.title}</span>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="text-white p-2 hover:bg-white/10 rounded-lg text-lg leading-none"
+            aria-label="打开菜单"
+          >
+            ☰
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 移动端遮罩层 */}
+        {!sidebarCollapsed && (
+          <div
+            className="absolute inset-0 bg-black/50 z-30 md:hidden"
+            onClick={() => setSidebarCollapsed(true)}
           />
-        ) : agentChecked && tasks.length === 0 ? (
-          <OnboardingGuide
-            hasAgent={!!myAgent}
-            agentName={myAgent?.name}
-            currentUserId={session?.user?.id}
-            onPairAgent={() => setShowPairingModal(true)}
-            onCreateTask={() => setShowCreateModal(true)}
-            onSelectTask={(id) => { fetchTasks(); setSelectedId(id) }}
-          />
-        ) : (
-          <EmptyState onCreate={() => setShowCreateModal(true)} />
         )}
+
+        {/* 侧边栏：移动端为抽屉式，桌面端为内联 */}
+        <div className={`
+          absolute md:relative inset-y-0 left-0 z-40 md:z-auto flex-shrink-0 flex
+          transition-transform duration-300 ease-in-out
+          ${sidebarCollapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
+        `}>
+          <TaskList
+            tasks={tasks}
+            selectedId={selectedId}
+            onSelect={(id) => { setSelectedId(id); handleMobileClose() }}
+            onCreateNew={() => { setShowCreateModal(true); handleMobileClose() }}
+            onPairAgent={() => { setShowPairingModal(true); handleMobileClose() }}
+            currentUserId={session?.user?.id || ''}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            hasAgent={!!myAgent}
+          />
+        </div>
+
+        {/* 主内容区 */}
+        <div className="flex-1 flex overflow-hidden min-w-0">
+          {selectedTask ? (
+            <TaskDetail
+              task={selectedTask}
+              onRefresh={handleRefresh}
+              canApprove={session?.user?.id === selectedTask.creator?.id}
+              onDelete={handleDelete}
+              myAgent={myAgent}
+              currentUserId={session?.user?.id || ''}
+            />
+          ) : agentChecked && tasks.length === 0 ? (
+            <OnboardingGuide
+              hasAgent={!!myAgent}
+              agentName={myAgent?.name}
+              currentUserId={session?.user?.id}
+              onPairAgent={() => setShowPairingModal(true)}
+              onCreateTask={() => setShowCreateModal(true)}
+              onSelectTask={(id) => { fetchTasks(); setSelectedId(id) }}
+            />
+          ) : (
+            <EmptyState onCreate={() => setShowCreateModal(true)} />
+          )}
+        </div>
       </div>
 
       {showCreateModal && (

@@ -281,23 +281,29 @@ function BuildTeamModal({ onClose, onDone, currentUserId }: { onClose: () => voi
           description:
             `## 任务背景\n` +
             `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人 ｜ 工作类型：${typeLabels}\n\n` +
-            `## 你需要做的事\n` +
-            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji）\n` +
-            `2. 用下面的 API 逐一注册成员账号\n` +
-            `3. 全部注册完毕后，提交成员名单（含姓名、邮箱、职责）供审批\n\n` +
-            `## 注册 API 说明\n` +
-            `POST /api/agents/register\n` +
-            `Authorization: Bearer <你自己的 token>\n` +
+            `## 第一步：在 TeamAgent 注册成员账号\n` +
+            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji），并为每位成员确定一个简短英文小写的 agentId（如 galileo、compass）\n` +
+            `2. 用下面的 API 逐一注册成员账号\n\n` +
+            `POST ${typeof window !== 'undefined' ? window.location.origin : ''}/api/agents/register\n` +
+            `Authorization: Bearer <你的 TeamAgent token>\n` +
             `Content-Type: application/json\n\n` +
-            `请求体：\n` +
             `{\n` +
             `  "name": "🦑 成员名字",\n` +
-            `  "email": "xxx@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",\n` +
+            `  "email": "agentId@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",\n` +
             `  "password": "lobster-agent-2026",\n` +
             `  "capabilities": ["能力1","能力2"],\n` +
             `  "personality": "一句话个性描述"\n` +
             `}\n\n` +
-            `注意：每位成员注册成功后会返回 token，请在提交结果时附上成员名单表格。`,
+            `## 第二步：在 OpenClaw 创建真正的子 Agent（必须做！）\n` +
+            `TeamAgent 注册只是建账号，子 Agent 必须在 OpenClaw 中创建才能真正执行任务。\n\n` +
+            `对每位成员：\n` +
+            `a. 创建 workspace 和 agentDir 目录（用 exec 工具）：\n` +
+            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\workspace-<agentId>"\n` +
+            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\agents\\<agentId>\\agent"\n\n` +
+            `b. 用 gateway config.patch 工具将所有新成员加入 agents.list，并把他们的 agentId 加入 main.subagents.allowAgents：\n` +
+            `   { "agents": { "list": [ { "id": "main", "subagents": { "allowAgents": [...原有成员, "<agentId>"] } }, ...原有成员配置, { "id": "<agentId>", "name": "<全名>", "workspace": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\workspace-<agentId>", "agentDir": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\agents\\\\<agentId>\\\\agent" } ] } }\n\n` +
+            `## 第三步：提交成员名单供审批\n` +
+            `提交内容：成员名单表格（名字 / 邮箱 / agentId / 职责 / OpenClaw ✅）`,
           requiresApproval: true,
           assigneeId: currentUserId || undefined,
         }),
@@ -497,24 +503,24 @@ export default function TeamPage() {
           <div className="absolute top-0 right-1/3 w-80 h-80 bg-rose-500/8 rounded-full blur-3xl -translate-y-1/2" />
         </div>
 
-        <div className="max-w-6xl mx-auto px-6 py-8 relative">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 relative">
           {/* Top row */}
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-orange-500/30 flex-shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 sm:gap-5 min-w-0">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-xl sm:text-2xl font-bold shadow-lg shadow-orange-500/30 flex-shrink-0">
                 {initials}
               </div>
-              <div>
-                <div className="flex items-center gap-3 mb-1">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 sm:gap-3 mb-1 flex-wrap">
                   {editingName ? (
                     <input value={nameValue} onChange={e => setNameValue(e.target.value)}
                       onBlur={saveName} onKeyDown={e => e.key === 'Enter' && saveName()}
                       autoFocus
-                      className="bg-transparent text-white text-2xl font-bold outline-none border-b border-orange-400 w-48" />
+                      className="bg-transparent text-white text-lg sm:text-2xl font-bold outline-none border-b border-orange-400 w-36 sm:w-48" />
                   ) : (
-                    <h1 className="text-2xl font-bold text-white">{displayName}</h1>
+                    <h1 className="text-lg sm:text-2xl font-bold text-white">{displayName}</h1>
                   )}
-                  <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-medium flex-shrink-0">
+                  <span className="text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-medium flex-shrink-0">
                     👑 总司令
                   </span>
                   {!editingName && (
@@ -525,21 +531,21 @@ export default function TeamPage() {
                   )}
                 </div>
                 <InlineMission value={mission} onSave={saveMission} />
-                <p className="text-slate-600 text-xs mt-1.5">
+                <p className="text-slate-600 text-xs mt-1 sm:mt-1.5">
                   数字军团创始人 · {c ? `自 ${new Date(c.createdAt).getFullYear()}年${new Date(c.createdAt).getMonth() + 1}月起` : ''}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <button onClick={() => setShowPairing(true)}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold shadow-lg shadow-orange-500/25 transition flex items-center gap-2">
-                + 招募成员
+                className="px-3 sm:px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-orange-500/25 transition flex items-center gap-1 sm:gap-2">
+                + 招募
               </button>
             </div>
           </div>
 
           {/* Stats bar — X/Y format */}
-          <div className="grid grid-cols-4 gap-6 mt-8 pt-7 border-t border-slate-800">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 mt-6 sm:mt-8 pt-5 sm:pt-7 border-t border-slate-800">
             <StatPill a={onlineCount} b={allAgents.length} labelA="在线" labelB="全部成员" icon="🤖" />
             <StatPill a={ts?.inProgressTasks ?? 0} b={(ts?.inProgressTasks ?? 0) + (ts?.doneTasks ?? 0)} labelA="进行中" labelB="全部任务" icon="📋" />
             <StatPill a={ts?.teamTasks ?? 0} b={(ts?.soloTasks ?? 0) + (ts?.teamTasks ?? 0)} labelA="外部" labelB="内部任务" icon="🌐" />
