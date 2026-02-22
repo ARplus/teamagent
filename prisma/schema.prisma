@@ -203,7 +203,10 @@ model TaskStep {
   order       Int      // 步骤顺序
   
   // 步骤类型
-  stepType    String   @default("task")  // task | meeting
+  stepType    String   @default("task")  // task | meeting | decompose
+
+  // 并行分组（同一 parallelGroup 的步骤可同时执行，不等上一步）
+  parallelGroup String?  // null = 顺序执行；相同字符串 = 并行组
 
   // 责任人（支持多人显示）
   assigneeNames String?  // JSON: ["小敏", "段段"] 用于显示

@@ -7,8 +7,9 @@
 export type TeamAgentEvent = 
   | { type: 'task:created'; taskId: string; title: string }
   | { type: 'task:updated'; taskId: string; title: string }
-  | { type: 'step:ready'; taskId: string; stepId: string; title: string }
+  | { type: 'step:ready'; taskId: string; stepId: string; title: string; stepType?: string; taskDescription?: string }
   | { type: 'step:completed'; taskId: string; stepId: string; title: string; nextStepId?: string }
+  | { type: 'task:decomposed'; taskId: string; stepsCount: number }
   | { type: 'step:assigned'; taskId: string; stepId: string; title: string }
   | { type: 'approval:requested'; taskId: string; stepId: string; title: string }
   | { type: 'approval:granted'; taskId: string; stepId: string }

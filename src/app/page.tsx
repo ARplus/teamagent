@@ -77,6 +77,7 @@ interface Task {
   description: string | null
   status: string
   priority: string
+  mode: string   // solo | team
   dueDate: string | null
   createdAt: string
   updatedAt: string
@@ -1033,12 +1034,23 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   }, [])
 
   const parseTask = async () => {
-    if (!task.description) return alert('任务没有描述')
+    if (!task.description) return alert('任务没有描述，请先填写任务描述')
     setParsing(true)
     try {
       const res = await fetch(`/api/tasks/${task.id}/parse`, { method: 'POST' })
-      if (res.ok) onRefresh()
-      else alert('拆解失败')
+      const data = await res.json()
+      if (res.ok) {
+        if (data.mode === 'agent') {
+          // Solo 模式：主 Agent 已收到通知，等待拆解
+          alert(`🤖 ${data.message}`)
+        }
+        onRefresh()
+      } else if (res.status === 422 && data.error === 'no_main_agent') {
+        // Solo 模式无主 Agent → 提示绑定
+        alert(`⚡ ${data.message}`)
+      } else {
+        alert(data.error || '拆解失败')
+      }
     } finally {
       setParsing(false)
     }
@@ -1135,7 +1147,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
               disabled={parsing}
               className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-4 py-2 rounded-xl hover:from-orange-400 hover:to-rose-400 disabled:opacity-50 shadow-md shadow-orange-500/20 font-medium"
             >
-              {parsing ? '🤖 拆解中...' : '🤖 AI 拆解'}
+              {parsing ? '🤖 拆解中...' : task.mode === 'solo' ? '🤖 主Agent拆解' : '🤖 AI 拆解'}
             </button>
           )}
           <button
