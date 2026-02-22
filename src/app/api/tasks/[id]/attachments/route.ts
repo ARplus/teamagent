@@ -18,7 +18,12 @@ async function authenticate(req: NextRequest) {
   return null
 }
 
-// GET /api/tasks/[id]/attachments — 获取任务附件列表
+// 判断是否使用 OSS
+function useOSS() {
+  return !!(process.env.OSS_ACCESS_KEY_ID && process.env.OSS_BUCKET)
+}
+
+// GET /api/tasks/[id]/attachments
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,11 +37,10 @@ export async function GET(
     orderBy: { createdAt: 'asc' },
     include: { uploader: { select: { name: true, email: true } } }
   })
-
   return NextResponse.json({ attachments })
 }
 
-// POST /api/tasks/[id]/attachments — 上传文件到任务
+// POST /api/tasks/[id]/attachments
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -45,8 +49,6 @@ export async function POST(
   if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
   const { id: taskId } = await params
-
-  // 确认任务存在
   const task = await prisma.task.findUnique({ where: { id: taskId } })
   if (!task) return NextResponse.json({ error: '任务不存在' }, { status: 404 })
 
@@ -54,30 +56,36 @@ export async function POST(
     const formData = await req.formData()
     const file = formData.get('file') as File | null
     if (!file) return NextResponse.json({ error: '没有找到文件' }, { status: 400 })
-
-    // 文件大小限制 20MB
     if (file.size > 20 * 1024 * 1024) {
       return NextResponse.json({ error: '文件不能超过 20MB' }, { status: 400 })
     }
 
-    // 安全文件名：去掉路径符，保留扩展名
     const safeName = file.name.replace(/[/\\?%*:|"<>]/g, '-')
     const timestamp = Date.now()
     const filename = `${timestamp}-${safeName}`
-
-    // 确保目录存在
-    const uploadDir = join(process.cwd(), 'uploads', 'tasks', taskId)
-    if (!existsSync(uploadDir)) await mkdir(uploadDir, { recursive: true })
-
-    // 写文件
     const bytes = await file.arrayBuffer()
-    await writeFile(join(uploadDir, filename), Buffer.from(bytes))
+    const buffer = Buffer.from(bytes)
+    let fileUrl: string
 
-    // 存 DB
+    if (useOSS()) {
+      // ☁️ 生产：上传到阿里云 OSS
+      const { ossUpload } = await import('@/lib/oss')
+      const ossKey = `tasks/${taskId}/${filename}`
+      fileUrl = await ossUpload(ossKey, buffer, file.type || 'application/octet-stream')
+      console.log(`[OSS] 上传成功: ${ossKey}`)
+    } else {
+      // 💾 开发：保存到本地
+      const uploadDir = join(process.cwd(), 'uploads', 'tasks', taskId)
+      if (!existsSync(uploadDir)) await mkdir(uploadDir, { recursive: true })
+      await writeFile(join(uploadDir, filename), buffer)
+      fileUrl = `/api/uploads/tasks/${taskId}/${filename}`
+      console.log(`[Local] 保存到: ${uploadDir}/${filename}`)
+    }
+
     const attachment = await prisma.attachment.create({
       data: {
         name: file.name,
-        url: `/api/uploads/tasks/${taskId}/${filename}`,
+        url: fileUrl,
         type: file.type || 'application/octet-stream',
         size: file.size,
         taskId,
@@ -89,7 +97,7 @@ export async function POST(
     return NextResponse.json({ success: true, attachment }, { status: 201 })
   } catch (err) {
     console.error('上传失败:', err)
-    return NextResponse.json({ error: '上传失败' }, { status: 500 })
+    return NextResponse.json({ error: '上传失败，请重试' }, { status: 500 })
   }
 }
 
@@ -108,6 +116,16 @@ export async function DELETE(
   const att = await prisma.attachment.findUnique({ where: { id: attachmentId } })
   if (!att || att.taskId !== taskId) return NextResponse.json({ error: '附件不存在' }, { status: 404 })
   if (att.uploaderId !== auth.userId) return NextResponse.json({ error: '无权删除' }, { status: 403 })
+
+  // 同步删除 OSS 上的文件
+  if (useOSS() && att.url) {
+    try {
+      const { ossDelete, ossKeyFromUrl } = await import('@/lib/oss')
+      await ossDelete(ossKeyFromUrl(att.url))
+    } catch (e) {
+      console.warn('[OSS] 删除文件失败（DB 记录仍会删除）:', e)
+    }
+  }
 
   await prisma.attachment.delete({ where: { id: attachmentId } })
   return NextResponse.json({ success: true })
