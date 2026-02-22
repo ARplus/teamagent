@@ -1801,7 +1801,7 @@ function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => voi
           <button onClick={onPairAgent} className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
           <button
             type="button"
-            onClick={() => window.open('/landing', '_blank')}
+            onClick={() => window.location.href = '/build-agent'}
             className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1 underline underline-offset-2"
           >
             📖 查看安装指引 →
@@ -1868,7 +1868,7 @@ function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => voi
         {/* Footer hint */}
         <p className="text-center text-xs text-slate-400 mt-8">
           已有 Agent？直接输入配对码 · 没有 Agent？先去{' '}
-          <button type="button" onClick={() => window.open('/landing', '_blank')} className="text-orange-400 hover:text-orange-500 underline underline-offset-2">查看安装指引</button>
+          <button type="button" onClick={() => window.location.href = '/build-agent'} className="text-orange-400 hover:text-orange-500 underline underline-offset-2">查看安装指引</button>
         </p>
       </div>
     </div>
