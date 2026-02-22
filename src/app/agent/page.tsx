@@ -193,9 +193,17 @@ export default function AgentProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      const res = await fetch('/api/agent/profile')
-      if (res.ok) {
-        const json = await res.json()
+      const [profileRes, statusRes] = await Promise.all([
+        fetch('/api/agent/profile'),
+        fetch('/api/agent/status')
+      ])
+      if (profileRes.ok) {
+        const json = await profileRes.json()
+        // 用实时 status 覆盖 DB 里的旧值
+        if (statusRes.ok && json.agent) {
+          const liveStatus = await statusRes.json()
+          json.agent.status = liveStatus.status || json.agent.status
+        }
         setData(json)
       }
     } catch (e) {
