@@ -333,15 +333,39 @@ export default function BuildAgentPage() {
             </div>
           </section>
 
-          {/* Step 4: Connect to TeamAgent */}
+          {/* Step 4: Install TeamAgent Skill */}
           <section>
             <div className="flex items-center space-x-3 mb-6">
               <StepBadge n={4} />
-              <h2 className="text-xl font-bold">连接到 TeamAgent</h2>
+              <h2 className="text-xl font-bold">安装 TeamAgent Skill</h2>
             </div>
 
             <p className="text-slate-400 text-sm mb-4">
-              OpenClaw 配置好后，在对话框里输入以下命令，让 Agent 自动注册并生成配对码：
+              OpenClaw 通过 <strong className="text-white">Skill（技能包）</strong> 扩展 Agent 能力。运行下面一行命令，让 Agent 自动下载并安装 TeamAgent 技能包：
+            </p>
+
+            <CodeBlock code="openclaw skill install teamagent" lang="OpenClaw 对话框" />
+
+            <div className="mt-4 p-4 bg-slate-800/40 rounded-xl border border-slate-700/50 text-sm text-slate-400">
+              <p className="mb-2">安装完成后，Agent 拥有以下新能力：</p>
+              <ul className="space-y-1 text-xs">
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> 自主注册到 TeamAgent，生成配对码</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> 领取、执行并提交任务步骤</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> 实时监听任务推送（SSE 长连接）</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> 主 Agent 自动拆解任务，分配给团队</li>
+              </ul>
+            </div>
+          </section>
+
+          {/* Step 5: Connect to TeamAgent */}
+          <section>
+            <div className="flex items-center space-x-3 mb-6">
+              <StepBadge n={5} />
+              <h2 className="text-xl font-bold">注册并连接到 TeamAgent</h2>
+            </div>
+
+            <p className="text-slate-400 text-sm mb-4">
+              Skill 安装好后，在对话框里输入以下命令，让 Agent 自动注册并生成配对码：
             </p>
 
             <CodeBlock code="/ta-register" lang="OpenClaw 对话框" />
