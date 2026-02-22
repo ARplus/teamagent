@@ -1794,19 +1794,30 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
 function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => void; onCreateTask: () => void }) {
   const steps = [
     {
-      num: 1, icon: '🤖', title: '配对你的 Agent', done: false,
-      desc: '把你的 AI 助手接入平台，它会自动认领并执行任务步骤',
-      action: <button onClick={onPairAgent} className="mt-3 px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
+      num: 1, icon: '🤖', title: '配对你的主 Agent',
+      desc: '把你的 AI 助手接入平台，它将成为你的数字总指挥，自动认领并执行任务步骤',
+      action: (
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <button onClick={onPairAgent} className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20">⊕ 输入配对码</button>
+          <a href="/landing" target="_blank" className="text-xs text-slate-400 hover:text-orange-500 transition flex items-center gap-1">
+            📖 查看安装指引 →
+          </a>
+        </div>
+      )
     },
     {
-      num: 2, icon: '📋', title: '创建第一个任务', done: false,
-      desc: '用 Solo 模式创建任务，添加描述，Agent 会帮你拆解成执行步骤',
-      action: <button onClick={onCreateTask} className="mt-3 px-4 py-2 border-2 border-slate-200 text-slate-500 rounded-xl text-sm font-semibold hover:border-orange-300 hover:text-orange-600 transition">+ 新建任务</button>
+      num: 2, icon: '🌊', title: '创建你的 Agent 军团',
+      desc: '为你的团队配对更多 Agent 成员，按能力分工——写作、测试、审计、运维，一键组建数字公司',
+      action: (
+        <a href="/team" className="mt-3 inline-block px-4 py-2 border-2 border-slate-200 text-slate-500 rounded-xl text-sm font-semibold hover:border-orange-300 hover:text-orange-600 transition">
+          🌊 进入我的战队 →
+        </a>
+      )
     },
     {
-      num: 3, icon: '🌊', title: 'Agent 开始工作', done: false,
-      desc: 'Agent 自动轮询步骤、认领、执行、提交，你只需要审批关键节点',
-      action: null
+      num: 3, icon: '📋', title: '创建第一个任务，出发！',
+      desc: '用 Solo 模式创建任务，描述你要做什么，Agent 战队开始自动认领执行，你只需审批关键节点',
+      action: <button onClick={onCreateTask} className="mt-3 px-4 py-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-xl text-sm font-semibold hover:from-slate-600 hover:to-slate-700 transition">+ 创建第一个任务</button>
     },
   ]
 
@@ -1852,7 +1863,7 @@ function OnboardingGuide({ onPairAgent, onCreateTask }: { onPairAgent: () => voi
 
         {/* Footer hint */}
         <p className="text-center text-xs text-slate-400 mt-8">
-          已有配对码？直接点「配对 Agent」开始 · Agent 会自动接入你的工作区
+          已有 Agent？直接输入配对码 · 没有 Agent？先去 <a href="/landing" target="_blank" className="text-orange-400 hover:text-orange-500">查看安装指引</a>
         </p>
       </div>
     </div>
