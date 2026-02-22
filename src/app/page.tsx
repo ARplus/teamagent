@@ -1802,11 +1802,13 @@ const WORK_TYPE_OPTIONS = [
   { label: '✨ 其他', value: 'other' },
 ]
 
-function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = false }: {
+function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = false, agentName, currentUserId }: {
   onPairAgent: () => void
   onCreateTask: () => void
   onSelectTask: (id: string) => void
   hasAgent?: boolean
+  agentName?: string
+  currentUserId?: string
 }) {
   const [showTeamForm, setShowTeamForm] = useState(hasAgent) // 有 Agent 时自动展开 Step 2
   const [companyName, setCompanyName] = useState('')
@@ -1863,6 +1865,7 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
             `工作类型：${typeLabels}\n\n` +
             `请设计成员名单并通过 API 完成注册，最后提交成员名单供审批。`,
           requiresApproval: true,
+          assigneeId: currentUserId || undefined,  // 自动分配给主 Agent 的用户
         }),
       })
 
@@ -1979,9 +1982,9 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
       desc: step1Done ? '主 Agent 已就位，随时待命 🎉' : '把你的 AI 助手接入平台，它将成为你的数字总指挥，自动认领并执行任务步骤',
       done: step1Done,
       action: step1Done ? (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium border border-emerald-200">
-            ✅ 配对成功
+            ✅ {agentName ? `${agentName} 已就位` : '配对成功'}
           </span>
           <button onClick={onPairAgent}
             className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition">
@@ -2264,6 +2267,8 @@ export default function HomePage() {
         ) : agentChecked && tasks.length === 0 ? (
           <OnboardingGuide
             hasAgent={!!myAgent}
+            agentName={myAgent?.name}
+            currentUserId={session?.user?.id}
             onPairAgent={() => setShowPairingModal(true)}
             onCreateTask={() => setShowCreateModal(true)}
             onSelectTask={(id) => { fetchTasks(); setSelectedId(id) }}

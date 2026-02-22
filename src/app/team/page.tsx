@@ -190,7 +190,7 @@ const WORK_TYPE_OPTIONS = [
   { label: '✨ 其他', value: 'other' },
 ]
 
-function BuildTeamModal({ onClose, onDone }: { onClose: () => void; onDone: (taskId: string) => void }) {
+function BuildTeamModal({ onClose, onDone, currentUserId }: { onClose: () => void; onDone: (taskId: string) => void; currentUserId?: string }) {
   const [companyName, setCompanyName] = useState('')
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [goal, setGoal] = useState('')
@@ -243,6 +243,7 @@ function BuildTeamModal({ onClose, onDone }: { onClose: () => void; onDone: (tas
             `工作类型：${typeLabels}\n\n` +
             `请设计成员名单并通过 API 完成注册，最后提交成员名单供审批。`,
           requiresApproval: true,
+          assigneeId: currentUserId || undefined,
         }),
       })
 
@@ -585,6 +586,7 @@ export default function TeamPage() {
       {showBuildTeam && (
         <BuildTeamModal
           onClose={() => setShowBuildTeam(false)}
+          currentUserId={session?.user?.id}
           onDone={(taskId) => {
             setShowBuildTeam(false)
             window.location.href = `/#${taskId}`
