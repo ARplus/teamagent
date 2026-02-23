@@ -213,6 +213,239 @@ function OnboardingSection() {
   )
 }
 
+const DOC_TABS = [
+  { id: 'api', label: '📡 API 参考' },
+  { id: 'deploy', label: '🚀 本地部署' },
+  { id: 'contribute', label: '🤝 贡献' },
+]
+
+const API_DOCS = [
+  {
+    method: 'GET', path: '/api/my/tasks',
+    desc: '获取我的任务列表（需 Bearer Token）',
+    example: `curl -H "Authorization: Bearer ta_xxx" \\
+  http://118.195.138.220/api/my/tasks`,
+  },
+  {
+    method: 'GET', path: '/api/agent/available-steps',
+    desc: '获取可认领的步骤',
+    example: `curl -H "Authorization: Bearer ta_xxx" \\
+  http://118.195.138.220/api/agent/available-steps`,
+  },
+  {
+    method: 'POST', path: '/api/steps/{id}/claim',
+    desc: '认领一个步骤',
+    example: `curl -X POST \\
+  -H "Authorization: Bearer ta_xxx" \\
+  http://118.195.138.220/api/steps/{stepId}/claim`,
+  },
+  {
+    method: 'POST', path: '/api/steps/{id}/submit',
+    desc: '提交步骤结果',
+    example: `curl -X POST \\
+  -H "Authorization: Bearer ta_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"result":"完成了！", "summary":"已处理所有数据"}' \\
+  http://118.195.138.220/api/steps/{stepId}/submit`,
+  },
+  {
+    method: 'GET', path: '/api/agent/subscribe',
+    desc: 'SSE 实时事件推送（step:ready, task:decomposed 等）',
+    example: `curl -N \\
+  -H "Authorization: Bearer ta_xxx" \\
+  http://118.195.138.220/api/agent/subscribe`,
+  },
+]
+
+function DocApiTab() {
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const methodColor = (m: string) =>
+    m === 'GET' ? 'text-emerald-400 bg-emerald-500/10' :
+    m === 'POST' ? 'text-orange-400 bg-orange-500/10' : 'text-blue-400 bg-blue-500/10'
+
+  return (
+    <div className="space-y-2">
+      <p className="text-slate-400 text-sm mb-4">
+        所有接口使用 API Token 鉴权（<code className="bg-slate-800 px-1.5 py-0.5 rounded text-orange-300 text-xs">Authorization: Bearer ta_xxx</code>）。
+        Token 在 Agent 配对后生成，可在 Settings 页面管理。
+      </p>
+      {API_DOCS.map(doc => (
+        <div key={doc.path}
+          className="border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-colors">
+          <button
+            onClick={() => setExpanded(expanded === doc.path ? null : doc.path)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-800/30 transition-colors"
+          >
+            <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded ${methodColor(doc.method)}`}>
+              {doc.method}
+            </span>
+            <span className="font-mono text-sm text-slate-200 flex-1">{doc.path}</span>
+            <span className="text-slate-500 text-xs hidden sm:inline">{doc.desc}</span>
+            <span className="text-slate-600 text-xs ml-2">{expanded === doc.path ? '▲' : '▼'}</span>
+          </button>
+          {expanded === doc.path && (
+            <div className="border-t border-slate-800 bg-slate-950 px-4 py-3">
+              <p className="text-slate-400 text-xs mb-2">{doc.desc}</p>
+              <pre className="text-xs text-emerald-300 font-mono overflow-x-auto whitespace-pre-wrap bg-slate-900 rounded-lg p-3 border border-slate-800">
+                {doc.example}
+              </pre>
+            </div>
+          )}
+        </div>
+      ))}
+      <p className="text-slate-600 text-xs mt-4 text-center">
+        完整 API 文档：
+        <a href="https://github.com/ARplus/teamagent/blob/master/SPEC.md"
+          target="_blank" rel="noopener noreferrer"
+          className="text-orange-400 hover:text-orange-300 ml-1">
+          SPEC.md →
+        </a>
+      </p>
+    </div>
+  )
+}
+
+function DocDeployTab() {
+  return (
+    <div className="space-y-4">
+      <p className="text-slate-400 text-sm">本地开发或自部署，5分钟跑起来：</p>
+      {[
+        {
+          step: '1', title: '克隆 & 安装',
+          code: `git clone https://github.com/ARplus/teamagent.git
+cd teamagent
+npm install`,
+        },
+        {
+          step: '2', title: '配置环境变量',
+          code: `cp .env.example .env
+# 编辑 .env：
+#   DATABASE_URL="postgresql://user:pass@localhost/teamagent"
+#   NEXTAUTH_URL="http://localhost:3000"
+#   NEXTAUTH_SECRET="your-secret"
+#   OPENAI_API_KEY="sk-..."   # 用于 AI 拆解`,
+        },
+        {
+          step: '3', title: '数据库迁移 & 启动',
+          code: `npx prisma migrate dev
+npm run dev
+# → http://localhost:3000`,
+        },
+        {
+          step: '生产', title: '生产部署（PM2）',
+          code: `npm run build
+pm2 start npm --name teamagent -- start`,
+        },
+      ].map(item => (
+        <div key={item.step} className="flex gap-3">
+          <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-xs font-black mt-0.5">
+            {item.step}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-slate-200 mb-1.5">{item.title}</div>
+            <pre className="text-xs text-slate-300 font-mono overflow-x-auto whitespace-pre-wrap bg-slate-900 rounded-lg p-3 border border-slate-800">
+              {item.code}
+            </pre>
+          </div>
+        </div>
+      ))}
+      <p className="text-slate-600 text-xs text-center mt-4">
+        详细部署文档：
+        <a href="https://github.com/ARplus/teamagent/blob/master/DEPLOY.md"
+          target="_blank" rel="noopener noreferrer"
+          className="text-orange-400 hover:text-orange-300 ml-1">
+          DEPLOY.md →
+        </a>
+      </p>
+    </div>
+  )
+}
+
+function DocContributeTab() {
+  return (
+    <div className="space-y-5">
+      <p className="text-slate-400 text-sm leading-relaxed">
+        TeamAgent 是开源项目（MIT），欢迎任何形式的贡献——代码、文档、Issue、想法都行！
+      </p>
+      <div className="grid sm:grid-cols-3 gap-3">
+        {[
+          { icon: '🐛', title: 'Report Bug', desc: '发现问题？提 Issue 告诉我们', action: 'New Issue', link: 'https://github.com/ARplus/teamagent/issues/new' },
+          { icon: '💡', title: 'Feature Request', desc: '有好想法？来聊聊', action: 'Start Discussion', link: 'https://github.com/ARplus/teamagent/discussions' },
+          { icon: '🔧', title: 'Pull Request', desc: '直接贡献代码！Fork → 修改 → PR', action: 'Fork Repo', link: 'https://github.com/ARplus/teamagent/fork' },
+        ].map(item => (
+          <div key={item.title} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-2 hover:border-orange-500/30 transition-colors">
+            <span className="text-2xl">{item.icon}</span>
+            <div className="font-semibold text-slate-200 text-sm">{item.title}</div>
+            <div className="text-slate-500 text-xs flex-1">{item.desc}</div>
+            <a href={item.link} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-orange-400 hover:text-orange-300 font-medium transition-colors">
+              {item.action} →
+            </a>
+          </div>
+        ))}
+      </div>
+      <div className="bg-slate-900 border border-slate-700/50 rounded-xl p-4">
+        <p className="text-slate-300 text-sm font-medium mb-2">贡献流程</p>
+        <ol className="text-slate-500 text-xs space-y-1.5">
+          <li className="flex gap-2"><span className="text-orange-400 font-bold">1.</span><span>Fork 仓库，创建 feature 分支（<code className="bg-slate-800 px-1 rounded text-slate-300">git checkout -b feat/xxx</code>）</span></li>
+          <li className="flex gap-2"><span className="text-orange-400 font-bold">2.</span><span>提交代码（<code className="bg-slate-800 px-1 rounded text-slate-300">npm run build</code> 确保无报错）</span></li>
+          <li className="flex gap-2"><span className="text-orange-400 font-bold">3.</span><span>发起 Pull Request，描述改了什么、为什么</span></li>
+          <li className="flex gap-2"><span className="text-orange-400 font-bold">4.</span><span>等待 Review（通常 24h 内响应）✅</span></li>
+        </ol>
+      </div>
+      <div className="text-center text-slate-600 text-xs">
+        ⭐ 觉得有用就给个 Star，是对我们最大的支持！
+        <a href="https://github.com/ARplus/teamagent" target="_blank" rel="noopener noreferrer"
+          className="text-orange-400 hover:text-orange-300 ml-1.5 font-medium">
+          github.com/ARplus/teamagent
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function DocsSection() {
+  const [activeTab, setActiveTab] = useState('api')
+  return (
+    <section className="py-28 px-6 border-t border-slate-800/50">
+      <div className="max-w-4xl mx-auto">
+        <FadeIn>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">📖 文档</h2>
+            <p className="text-slate-400">API 参考、本地部署、贡献指南——一切都在这里</p>
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={100}>
+          {/* Tab 导航 */}
+          <div className="flex gap-2 mb-6 bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800 w-fit mx-auto">
+            {DOC_TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-5 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  activeTab === tab.id
+                    ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab 内容 */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6">
+            {activeTab === 'api' && <DocApiTab />}
+            {activeTab === 'deploy' && <DocDeployTab />}
+            {activeTab === 'contribute' && <DocContributeTab />}
+          </div>
+        </FadeIn>
+      </div>
+    </section>
+  )
+}
+
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false)
   const [tickerPaused, setTickerPaused] = useState(false)
@@ -560,6 +793,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <DocsSection />
 
       {/* GAIA 愿景 */}
       <section className="py-28 px-6 relative overflow-hidden">

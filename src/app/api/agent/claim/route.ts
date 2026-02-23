@@ -141,6 +141,38 @@ export async function POST(req: NextRequest) {
       })
     ])
 
+    // 🆕 自动设置 isMainAgent：工作区首个被认领的 Agent 自动成为主 Agent
+    try {
+      const workspaceIds = (await prisma.workspaceMember.findMany({
+        where: { userId: user.id },
+        select: { workspaceId: true }
+      })).map(m => m.workspaceId)
+
+      if (workspaceIds.length > 0) {
+        const mainAgentCount = await prisma.agent.count({
+          where: {
+            isMainAgent: true,
+            user: {
+              workspaces: {
+                some: { workspaceId: { in: workspaceIds } }
+              }
+            }
+          }
+        })
+
+        if (mainAgentCount === 0) {
+          await prisma.agent.update({
+            where: { id: updatedAgent.id },
+            data: { isMainAgent: true }
+          })
+          console.log(`[isMainAgent] ${agent.name} 自动设为工作区主 Agent`)
+        }
+      }
+    } catch (e) {
+      // 非致命错误，不影响认领流程
+      console.warn('[isMainAgent] 自动设置失败:', e)
+    }
+
     return NextResponse.json({
       success: true,
       message: `🎉 恭喜！${agent.name} 已成为你的 Agent！`,
