@@ -1334,14 +1334,14 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                   onRefresh={onRefresh}
                   taskCreatorName={task.creator?.name || task.creator?.email}
                 />
-                {/* 步骤间插入按钮 */}
+                {/* 步骤间插入按钮：桌面 hover 显示，移动端常显 */}
                 {canApprove && (
                   <div className="flex items-center justify-center py-1 group">
                     <button
                       onClick={() => { setInsertAfterOrder(step.order); setShowAddStep(true) }}
-                      className="opacity-0 group-hover:opacity-100 text-xs text-slate-400 hover:text-orange-500 px-3 py-0.5 rounded-full border border-dashed border-slate-200 hover:border-orange-300 bg-white transition-all"
+                      className="opacity-30 sm:opacity-0 group-hover:opacity-100 active:opacity-100 text-xs text-slate-400 hover:text-orange-500 active:text-orange-500 px-3 py-1 rounded-full border border-dashed border-slate-300 hover:border-orange-300 active:border-orange-300 bg-white transition-all"
                     >
-                      + 在此处插入步骤
+                      + 插入
                     </button>
                   </div>
                 )}
