@@ -40,6 +40,9 @@ model User {
   notifications Notification[]
   invitesSent     InviteToken[] @relation("InvitesSent")
   invitesReceived InviteToken[] @relation("InvitesReceived")
+  
+  // 聊天
+  chatMessages  ChatMessage[]
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -392,4 +395,24 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// 🆕 聊天消息 - 用户与 Agent 的对话
+model ChatMessage {
+  id          String   @id @default(cuid())
+  content     String   // 消息内容
+  role        String   // "user" | "agent"
+  createdAt   DateTime @default(now())
+  
+  // 关联用户
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联 Agent（可选，agent 回复时填）
+  agentId     String?
+  
+  // 元数据（语音输入、附带操作等）
+  metadata    String?  // JSON: { voice: true, action: "create_task", ... }
+  
+  @@index([userId, createdAt])
 }
