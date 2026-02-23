@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { NotificationBell } from '@/components/NotificationBell'
 import LandingPage from '@/components/LandingPage'
 import { PairingModal } from '@/components/PairingModal'
+import { VoiceMicButton } from '@/components/VoiceMicButton'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -1192,23 +1193,29 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
             </button>
           </div>
 
-          <input
-            type="text"
-            value={newStepTitle}
-            onChange={(e) => setNewStepTitle(e.target.value)}
-            placeholder={newStepType === 'meeting' ? '会议名称，如：Q2 复盘会' : '步骤标题'}
-            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
-            autoFocus
-          />
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="text"
+              value={newStepTitle}
+              onChange={(e) => setNewStepTitle(e.target.value)}
+              placeholder={newStepType === 'meeting' ? '会议名称，如：Q2 复盘会' : '步骤标题'}
+              className={`flex-1 px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
+              autoFocus
+            />
+            <VoiceMicButton onResult={(t) => setNewStepTitle(t)} size="sm" />
+          </div>
 
           {/* 步骤说明（支持 Markdown） */}
+          <div className="relative mb-2">
           <textarea
             value={newStepDescription}
             onChange={(e) => setNewStepDescription(e.target.value)}
             placeholder="步骤说明（选填，支持 Markdown）&#10;例：需要检查以下几点：&#10;- 功能是否正常&#10;- 边界情况处理"
-            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 resize-none ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
+            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white resize-none pr-10 ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
             rows={3}
           />
+          <VoiceMicButton onResult={(t) => setNewStepDescription(prev => prev ? prev + ' ' + t : t)} append size="sm" className="absolute bottom-2 right-2" />
+          </div>
 
           {/* 分配给 Agent */}
           {newStepType === 'task' && agentList.length > 0 && (
@@ -1939,25 +1946,31 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">任务名称</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="输入任务名称..."
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-400"
-              autoFocus
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="输入任务名称..."
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-400"
+                autoFocus
+              />
+              <VoiceMicButton onResult={(t) => setTitle(t)} />
+            </div>
           </div>
           
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">任务描述</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="详细描述任务内容，AI 将根据此内容自动拆解步骤..."
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl resize-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-400"
-              rows={4}
-            />
+            <div className="relative">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="详细描述任务内容，AI 将根据此内容自动拆解步骤..."
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl resize-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-400 pr-12"
+                rows={4}
+              />
+              <VoiceMicButton onResult={(t) => setDescription(prev => prev ? prev + ' ' + t : t)} append className="absolute bottom-3 right-3" />
+            </div>
           </div>
         </div>
 

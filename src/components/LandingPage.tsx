@@ -108,6 +108,13 @@ function OnboardingSection() {
                 <span>🤖</span>
                 <span>查看完整安装引导 →</span>
               </a>
+              <a
+                href="/guide/china-install"
+                className="mt-2 w-full flex items-center justify-center space-x-2 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 hover:text-red-200 rounded-xl text-sm font-medium transition-all"
+              >
+                <span>🇨🇳</span>
+                <span>中国用户安装指南</span>
+              </a>
             </div>
             {/* 方式B */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
@@ -550,7 +557,7 @@ export default function LandingPage() {
             手机发指令 → Agent 自动拆解执行 → 你只看进展和审批
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
             <Link href="/register"
               className="glow w-full sm:w-auto bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105">
               🚀 开始协作
@@ -558,6 +565,14 @@ export default function LandingPage() {
             <Link href="/login"
               className="w-full sm:w-auto border border-slate-700 hover:border-orange-500/50 text-slate-300 hover:text-white font-semibold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:bg-orange-500/5">
               已有账号，登录 →
+            </Link>
+          </div>
+          {/* 中国用户安装指南入口 */}
+          <div className="flex items-center justify-center mb-14">
+            <Link href="/guide/china-install"
+              className="inline-flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-400/60 text-red-300 hover:text-red-200 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200">
+              🇨🇳 中国用户安装指南
+              <span className="text-red-400/60 text-xs">国内镜像 · 常见坑 →</span>
             </Link>
           </div>
 
