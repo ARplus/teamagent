@@ -108,7 +108,8 @@ export async function POST(req: NextRequest) {
       dueDate, 
       assigneeId,
       assigneeEmail,  // 支持通过邮箱分配
-      workspaceId 
+      workspaceId,
+      steps,          // 🆕 Agent 可直接传入步骤数组，跳过 decompose 环节
     } = await req.json()
 
     if (!title) {
@@ -165,6 +166,47 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    // 🆕 Agent 直接传入步骤：立即创建，跳过 decompose
+    const prebuiltSteps: any[] = []
+    if (Array.isArray(steps) && steps.length > 0) {
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i]
+        if (!s.title) continue
+        const createdStep = await prisma.taskStep.create({
+          data: {
+            title: s.title,
+            description: s.description || null,
+            order: s.order ?? (i + 1),
+            taskId: task.id,
+            stepType: s.stepType || 'task',
+            assigneeId: s.assigneeId || null,
+            requiresApproval: s.requiresApproval !== false,  // 默认 true
+            parallelGroup: s.parallelGroup || null,
+            inputs: s.inputs ? JSON.stringify(s.inputs) : null,
+            outputs: s.outputs ? JSON.stringify(s.outputs) : null,
+            skills: s.skills ? JSON.stringify(s.skills) : null,
+            status: 'pending',
+            agentStatus: s.assigneeId ? 'pending' : null,
+          }
+        })
+        prebuiltSteps.push(createdStep)
+      }
+
+      // 通知第一个可以开始的步骤
+      if (prebuiltSteps.length > 0) {
+        const firstStep = prebuiltSteps[0]
+        if (firstStep.assigneeId) {
+          sendToUser(firstStep.assigneeId, {
+            type: 'step:ready',
+            taskId: task.id,
+            stepId: firstStep.id,
+            title: firstStep.title,
+          })
+        }
+      }
+      console.log(`[Task/Create] 直接创建 ${prebuiltSteps.length} 个步骤（跳过 decompose）`)
+    }
+
     // 🔔 发送实时通知
     // 通知创建者（如果在线）
     sendToUser(auth.userId, {
@@ -183,7 +225,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 🆕 Solo 模式自动触发拆解：任务创建即通知主 Agent，无需手动点"AI拆解"
-    if (task.mode === 'solo' && task.description) {
+    // 如果 Agent 已直接传入步骤，则跳过 decompose
+    if (task.mode === 'solo' && task.description && prebuiltSteps.length === 0) {
       try {
         const allMembers = await prisma.workspaceMember.findMany({
           where: { workspaceId: finalWorkspaceId },
@@ -235,7 +278,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(task)
+    return NextResponse.json({
+      ...task,
+      steps: prebuiltSteps.length > 0 ? prebuiltSteps : undefined,
+    })
 
   } catch (error) {
     console.error('创建任务失败:', error)
