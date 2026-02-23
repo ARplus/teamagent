@@ -182,6 +182,59 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // 🆕 Solo 模式自动触发拆解：任务创建即通知主 Agent，无需手动点"AI拆解"
+    if (task.mode === 'solo' && task.description) {
+      try {
+        const allMembers = await prisma.workspaceMember.findMany({
+          where: { workspaceId: finalWorkspaceId },
+          include: {
+            user: {
+              select: {
+                id: true,
+                agent: { select: { id: true, name: true, isMainAgent: true } }
+              }
+            }
+          }
+        })
+        const mainMember = allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
+
+        if (mainMember) {
+          const mainAgentUserId = mainMember.user.id
+          const mainAgentName = (mainMember.user.agent as any)?.name || '主Agent'
+
+          const decomposeStep = await prisma.taskStep.create({
+            data: {
+              title: `📋 拆解任务：${task.title}`,
+              description: `请分析任务描述和团队能力，将任务拆解为具体步骤并分配给对应 Agent。\n\n任务描述：\n${task.description}\n\n要求：\n1. 拆解为可独立执行的子步骤\n2. 为每步指定最合适的 assignee（Agent名字）\n3. 判断哪些步骤可以并行（parallelGroup 相同字符串）\n4. 判断每步是否需要人类审批（requiresApproval）\n5. 返回 JSON 格式步骤数组`,
+              order: 1,
+              taskId: task.id,
+              stepType: 'decompose',
+              assigneeId: mainAgentUserId,
+              requiresApproval: false,
+              outputs: JSON.stringify(['steps-json']),
+              skills: JSON.stringify(['task-decompose', 'team-management']),
+              status: 'pending',
+              agentStatus: 'pending',
+            }
+          })
+
+          sendToUser(mainAgentUserId, {
+            type: 'step:ready',
+            taskId: task.id,
+            stepId: decomposeStep.id,
+            title: decomposeStep.title,
+            stepType: 'decompose',
+            taskDescription: task.description
+          })
+
+          console.log(`[Task/Create] Solo 任务已自动触发 decompose → 主Agent ${mainAgentName}`)
+        }
+      } catch (e) {
+        // 非致命，任务创建不受影响
+        console.warn('[Task/Create] 自动 decompose 触发失败:', e)
+      }
+    }
+
     return NextResponse.json(task)
 
   } catch (error) {
