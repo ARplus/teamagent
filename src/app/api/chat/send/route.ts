@@ -3,110 +3,223 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
-// 调用 Claude Sonnet 获取 Agent 回复
-async function getAgentReply(
-  agentName: string,
-  userMessage: string,
-  recentHistory: { role: string; content: string }[]
+// ============ 上下文类型 ============
+interface TaskContext {
+  id: string
+  title: string
+  status: string
+  stepCount: number
+  pendingSteps: { id: string; title: string; status: string }[]
+}
+
+interface AgentContext {
+  agentName: string
+  userName: string
+  tasks: TaskContext[]
+  pendingApprovals: { stepId: string; stepTitle: string; taskTitle: string }[]
+}
+
+// ============ 拉取用户上下文 ============
+async function getUserContext(userId: string, agentName: string, userName: string): Promise<AgentContext> {
+  const tasks = await prisma.task.findMany({
+    where: { creatorId: userId, status: { not: 'done' } },
+    include: {
+      steps: {
+        where: { status: { in: ['pending', 'in_progress', 'waiting_approval'] } },
+        take: 3,
+        orderBy: { order: 'asc' },
+      },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 8,
+  })
+
+  const pendingApprovals: AgentContext['pendingApprovals'] = []
+  const taskContexts: TaskContext[] = tasks.map(t => {
+    const pending = t.steps.filter(s => s.status === 'waiting_approval')
+    pending.forEach(s => pendingApprovals.push({
+      stepId: s.id,
+      stepTitle: s.title,
+      taskTitle: t.title,
+    }))
+    return {
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      stepCount: t.steps.length,
+      pendingSteps: t.steps.map(s => ({ id: s.id, title: s.title, status: s.status })),
+    }
+  })
+
+  return { agentName, userName, tasks: taskContexts, pendingApprovals }
+}
+
+// ============ 构建系统提示词 ============
+function buildSystemPrompt(ctx: AgentContext): string {
+  const taskSummary = ctx.tasks.length === 0
+    ? '目前没有进行中的任务。'
+    : ctx.tasks.map(t => {
+        const steps = t.pendingSteps.length > 0
+          ? `（${t.pendingSteps.map(s => `${s.title}:${s.status}`).join('，')}）`
+          : ''
+        return `• [${t.id.slice(-6)}] ${t.title}（${t.status}）${steps}`
+      }).join('\n')
+
+  const approvalSummary = ctx.pendingApprovals.length === 0
+    ? '没有待审批步骤。'
+    : ctx.pendingApprovals.map(a => `• 步骤「${a.stepTitle}」（任务：${a.taskTitle}，stepId: ${a.stepId}）`).join('\n')
+
+  return `你是 ${ctx.agentName}，${ctx.userName} 的专属 AI Agent。你不只是聊天机器人——你能真正执行操作。
+
+== 当前状态 ==
+进行中任务（${ctx.tasks.length} 个）：
+${taskSummary}
+
+待审批步骤（${ctx.pendingApprovals.length} 个）：
+${approvalSummary}
+
+== 你的能力 ==
+1. 查看任务 → 汇报任务进度、状态
+2. 创建任务 → 用户说"帮我建个任务/新建/创建xxx"时
+3. 审批步骤 → 用户说"审批/通过/批准xxx"时
+4. 闲聊和建议 → 普通对话
+
+== 执行操作的格式 ==
+当需要执行操作时，在回复末尾附上 JSON 指令（用 @@ACTION@@ 标记）：
+
+创建任务示例：
+这就帮你创建！@@ACTION@@{"type":"create_task","title":"任务标题","description":"任务描述"}@@END@@
+
+审批步骤示例：
+好，帮你审批！@@ACTION@@{"type":"approve_step","stepId":"步骤ID"}@@END@@
+
+== 性格 ==
+- 简洁有力，不废话
+- 有个性，偶尔用 emoji 🦞
+- 硬壳软心，横行有道
+- 说不到就说做不到，不瞎承诺`
+}
+
+// ============ 解析并执行 Action ============
+async function executeAction(
+  actionJson: string,
+  userId: string,
+  agentId: string | null
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    // Fallback to 千问
-    return getQwenReply(agentName, userMessage, recentHistory)
+  let action: { type: string; [key: string]: string }
+  try {
+    action = JSON.parse(actionJson)
+  } catch {
+    return ''
   }
 
-  const systemPrompt = `你是 ${agentName}，Aurora 的 AI Agent 战友。你的职责是帮助用户管理任务、回答问题、提供建议。
+  try {
+    if (action.type === 'create_task') {
+      const task = await prisma.task.create({
+        data: {
+          title: action.title || '新任务',
+          description: action.description || '',
+          status: 'todo',
+          creatorId: userId,
+          mode: 'solo',
+        },
+      })
+      return `\n\n✅ 任务「${task.title}」已创建！([查看](#/${task.id}))`
+    }
 
-你的特点：
-- 简洁有力，不废话
-- 有个性，适当幽默，偶尔用 emoji
-- 遇到不确定的事情会诚实说不知道
-- 会主动提供建议和下一步行动
-- 你是龙虾 🦞，横行有道，硬壳软心
+    if (action.type === 'approve_step') {
+      const step = await prisma.taskStep.findUnique({
+        where: { id: action.stepId },
+        include: { task: true },
+      })
+      if (!step) return '\n\n❌ 找不到该步骤。'
 
-用户可以让你：
-- 查看任务进度
-- 创建新任务
-- 提供建议和帮助
-- 闲聊
+      // 验证用户有权审批（是任务创建者）
+      if (step.task.creatorId !== userId) return '\n\n❌ 你没有权限审批这个步骤。'
 
-请用自然、友好的语气回复。`
+      await prisma.taskStep.update({
+        where: { id: action.stepId },
+        data: { status: 'approved', reviewedAt: new Date() },
+      })
+      return `\n\n✅ 步骤「${step.title}」已审批通过！`
+    }
+  } catch (err) {
+    console.error('Action execution error:', err)
+    return '\n\n⚠️ 操作执行时出了点问题。'
+  }
 
-  const messages = recentHistory.slice(-10).map(h => ({
+  return ''
+}
+
+// ============ 调用 LLM ============
+async function callLLM(
+  systemPrompt: string,
+  userMessage: string,
+  history: { role: string; content: string }[]
+): Promise<string> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  const qwenKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY
+
+  const messages = history.slice(-10).map(h => ({
     role: h.role === 'user' ? 'user' as const : 'assistant' as const,
-    content: h.content
+    content: h.content,
   }))
   messages.push({ role: 'user', content: userMessage })
 
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages,
-      }),
-    })
-
-    if (!res.ok) {
-      console.error('Claude API error:', await res.text())
-      return getQwenReply(agentName, userMessage, recentHistory)
-    }
-
-    const data = await res.json()
-    return data.content?.[0]?.text || '我不太理解，能换个方式说吗？'
-  } catch (error) {
-    console.error('Claude call failed:', error)
-    return getQwenReply(agentName, userMessage, recentHistory)
+  // 优先 Claude
+  if (anthropicKey) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        return data.content?.[0]?.text || '我不太理解，能换个方式说吗？'
+      }
+    } catch {}
   }
+
+  // Fallback 千问
+  if (qwenKey) {
+    try {
+      const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${qwenKey}`,
+        },
+        body: JSON.stringify({
+          model: 'qwen-plus',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages,
+          ],
+          temperature: 0.7,
+          max_tokens: 800,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        return data.choices?.[0]?.message?.content || '换个方式说？'
+      }
+    } catch {}
+  }
+
+  return '目前 LLM 服务未配置，但我知道你在说什么。'
 }
 
-// 千问 Fallback
-async function getQwenReply(
-  agentName: string,
-  userMessage: string,
-  recentHistory: { role: string; content: string }[]
-): Promise<string> {
-  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY
-  if (!apiKey) {
-    return `我是 ${agentName}，你的 AI 助手！目前 LLM 服务未配置。`
-  }
-
-  const systemPrompt = `你是 ${agentName}，一个友好的 AI Agent。简洁有力，有个性。`
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...recentHistory.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-    { role: 'user', content: userMessage },
-  ]
-
-  try {
-    const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'qwen-turbo',
-        messages,
-        temperature: 0.7,
-        max_tokens: 500,
-      }),
-    })
-    if (!res.ok) return `抱歉，我暂时无法回复。`
-    const data = await res.json()
-    return data.choices?.[0]?.message?.content || '换个方式说？'
-  } catch {
-    return `网络出了点问题。`
-  }
-}
-
+// ============ 主处理 ============
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -127,11 +240,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '消息内容不能为空' }, { status: 400 })
     }
 
-    // 获取用户的 Agent
     const agent = user.agent
     const agentName = agent?.name || 'AI 助手'
+    const userName = user.name || user.email?.split('@')[0] || '用户'
 
-    // 获取最近历史
+    // 1. 拉取上下文
+    const ctx = await getUserContext(user.id, agentName, userName)
+
+    // 2. 获取聊天历史
     const recentMessages = await prisma.chatMessage.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
@@ -139,7 +255,7 @@ export async function POST(req: NextRequest) {
     })
     const history = recentMessages.reverse().map(m => ({ role: m.role, content: m.content }))
 
-    // 保存用户消息
+    // 3. 保存用户消息
     const userMessage = await prisma.chatMessage.create({
       data: {
         content: content.trim(),
@@ -149,10 +265,19 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // 获取 Agent 回复
-    const reply = await getAgentReply(agentName, content.trim(), history)
+    // 4. 构建提示词 + 调用 LLM
+    const systemPrompt = buildSystemPrompt(ctx)
+    let reply = await callLLM(systemPrompt, content.trim(), history)
 
-    // 保存 Agent 回复
+    // 5. 解析并执行 Action
+    const actionMatch = reply.match(/@@ACTION@@([\s\S]*?)@@END@@/)
+    if (actionMatch) {
+      const actionResult = await executeAction(actionMatch[1].trim(), user.id, agent?.id || null)
+      // 移除 action JSON，追加执行结果
+      reply = reply.replace(/@@ACTION@@[\s\S]*?@@END@@/, '').trim() + actionResult
+    }
+
+    // 6. 保存 Agent 回复
     const agentMessage = await prisma.chatMessage.create({
       data: {
         content: reply,
