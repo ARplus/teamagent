@@ -47,7 +47,7 @@ export async function GET(
                 id: true, 
                 name: true, 
                 avatar: true,
-                agent: { select: { id: true, name: true, avatar: true, status: true } }
+                agent: { select: { id: true, name: true, avatar: true, status: true, userId: true } }
               } 
             },
             attachments: { select: { id: true, name: true, url: true, type: true } }
@@ -86,7 +86,11 @@ export async function GET(
       ...s,
       approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null,
       // 服务端算好，前端直接用，不依赖 session.user.id 做字符串比较
-      viewerCanApprove: viewerUserId != null && (isTaskCreator || s.assigneeId === viewerUserId),
+      // 规则：任务创建者 OR Agent 的主人（agent.userId）
+      viewerCanApprove: viewerUserId != null && (
+        isTaskCreator ||
+        (s as any).agent?.userId === viewerUserId
+      ),
     }))
 
     return NextResponse.json({
