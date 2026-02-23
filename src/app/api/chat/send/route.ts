@@ -115,16 +115,24 @@ async function executeAction(
 
   try {
     if (action.type === 'create_task') {
+      // 找用户默认 workspace
+      const membership = await prisma.workspaceMember.findFirst({
+        where: { userId },
+        select: { workspaceId: true },
+      })
+      if (!membership) return '\n\n❌ 请先加入或创建一个工作区。'
+
       const task = await prisma.task.create({
         data: {
           title: action.title || '新任务',
           description: action.description || '',
           status: 'todo',
-          creatorId: userId,
           mode: 'solo',
+          creatorId: userId,
+          workspaceId: membership.workspaceId,
         },
       })
-      return `\n\n✅ 任务「${task.title}」已创建！([查看](#/${task.id}))`
+      return `\n\n✅ 任务「${task.title}」已创建！`
     }
 
     if (action.type === 'approve_step') {
@@ -133,13 +141,26 @@ async function executeAction(
         include: { task: true },
       })
       if (!step) return '\n\n❌ 找不到该步骤。'
+      if (step.task.creatorId !== userId && step.assigneeId !== userId)
+        return '\n\n❌ 你没有权限审批这个步骤。'
+      if (step.status !== 'waiting_approval')
+        return `\n\n⚠️ 步骤「${step.title}」当前状态是「${step.status}」，不需要审批。`
 
-      // 验证用户有权审批（是任务创建者）
-      if (step.task.creatorId !== userId) return '\n\n❌ 你没有权限审批这个步骤。'
-
+      const now = new Date()
+      // 更新最新 submission
+      const latestSub = await prisma.stepSubmission.findFirst({
+        where: { stepId: action.stepId, status: 'pending' },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (latestSub) {
+        await prisma.stepSubmission.update({
+          where: { id: latestSub.id },
+          data: { status: 'approved', reviewedAt: now, reviewedBy: userId },
+        })
+      }
       await prisma.taskStep.update({
         where: { id: action.stepId },
-        data: { status: 'approved', reviewedAt: new Date() },
+        data: { status: 'done', approvedAt: now, approvedBy: userId },
       })
       return `\n\n✅ 步骤「${step.title}」已审批通过！`
     }
