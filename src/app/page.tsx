@@ -1302,7 +1302,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                 step={step}
                 index={index}
                 isActive={index === currentIndex}
-                canApprove={canApprove}
+                canApprove={canApprove || currentUserId === step.assignee?.id}
                 onApprove={handleApprove}
                 onReject={handleReject}
                 agents={agentList}
