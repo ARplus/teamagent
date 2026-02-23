@@ -192,6 +192,15 @@ export default function BuildAgentPage() {
             <span>·</span>
             <span>💰 最低 ¥0 / 月</span>
           </div>
+
+          {/* China User Banner */}
+          <a
+            href="/guide/china-install"
+            className="mt-6 inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-6 py-3 rounded-2xl font-semibold text-sm transition-all shadow-lg hover:shadow-orange-500/30"
+          >
+            🇨🇳 中国用户安装指南
+            <span className="opacity-80 text-xs ml-1">（npm 镜像 · PowerShell 问题 · Token 获取）→</span>
+          </a>
         </div>
 
         {/* Steps */}
