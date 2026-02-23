@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { NotificationBell } from '@/components/NotificationBell'
 import LandingPage from '@/components/LandingPage'
 import { PairingModal } from '@/components/PairingModal'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 // ============ Types ============
 
@@ -1018,11 +1020,13 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   const [showAddStep, setShowAddStep] = useState(false)
   const [newStepTitle, setNewStepTitle] = useState('')
   const [newStepType, setNewStepType] = useState<'task' | 'meeting'>('task')
+  const [newStepDescription, setNewStepDescription] = useState('')
   const [newStepAgenda, setNewStepAgenda] = useState('')
   const [newStepParticipants, setNewStepParticipants] = useState('')
   const [newStepScheduledAt, setNewStepScheduledAt] = useState('')
   const [newStepRequiresApproval, setNewStepRequiresApproval] = useState(true)
   const [newStepAssigneeId, setNewStepAssigneeId] = useState<string | null>(null)
+  const [insertAfterOrder, setInsertAfterOrder] = useState<number | null>(null)
   const [addingStep, setAddingStep] = useState(false)
   const [agentList, setAgentList] = useState<Array<{userId: string, name: string, capabilities: string[], email: string}>>([])
 
@@ -1069,22 +1073,26 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newStepTitle,
+          description: newStepDescription || undefined,
           stepType: newStepType,
           agenda: newStepAgenda || undefined,
           participants: participants.length > 0 ? participants : undefined,
           scheduledAt: newStepScheduledAt || undefined,
           requiresApproval: newStepRequiresApproval,
           assigneeId: newStepAssigneeId || undefined,
+          insertAfterOrder: insertAfterOrder ?? undefined,
         })
       })
       if (res.ok) {
         setNewStepTitle('')
         setNewStepType('task')
+        setNewStepDescription('')
         setNewStepAgenda('')
         setNewStepParticipants('')
         setNewStepScheduledAt('')
         setNewStepRequiresApproval(true)
         setNewStepAssigneeId(null)
+        setInsertAfterOrder(null)
         setShowAddStep(false)
         onRefresh()
       }
@@ -1152,7 +1160,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
             </button>
           )}
           <button
-            onClick={() => setShowAddStep(true)}
+            onClick={() => { setInsertAfterOrder(null); setShowAddStep(true) }}
             className="text-xs text-orange-600 hover:text-orange-700 font-medium px-3 py-2 hover:bg-orange-50 rounded-xl transition-colors"
           >
             + 添加步骤
@@ -1164,6 +1172,11 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
       {showAddStep && (
         <div className={`mx-6 mt-4 p-4 rounded-xl border ${newStepType === 'meeting' ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-100'}`}>
           {/* 类型切换 */}
+          {insertAfterOrder !== null && (
+            <div className="mb-2 text-xs text-orange-600 bg-orange-100 px-3 py-1.5 rounded-lg">
+              ↕️ 插入到步骤 {insertAfterOrder} 之后
+            </div>
+          )}
           <div className="flex space-x-2 mb-3">
             <button
               onClick={() => setNewStepType('task')}
@@ -1186,6 +1199,15 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
             placeholder={newStepType === 'meeting' ? '会议名称，如：Q2 复盘会' : '步骤标题'}
             className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
             autoFocus
+          />
+
+          {/* 步骤说明（支持 Markdown） */}
+          <textarea
+            value={newStepDescription}
+            onChange={(e) => setNewStepDescription(e.target.value)}
+            placeholder="步骤说明（选填，支持 Markdown）&#10;例：需要检查以下几点：&#10;- 功能是否正常&#10;- 边界情况处理"
+            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 bg-white mb-2 resize-none ${newStepType === 'meeting' ? 'border-blue-200 focus:ring-blue-500/50' : 'border-orange-200 focus:ring-orange-500/50'}`}
+            rows={3}
           />
 
           {/* 分配给 Agent */}
@@ -1298,20 +1320,32 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
         {steps.length > 0 ? (
           <div className="space-y-3">
             {steps.map((step, index) => (
-              <StepCard
-                key={step.id}
-                step={step}
-                index={index}
-                isActive={index === currentIndex}
-                canApprove={canApprove || currentUserId === step.assignee?.id}
-                onApprove={handleApprove}
-                onReject={handleReject}
-                agents={agentList}
-                onAssign={handleAssign}
-                currentUserId={currentUserId}
-                onRefresh={onRefresh}
-                taskCreatorName={task.creator?.name || task.creator?.email}
-              />
+              <div key={step.id}>
+                <StepCard
+                  step={step}
+                  index={index}
+                  isActive={index === currentIndex}
+                  canApprove={canApprove || currentUserId === step.assignee?.id}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  agents={agentList}
+                  onAssign={handleAssign}
+                  currentUserId={currentUserId}
+                  onRefresh={onRefresh}
+                  taskCreatorName={task.creator?.name || task.creator?.email}
+                />
+                {/* 步骤间插入按钮 */}
+                {canApprove && (
+                  <div className="flex items-center justify-center py-1 group">
+                    <button
+                      onClick={() => { setInsertAfterOrder(step.order); setShowAddStep(true) }}
+                      className="opacity-0 group-hover:opacity-100 text-xs text-slate-400 hover:text-orange-500 px-3 py-0.5 rounded-full border border-dashed border-slate-200 hover:border-orange-300 bg-white transition-all"
+                    >
+                      + 在此处插入步骤
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         ) : (
@@ -1574,11 +1608,10 @@ function StepCard({
             </div>
           )}
 
-          {!isMeeting && step.description && (
-            <p className="text-sm text-slate-600 mt-4 p-3 bg-slate-50 rounded-xl">{step.description}</p>
-          )}
-          {isMeeting && step.description && (
-            <p className="text-sm text-slate-600 mt-3 p-3 bg-slate-50 rounded-xl">{step.description}</p>
+          {step.description && (
+            <div className="text-sm text-slate-600 mt-4 p-3 bg-slate-50 rounded-xl prose prose-sm max-w-none prose-slate">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{step.description}</ReactMarkdown>
+            </div>
           )}
 
           {step.result && (
@@ -1586,7 +1619,9 @@ function StepCard({
               <div className="text-xs text-slate-500 mb-2 font-medium">
                 {isMeeting ? '📝 会议纪要' : '📝 提交结果'}
               </div>
-              <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{step.result}</pre>
+              <div className="text-sm text-slate-700 prose prose-sm max-w-none prose-slate">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{step.result}</ReactMarkdown>
+              </div>
             </div>
           )}
 
@@ -1818,7 +1853,9 @@ function HistoryItem({ submission, defaultOpen }: { submission: Submission; defa
       </div>
       {open && (
         <div className="px-4 py-3 text-sm">
-          <pre className="whitespace-pre-wrap font-sans text-slate-700 text-xs bg-slate-50 p-3 rounded-lg">{submission.result}</pre>
+          <div className="text-slate-700 text-xs bg-slate-50 p-3 rounded-lg prose prose-sm max-w-none prose-slate">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{submission.result}</ReactMarkdown>
+          </div>
           {submission.reviewNote && (
             <div className={`mt-2 p-3 rounded-lg text-xs ${
               submission.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'

@@ -49,7 +49,7 @@ export async function POST(
 
     const { title, description, assigneeId, assigneeEmail,
             stepType, agenda, participants, scheduledAt,
-            requiresApproval } = await req.json()
+            requiresApproval, insertAfterOrder } = await req.json()
 
     if (!title) {
       return NextResponse.json({ error: '步骤标题不能为空' }, { status: 400 })
@@ -66,14 +66,26 @@ export async function POST(
       }
     }
 
-    // 计算步骤顺序（放到最后）
-    const maxOrder = task.steps.reduce((max, s) => Math.max(max, s.order), 0)
+    // 计算步骤顺序
+    let newOrder: number
+    if (insertAfterOrder != null) {
+      // 插入中间：把 order > insertAfterOrder 的步骤都往后挪一位
+      await prisma.taskStep.updateMany({
+        where: { taskId, order: { gt: insertAfterOrder } },
+        data: { order: { increment: 1 } }
+      })
+      newOrder = insertAfterOrder + 1
+    } else {
+      // 追加末尾
+      const maxOrder = task.steps.reduce((max, s) => Math.max(max, s.order), 0)
+      newOrder = maxOrder + 1
+    }
 
     const step = await prisma.taskStep.create({
       data: {
         title,
         description,
-        order: maxOrder + 1,
+        order: newOrder,
         taskId,
         assigneeId: finalAssigneeId,
         stepType: stepType || 'task',
