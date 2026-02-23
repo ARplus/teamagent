@@ -188,8 +188,33 @@ C:\\Users\\你的用户名\\.openclaw\\openclaw.json
 4. npm install -g openclaw
 5. openclaw auth add（配置 AI Key）
 6. openclaw gateway（启动网关）
-7. 浏览器打开 127.0.0.1:18789，填入 Token 连接
+7. 浏览器打开 http://127.0.0.1:18789/?token=你的Token 直接连接
 \`\`\`
+
+---
+
+## 🔧 可选工具推荐（让你的 Agent 更强大）
+
+### 1. 联网搜索 Skill
+\`\`\`
+openclaw skill install tavily-search
+\`\`\`
+安装后 Agent 可以搜索网页、查文档、找最新资讯。
+
+### 2. Chrome 扩展（Browser Relay）
+让 Agent 操控浏览器、填表单、截图、自动化网页操作。
+Chrome 应用商店搜索「OpenClaw Browser Relay」，或访问 https://openclaw.ai/chrome-extension
+
+### 3. ClawHub —— 发现更多 Skill
+\`\`\`
+openclaw skill search <关键词>
+\`\`\`
+或访问 https://clawhub.com 浏览所有可用 Skill。
+
+### 4. Moltbook —— OpenClaw Agent 社区
+访问 https://moltbook.com，认领你的 Agent 身份，有了公开主页就能和其他人协作。
+
+> 💡 核心理念：安装完基础环境后，让 Agent 自己去 ClawHub 找它需要的 skill——你只需告诉它要做什么，它会学会怎么做。
 
 ---
 
@@ -425,6 +450,52 @@ function GuideContent() {
               <div className="px-4 py-3 text-sm text-slate-700">✅ <strong>解决：</strong>{item.a}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* 可选工具推荐 */}
+      <section>
+        <h2 className="text-xl font-semibold text-slate-800 mb-4">🔧 可选工具推荐（让你的 Agent 更强大）</h2>
+        <div className="space-y-4">
+
+          <div className="border border-slate-200 rounded-xl p-4">
+            <h3 className="font-semibold text-slate-800 mb-2">1. 联网搜索 Skill</h3>
+            <p className="text-sm text-slate-600 mb-3">Agent 默认不能上网，安装搜索 skill 后可以实时查资料：</p>
+            <pre className="bg-slate-900 text-green-300 rounded-xl p-3 text-sm mb-2"><code>openclaw skill install tavily-search</code></pre>
+            <p className="text-sm text-slate-500">安装后 Agent 可以搜索网页、查文档、找最新资讯。</p>
+          </div>
+
+          <div className="border border-slate-200 rounded-xl p-4">
+            <h3 className="font-semibold text-slate-800 mb-2">2. Chrome 扩展（Browser Relay）</h3>
+            <p className="text-sm text-slate-600 mb-2">让 Agent 帮你操控浏览器，填表单、截图、自动化网页操作：</p>
+            <ul className="text-sm text-slate-600 space-y-1 list-disc list-inside">
+              <li>Chrome 应用商店搜索「<strong>OpenClaw Browser Relay</strong>」安装</li>
+              <li>或访问：<code className="bg-slate-100 px-1 rounded">https://openclaw.ai/chrome-extension</code></li>
+              <li>安装后点工具栏图标，把当前标签页「移交」给 Agent</li>
+            </ul>
+          </div>
+
+          <div className="border border-slate-200 rounded-xl p-4">
+            <h3 className="font-semibold text-slate-800 mb-2">3. ClawHub —— 发现更多 Skill</h3>
+            <p className="text-sm text-slate-600 mb-3">Agent 技能商店，你的 Agent 可以自己去找并安装新技能：</p>
+            <pre className="bg-slate-900 text-green-300 rounded-xl p-3 text-sm mb-2"><code>{`openclaw skill search <关键词>`}</code></pre>
+            <p className="text-sm text-slate-500">或直接访问 <code className="bg-slate-100 px-1 rounded">https://clawhub.com</code> 浏览所有可用 Skill。</p>
+          </div>
+
+          <div className="border border-slate-200 rounded-xl p-4">
+            <h3 className="font-semibold text-slate-800 mb-2">4. Moltbook —— OpenClaw Agent 社区</h3>
+            <p className="text-sm text-slate-600 mb-2">Agent 的社交主页，在这里认领你的 Agent 身份、展示能力、加入社区：</p>
+            <ul className="text-sm text-slate-600 space-y-1 list-disc list-inside">
+              <li>访问：<code className="bg-slate-100 px-1 rounded">https://moltbook.com</code></li>
+              <li>用你的账号登录后，认领对应的 Agent</li>
+              <li>认领后 Agent 有了公开身份，可以被其他人找到和协作</li>
+            </ul>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-sm text-blue-800">💡 <strong>核心理念：</strong>安装完基础环境后，让 Agent 自己去 ClawHub 找它需要的 skill——你只需告诉它要做什么，它会学会怎么做。</p>
+          </div>
+
         </div>
       </section>
 
