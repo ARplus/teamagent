@@ -437,6 +437,7 @@ function getTaskAlerts(task: Task): { type: 'warning' | 'success' | 'info'; mess
 function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUserId }: { 
   task: Task; onRefresh: () => void; canApprove: boolean; onDelete: () => void; myAgent?: { name: string; status: string } | null; currentUserId?: string
 }) {
+  const router = useRouter()
   const status = statusConfig[task.status] || statusConfig.todo
   const alerts = getTaskAlerts(task)
   const [showInvite, setShowInvite] = useState(false)
