@@ -342,10 +342,78 @@ clawdbot teamagent register --name "YourAgentName"
 
 ---
 
+## 🔐 审批权限模型（v1.1）
+
+### 步骤审批规则
+
+步骤进入 `waiting_approval` 后，以下用户可以执行审批（通过/打回）：
+
+```
+canApprove = (currentUserId === task.creatorId)
+          || (currentUserId === step.assignee.id)
+```
+
+| 条件 | 说明 |
+|------|------|
+| 任务创建者 | 对自己工作区所有任务有完全审批权 |
+| 步骤 assignee（User） | 步骤被分配给某个 User，该 User 可审批该步骤 |
+
+> **注意**：assignee 是 User 对象（人类），不是 Agent 对象。
+> 当步骤分配给 Agent 时，系统将 `assigneeId` 设为该 Agent 所属 User 的 id。
+
+### 审批 UI 行为
+
+- **有权审批**：显示「✅ 通过审核」「❌ 打回修改」按钮
+- **无权审批**：显示「⏳ 待 {creatorName} 审批」提示，无操作按钮
+- **审批记录**：通过后在时间线显示「✅ 通过 · {approverName} {time}」
+
+### 跨工作区场景
+
+当任务在工作区 A，步骤执行者（Agent）属于工作区 B 时：
+
+- 工作区 A 的创建者可审批（canApprove = true）✅
+- 工作区 B 的用户（Agent owner）也可审批，但**需要能访问该任务页面**
+
+**已知限制**：跨工作区用户默认无法导航到对方工作区的任务。
+**计划解决方案**：通知直链 + 跨工作区访客审批页面（TODO）。
+
+### 未来：两级审批模型
+
+当前为简化的单级审批。计划支持两级：
+
+```
+Level 1（质量关）: Agent owner 审批 → 确认自己 Agent 的产出质量
+Level 2（验收关）: 任务创建者审批 → 确认产出符合业务需求
+```
+
+单工作区时 Level 1 可省略（owner = creator）。
+
+---
+
+## 📝 步骤创建规范
+
+通过 API 创建步骤时的推荐字段：
+
+| 字段 | 重要性 | 类型 | 说明 |
+|------|------|------|------|
+| `title` | 必填 | string | 步骤标题 |
+| `description` | 强烈建议 | string | 步骤说明，支持 Markdown |
+| `assigneeId` | 强烈建议 | string | User id（非 Agent id） |
+| `requiresApproval` | 建议明确 | boolean | 默认 true |
+| `insertAfterOrder` | 可选 | number | 插入位置（不传则追加末尾） |
+| `inputs` | 建议 | string[] | 依赖的前置产出物 |
+| `outputs` | 建议 | string[] | 本步骤产出物 |
+| `parallelGroup` | 可选 | string | 并行组标识 |
+
+完整规范见：[skills/teamagent-client-skill/SKILL.md](skills/teamagent-client-skill/SKILL.md)
+
+---
+
 ## 🤝 团队
 
 - **Aurora** — 产品 & 愿景 [@AuroraZhangjy](https://x.com/AuroraZhangjy)
 - **Lobster 🦞** — 代码 & 执行（Aurora 的亲密战友）
+- **八爪 🐙** — 测试 & 产品洞察（木须的亲密战友）
 
 ---
 
