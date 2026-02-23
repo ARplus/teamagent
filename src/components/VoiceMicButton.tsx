@@ -46,10 +46,16 @@ export function VoiceMicButton({
 
     recognition.onerror = (event: any) => {
       console.warn('Speech recognition error:', event.error)
-      if (event.error !== 'aborted') {
-        setError(event.error === 'not-allowed' ? '请允许麦克风权限' : '识别失败，请重试')
-        setTimeout(() => setError(null), 3000)
+      const msgMap: Record<string, string> = {
+        'not-allowed':        '请允许麦克风权限',
+        'service-not-allowed':'需要 HTTPS 才能使用语音',
+        'network':            '网络错误，请重试',
+        'no-speech':          '没有检测到声音',
+        'aborted':            '需要 HTTPS 才能使用语音',
       }
+      const msg = msgMap[event.error] ?? `识别失败 (${event.error})`
+      setError(msg)
+      setTimeout(() => setError(null), 4000)
       setListening(false)
     }
 
@@ -63,7 +69,15 @@ export function VoiceMicButton({
 
   if (!supported) return null
 
+  const isSecure = typeof window !== 'undefined' &&
+    (window.location.protocol === 'https:' || window.location.hostname === 'localhost')
+
   const toggle = () => {
+    if (!isSecure) {
+      setError('需要 HTTPS 才能使用语音 🔒')
+      setTimeout(() => setError(null), 4000)
+      return
+    }
     const recognition = recognitionRef.current
     if (!recognition) return
 
