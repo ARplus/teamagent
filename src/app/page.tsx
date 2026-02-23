@@ -518,8 +518,12 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                     </div>
                   </div>
                 )}
-                {/* Agent 头像 */}
-                <div className="flex items-center space-x-2 bg-gradient-to-r from-orange-100 to-rose-100 px-3 py-2 rounded-2xl border border-orange-200 shadow-sm">
+                {/* Agent 头像 - 点击进入对话 */}
+                <button
+                  onClick={() => router.push('/chat')}
+                  className="flex items-center space-x-2 bg-gradient-to-r from-orange-100 to-rose-100 px-3 py-2 rounded-2xl border border-orange-200 shadow-sm hover:shadow-md hover:border-orange-300 transition-all"
+                  title="和 Agent 对话"
+                >
                   <div className="w-7 h-7 rounded-xl bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-white text-sm font-bold shadow-md">
                     🦞
                   </div>
@@ -527,18 +531,22 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                     <div className="text-sm font-semibold text-slate-800">{myAgent.name}</div>
                     <div className="flex items-center space-x-1">
                       <div className={`w-1.5 h-1.5 rounded-full ${myAgent.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                      <span className="text-xs text-slate-500">{myAgent.status === 'online' ? '守护中' : '离线'}</span>
+                      <span className="text-xs text-slate-500">{myAgent.status === 'online' ? '💬 对话' : '离线'}</span>
                     </div>
                   </div>
-                </div>
+                </button>
               </div>
             )}
-            {/* 移动端简化版 Agent 状态 */}
+            {/* 移动端简化版 Agent 状态 - 点击进入对话 */}
             {myAgent && (
-              <div className="sm:hidden flex items-center space-x-1 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">
+              <button
+                onClick={() => router.push('/chat')}
+                className="sm:hidden flex items-center space-x-1 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100 active:bg-orange-100"
+                title="和 Agent 对话"
+              >
                 <span className="text-sm">🦞</span>
                 <div className={`w-1.5 h-1.5 rounded-full ${myAgent.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-              </div>
+              </button>
             )}
             {/* 邀请协作者 */}
             <div className="relative" data-invite-popup>
@@ -2541,13 +2549,24 @@ export default function HomePage() {
               <span className="text-xl">🦞</span>
               <span className="font-bold text-white text-sm">TeamAgent</span>
             </div>
-            <button
-              onClick={() => setSidebarCollapsed(false)}
-              className="text-white p-2 hover:bg-white/10 rounded-lg text-lg leading-none"
-              aria-label="打开菜单"
-            >
-              ☰
-            </button>
+            <div className="flex items-center space-x-1">
+              {myAgent && (
+                <button
+                  onClick={() => router.push('/chat')}
+                  className="flex items-center space-x-1.5 bg-orange-500/20 border border-orange-400/40 text-orange-200 px-3 py-1.5 rounded-full text-xs font-medium hover:bg-orange-500/30 transition-colors"
+                >
+                  <span>💬</span>
+                  <span>对话</span>
+                </button>
+              )}
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="text-white p-2 hover:bg-white/10 rounded-lg text-lg leading-none"
+                aria-label="打开菜单"
+              >
+                ☰
+              </button>
+            </div>
           </>
         )}
       </div>
