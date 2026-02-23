@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
-import { sendToUser } from '@/lib/events'
+import { sendToUser, sendToUsers } from '@/lib/events'
+import { parseTaskWithAI } from '@/lib/ai-parse'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -276,6 +277,108 @@ export async function POST(req: NextRequest) {
         // 非致命，任务创建不受影响
         console.warn('[Task/Create] 自动 decompose 触发失败:', e)
       }
+    }
+
+    // 🆕 Team 模式：任务创建后自动触发千问拆解，无需手动点「AI拆解」
+    // fire-and-forget，不阻塞任务创建响应
+    if (task.mode === 'team' && task.description && prebuiltSteps.length === 0) {
+      ;(async () => {
+        try {
+          const parseResult = await parseTaskWithAI(task.description!)
+          if (!parseResult.success || !parseResult.steps) return
+
+          const workspaceMembers = await prisma.workspaceMember.findMany({
+            where: { workspaceId: finalWorkspaceId },
+            include: {
+              user: {
+                select: {
+                  id: true, name: true, nickname: true,
+                  agent: { select: { name: true, capabilities: true } }
+                }
+              }
+            }
+          })
+
+          function matchByCapabilities(title: string, desc: string): string | null {
+            const haystack = `${title} ${desc}`.toLowerCase()
+            let best: { userId: string; score: number } | null = null
+            for (const m of workspaceMembers) {
+              const rawCaps: string = (m.user.agent as any)?.capabilities || '[]'
+              let caps: string[] = []
+              try { caps = JSON.parse(rawCaps) } catch { caps = [] }
+              if (!Array.isArray(caps) || caps.length === 0) continue
+              let score = 0
+              for (const cap of caps) {
+                if (haystack.includes(cap.toLowerCase())) score += 2
+              }
+              const agentName = ((m.user.agent as any)?.name || '').toLowerCase()
+              if (agentName && haystack.includes(agentName.replace(/[^\u4e00-\u9fa5a-z]/g, ''))) score += 3
+              if (score > 0 && (!best || score > best.score)) best = { userId: m.user.id, score }
+            }
+            return best?.userId ?? null
+          }
+
+          const createdSteps: any[] = []
+          let order = 0
+          for (const step of parseResult.steps) {
+            order++
+            let assigneeId: string | null = null
+            for (const assigneeName of (step.assignees || [])) {
+              const member = workspaceMembers.find(m =>
+                m.user.nickname === assigneeName || m.user.name === assigneeName ||
+                m.user.name?.includes(assigneeName) || assigneeName.includes(m.user.name || '') ||
+                (m.user.agent as any)?.name?.includes(assigneeName) ||
+                assigneeName.includes((m.user.agent as any)?.name || '')
+              )
+              if (member) { assigneeId = member.user.id; break }
+            }
+            if (!assigneeId) assigneeId = matchByCapabilities(step.title, step.description || '')
+
+            const created = await prisma.taskStep.create({
+              data: {
+                title: step.title, description: step.description,
+                order, taskId: task.id, assigneeId,
+                assigneeNames: JSON.stringify(step.assignees || []),
+                inputs: JSON.stringify(step.inputs || []),
+                outputs: JSON.stringify(step.outputs || []),
+                skills: JSON.stringify(step.skills || []),
+                requiresApproval: step.requiresApproval !== false,
+                parallelGroup: step.parallelGroup || null,
+                status: 'pending', agentStatus: assigneeId ? 'pending' : null,
+                stepType: step.stepType || 'task',
+                agenda: step.agenda || null,
+                participants: (step.participants?.length ?? 0) > 0 ? JSON.stringify(step.participants) : null,
+              },
+              include: { assignee: { select: { id: true, name: true } } }
+            })
+            createdSteps.push(created)
+          }
+
+          // 通知所有相关 Agent
+          const involvedUserIds = new Set<string>()
+          for (const s of createdSteps) if (s.assigneeId) involvedUserIds.add(s.assigneeId)
+          if (involvedUserIds.size > 0) {
+            const userIds = Array.from(involvedUserIds)
+            sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
+            // 通知第一个可开始的步骤
+            const sorted = [...createdSteps].sort((a, b) => a.order - b.order)
+            const seenGroups = new Set<string>()
+            for (const s of sorted) {
+              const pg = (s as any).parallelGroup as string | null
+              if (!pg) {
+                if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
+                break
+              } else if (!seenGroups.has(pg)) {
+                seenGroups.add(pg)
+                if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
+              }
+            }
+          }
+          console.log(`[Task/Create] Team 自动拆解完成：${createdSteps.length} 步，taskId=${task.id}`)
+        } catch (e: any) {
+          console.warn('[Task/Create] Team 自动拆解失败:', e?.message)
+        }
+      })()
     }
 
     return NextResponse.json({
