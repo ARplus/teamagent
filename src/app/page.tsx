@@ -62,6 +62,7 @@ interface TaskStep {
   appealStatus?: string | null
   appealedAt?: string | null
   appealResolvedAt?: string | null
+  approvedByUser?: { id: string; name: string | null; email: string } | null
   // 审批设置
   requiresApproval?: boolean   // false = Agent 提交后自动通过
   // 会议专用
@@ -1596,7 +1597,10 @@ function StepCard({
                 <span>📤 提交 {new Date(step.completedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
               )}
               {step.approvedAt && (
-                <span className="text-emerald-600">✅ 通过 {new Date(step.approvedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                <span className="text-emerald-600">
+                  ✅ 通过{step.approvedByUser ? ` · ${step.approvedByUser.name || step.approvedByUser.email}` : ''}{' '}
+                  {new Date(step.approvedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+                </span>
               )}
               {step.rejectedAt && (
                 <span className="text-red-500">↩️ 打回 {new Date(step.rejectedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>

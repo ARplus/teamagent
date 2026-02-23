@@ -61,7 +61,25 @@ export async function GET(
       return NextResponse.json({ error: '任务不存在' }, { status: 404 })
     }
 
-    return NextResponse.json(task)
+    // 补充审批者信息（approvedBy 是 userId，无 Prisma relation，做 secondary lookup）
+    const approvedByIds = task.steps
+      .map(s => (s as any).approvedBy as string | null)
+      .filter((id): id is string => !!id)
+    const uniqueIds = [...new Set(approvedByIds)]
+    const approvers = uniqueIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: uniqueIds } },
+          select: { id: true, name: true, email: true }
+        })
+      : []
+    const approverMap = Object.fromEntries(approvers.map(u => [u.id, u]))
+
+    const stepsWithApprover = task.steps.map(s => ({
+      ...s,
+      approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null
+    }))
+
+    return NextResponse.json({ ...task, steps: stepsWithApprover })
 
   } catch (error) {
     console.error('获取任务失败:', error)
