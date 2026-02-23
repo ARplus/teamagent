@@ -85,12 +85,12 @@ export async function GET(
     const stepsWithApprover = task.steps.map(s => ({
       ...s,
       approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null,
-      // 服务端算好，前端直接用，不依赖 session.user.id 做字符串比较
-      // 规则：任务创建者 OR Agent 的主人（agent.userId）
-      viewerCanApprove: viewerUserId != null && (
-        isTaskCreator ||
-        (s as any).agent?.userId === viewerUserId
-      ),
+      // 服务端算好，前端直接用
+      // 规则：任务创建者 OR 步骤 assignee（步骤的 assigneeId 存的是 User ID）
+      // 当 viewerUserId 为 null（session 未能获取）时返回 null，让前端 fallback 接管
+      viewerCanApprove: viewerUserId != null
+        ? (isTaskCreator || s.assigneeId === viewerUserId)
+        : null,
     }))
 
     return NextResponse.json({
