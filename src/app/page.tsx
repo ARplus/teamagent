@@ -1309,6 +1309,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                 onAssign={handleAssign}
                 currentUserId={currentUserId}
                 onRefresh={onRefresh}
+                taskCreatorName={task.creator?.name || task.creator?.email}
               />
             ))}
           </div>
@@ -1325,7 +1326,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
 }
 
 function StepCard({
-  step, index, isActive, canApprove, onApprove, onReject, agents, onAssign, currentUserId, onRefresh
+  step, index, isActive, canApprove, onApprove, onReject, agents, onAssign, currentUserId, onRefresh, taskCreatorName
 }: {
   step: TaskStep; index: number; isActive: boolean; canApprove: boolean
   onApprove: (id: string) => Promise<void>; onReject: (id: string, reason: string) => Promise<void>
@@ -1333,6 +1334,7 @@ function StepCard({
   onAssign?: (stepId: string, userId: string | null) => Promise<void>
   currentUserId?: string
   onRefresh?: () => void
+  taskCreatorName?: string
 }) {
   const [expanded, setExpanded] = useState(false)
   const [history, setHistory] = useState<Submission[]>([])
@@ -1763,6 +1765,15 @@ function StepCard({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {isWaiting && !canApprove && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-4 py-2.5 rounded-xl">
+                <span>⏳</span>
+                <span>待 <span className="font-semibold">{taskCreatorName || '任务创建者'}</span> 审批</span>
+              </div>
             </div>
           )}
 
