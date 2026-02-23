@@ -1325,7 +1325,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                   step={step}
                   index={index}
                   isActive={index === currentIndex}
-                  canApprove={canApprove || currentUserId === step.assignee?.id}
+                  canApprove={(step as any).viewerCanApprove ?? (canApprove || currentUserId === step.assignee?.id)}
                   onApprove={handleApprove}
                   onReject={handleReject}
                   agents={agentList}
@@ -2573,7 +2573,7 @@ export default function HomePage() {
             <TaskDetail
               task={selectedTask}
               onRefresh={handleRefresh}
-              canApprove={session?.user?.id === selectedTask.creator?.id}
+              canApprove={(selectedTask as any).viewerIsCreator ?? (session?.user?.id === selectedTask.creator?.id)}
               onDelete={handleDelete}
               myAgent={myAgent}
               currentUserId={session?.user?.id || ''}

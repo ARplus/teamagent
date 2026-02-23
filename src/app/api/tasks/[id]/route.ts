@@ -61,6 +61,10 @@ export async function GET(
       return NextResponse.json({ error: '任务不存在' }, { status: 404 })
     }
 
+    // 当前请求者（用于计算 viewerCanApprove）
+    const auth = await authenticate(req)
+    const viewerUserId = auth?.userId ?? null
+
     // 补充审批者信息（approvedBy 是 userId，无 Prisma relation，做 secondary lookup）
     const approvedByIds = task.steps
       .map(s => (s as any).approvedBy as string | null)
@@ -74,12 +78,22 @@ export async function GET(
       : []
     const approverMap = Object.fromEntries(approvers.map(u => [u.id, u]))
 
+    // 🆕 服务端计算审批权限，彻底解决跨工作区审批按钮问题
+    // 规则：任务创建者 OR 步骤被分配给当前用户（无论工作区）
+    const isTaskCreator = viewerUserId != null && viewerUserId === task.creatorId
+
     const stepsWithApprover = task.steps.map(s => ({
       ...s,
-      approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null
+      approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null,
+      // 服务端算好，前端直接用，不依赖 session.user.id 做字符串比较
+      viewerCanApprove: viewerUserId != null && (isTaskCreator || s.assigneeId === viewerUserId),
     }))
 
-    return NextResponse.json({ ...task, steps: stepsWithApprover })
+    return NextResponse.json({
+      ...task,
+      steps: stepsWithApprover,
+      viewerIsCreator: isTaskCreator,   // 前端可用于「任务级别」权限（添加步骤、删除任务等）
+    })
 
   } catch (error) {
     console.error('获取任务失败:', error)
