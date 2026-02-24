@@ -2531,6 +2531,7 @@ export default function HomePage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [chatReloading, setChatReloading] = useState(false)
   const [pendingMsgId, setPendingMsgId] = useState<string | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -2579,13 +2580,32 @@ export default function HomePage() {
     if (session) loadChatHistory()
   }, [session, loadChatHistory])
 
+  const reloadChatHistory = useCallback(async () => {
+    try {
+      setChatReloading(true)
+      await loadChatHistory()
+    } finally {
+      setChatReloading(false)
+    }
+  }, [loadChatHistory])
+
+  // 聊天页兜底刷新：即使实时轮询超时，也会定期拉取最新消息
+  useEffect(() => {
+    if (!session || !isMobile || activeTab !== 'chat') return
+    const timer = setInterval(() => {
+      loadChatHistory().catch(() => {})
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [session, isMobile, activeTab, loadChatHistory])
+
   // 新消息时滚到底部
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
   const pollForReply = useCallback(async (msgId: string) => {
-    for (let i = 0; i < 40; i++) {
+    // 最长等待约 3 分钟
+    for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 1500))
       try {
         const res = await fetch(`/api/chat/poll?msgId=${msgId}`)
@@ -2601,10 +2621,16 @@ export default function HomePage() {
         }
       } catch {}
     }
-    // 超时兜底
-    setChatMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: '（回复超时，请重试）' } : m))
+
+    // 超时后先拉一次历史，避免“其实已回复但没刷新到”
+    await loadChatHistory().catch(() => {})
+
+    // 若还没拿到，提示用户可手动刷新
+    setChatMessages(prev => prev.map(m =>
+      m.id === msgId && m.content === '...' ? { ...m, content: '（还在路上，点右上角“刷新”）' } : m
+    ))
     setPendingMsgId(null)
-  }, [])
+  }, [loadChatHistory])
 
   const handleChatSend = useCallback(async () => {
     if (!chatInput.trim() || chatLoading) return
@@ -2820,14 +2846,25 @@ export default function HomePage() {
                   </h1>
                   <p className="text-slate-400 text-xs">手机指挥Agent干活 🐙</p>
                 </div>
-                {!myAgent && agentChecked && (
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setShowPairingModal(true)}
-                    className="text-xs px-3 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl"
+                    onClick={reloadChatHistory}
+                    disabled={chatReloading}
+                    className="text-xs px-3 py-1.5 bg-slate-800/70 border border-slate-600/50 text-slate-300 rounded-xl disabled:opacity-50"
+                    title="重新拉取聊天消息"
                   >
-                    ⚡ 配对 Agent
+                    {chatReloading ? '刷新中…' : '↻ 刷新'}
                   </button>
-                )}
+
+                  {!myAgent && agentChecked && (
+                    <button
+                      onClick={() => setShowPairingModal(true)}
+                      className="text-xs px-3 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl"
+                    >
+                      ⚡ 配对 Agent
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Agent 信息栏 */}
