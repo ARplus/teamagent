@@ -90,6 +90,7 @@ export default function ChatPage() {
     setMessages(prev => [...prev, userMsg])
     setTyping(true)
 
+    let pendingMode = false
     try {
       const res = await fetch('/api/chat/send', {
         method: 'POST',
@@ -99,12 +100,54 @@ export default function ChatPage() {
 
       if (res.ok) {
         const data = await res.json()
-        // 更新用户消息 ID + 添加 Agent 回复
-        setMessages(prev => [
-          ...prev.filter(m => m.id !== userMsg.id),
-          { ...userMsg, id: data.userMessageId },
-          data.agentMessage,
-        ])
+
+        if (data.pending && data.agentMessageId) {
+          // 真实 Agent 路由模式：轮询等待回复
+          pendingMode = true
+          setMessages(prev => [
+            ...prev.filter(m => m.id !== userMsg.id),
+            { ...userMsg, id: data.userMessageId },
+            // 先显示占位"..."气泡
+            { id: data.agentMessageId, content: '...', role: 'agent' as const, createdAt: new Date().toISOString() },
+          ])
+          // 开始轮询
+          const pollStart = Date.now()
+          const poll = async () => {
+            if (Date.now() - pollStart > 35000) {
+              setMessages(prev => prev.map(m =>
+                m.id === data.agentMessageId
+                  ? { ...m, content: '⏱ Agent 响应超时，请重试' }
+                  : m
+              ))
+              setLoading(false)
+              setTyping(false)
+              return
+            }
+            try {
+              const pollRes = await fetch(`/api/chat/poll?msgId=${data.agentMessageId}`)
+              if (pollRes.ok) {
+                const pollData = await pollRes.json()
+                if (pollData.ready) {
+                  setMessages(prev => prev.map(m =>
+                    m.id === data.agentMessageId ? { ...pollData.message, role: 'agent' as const } : m
+                  ))
+                  setLoading(false)
+                  setTyping(false)
+                  return
+                }
+              }
+            } catch (_) { /* 忽略轮询网络错误，继续重试 */ }
+            setTimeout(poll, 2000)
+          }
+          poll()
+        } else {
+          // 原有逻辑（LLM 直接回复）
+          setMessages(prev => [
+            ...prev.filter(m => m.id !== userMsg.id),
+            { ...userMsg, id: data.userMessageId },
+            data.agentMessage,
+          ])
+        }
       } else {
         // 错误处理
         const err = await res.json()
@@ -113,7 +156,7 @@ export default function ChatPage() {
           {
             id: 'error-' + Date.now(),
             content: `❌ ${err.error || '发送失败，请重试'}`,
-            role: 'agent',
+            role: 'agent' as const,
             createdAt: new Date().toISOString(),
           },
         ])
@@ -125,13 +168,16 @@ export default function ChatPage() {
         {
           id: 'error-' + Date.now(),
           content: '❌ 网络错误，请重试',
-          role: 'agent',
+          role: 'agent' as const,
           createdAt: new Date().toISOString(),
         },
       ])
     } finally {
-      setLoading(false)
-      setTyping(false)
+      // pendingMode 时由轮询回调控制 loading/typing，不在此处关闭
+      if (!pendingMode) {
+        setLoading(false)
+        setTyping(false)
+      }
     }
   }
 

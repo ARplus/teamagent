@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendToUser } from '@/lib/events'
 
 // ============ 上下文类型 ============
 interface TaskContext {
@@ -286,11 +287,38 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // 4. 构建提示词 + 调用 LLM
+    // 4. 检查 Agent 是否在线 → 路由到真实 OpenClaw Agent
+    if (agent && agent.status === 'online') {
+      // 创建 pending 占位消息
+      const agentMessage = await prisma.chatMessage.create({
+        data: {
+          content: '__pending__',
+          role: 'agent',
+          userId: user.id,
+          agentId: agent.id,
+        },
+      })
+
+      // 推送 chat:incoming 事件给 agent-worker
+      sendToUser(user.id, {
+        type: 'chat:incoming',
+        msgId: agentMessage.id,
+        content: content.trim(),
+        agentId: agent.id,
+      })
+
+      return NextResponse.json({
+        userMessageId: userMessage.id,
+        agentMessageId: agentMessage.id,
+        pending: true,
+      })
+    }
+
+    // 5. 构建提示词 + 调用 LLM（Agent 不在线时 fallback）
     const systemPrompt = buildSystemPrompt(ctx)
     let reply = await callLLM(systemPrompt, content.trim(), history)
 
-    // 5. 解析并执行 Action
+    // 6. 解析并执行 Action
     const actionMatch = reply.match(/@@ACTION@@([\s\S]*?)@@END@@/)
     if (actionMatch) {
       const actionResult = await executeAction(actionMatch[1].trim(), user.id, agent?.id || null)
@@ -298,7 +326,7 @@ export async function POST(req: NextRequest) {
       reply = reply.replace(/@@ACTION@@[\s\S]*?@@END@@/, '').trim() + actionResult
     }
 
-    // 6. 保存 Agent 回复
+    // 7. 保存 Agent 回复（LLM fallback 情况）
     const agentMessage = await prisma.chatMessage.create({
       data: {
         content: reply,
