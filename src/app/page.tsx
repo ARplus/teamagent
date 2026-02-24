@@ -2416,36 +2416,75 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
 function MobileProfileView({ userEmail, userName, onSignOut }: {
   userEmail: string; userName: string; onSignOut: () => void
 }) {
+  const initials = (userName || userEmail || '?').charAt(0).toUpperCase()
+
+  const menuItems = [
+    { href: '/team', icon: '🌊', label: '我的战队', desc: '查看 Agent 军团', highlight: true },
+    { href: '/agents', icon: '🤖', label: 'Agent 列表', desc: '管理所有 Agents' },
+    { href: '/landing', icon: '🌐', label: '官网首页', desc: '分享给朋友' },
+    { href: '/settings', icon: '⚙️', label: '设置', desc: '账号与偏好' },
+  ]
+
   return (
-    <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-900 to-slate-800 px-4 pt-8">
-      <div className="flex flex-col items-center mb-8">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-4xl shadow-2xl shadow-orange-500/30 mb-4">
-          👤
+    <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-900 to-slate-800">
+      {/* 用户信息头部 */}
+      <div className="px-4 pt-8 pb-6">
+        <div className="flex items-center space-x-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-2xl font-bold text-white shadow-xl shadow-orange-500/30 flex-shrink-0">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-bold text-white truncate">{userName || '用户'}</h2>
+            <p className="text-slate-400 text-sm truncate">{userEmail}</p>
+            <div className="flex items-center space-x-1.5 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-emerald-400 text-xs">已登录</span>
+            </div>
+          </div>
         </div>
-        <h2 className="text-xl font-bold text-white">{userName || '用户'}</h2>
-        <p className="text-slate-400 text-sm mt-1">{userEmail}</p>
       </div>
-      <div className="space-y-3">
-        <a href="/settings" className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-4">
-          <div className="flex items-center space-x-3">
-            <span className="text-lg">⚙️</span>
-            <span className="text-white text-sm">设置</span>
-          </div>
-          <span className="text-slate-500">›</span>
-        </a>
-        <a href="/team" className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-4">
-          <div className="flex items-center space-x-3">
-            <span className="text-lg">🌊</span>
-            <span className="text-white text-sm">我的战队</span>
-          </div>
-          <span className="text-slate-500">›</span>
-        </a>
+
+      {/* 菜单列表 */}
+      <div className="px-4 space-y-2 pb-8">
+        {menuItems.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            className={`flex items-center justify-between rounded-2xl px-4 py-4 transition-colors ${
+              item.highlight
+                ? 'bg-gradient-to-r from-orange-500/20 to-rose-500/20 border border-orange-400/30'
+                : 'bg-slate-800/60 border border-slate-700/50'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${
+                item.highlight ? 'bg-orange-500/30' : 'bg-slate-700/60'
+              }`}>
+                {item.icon}
+              </div>
+              <div>
+                <div className={`text-sm font-semibold ${item.highlight ? 'text-orange-200' : 'text-white'}`}>
+                  {item.label}
+                </div>
+                <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
+              </div>
+            </div>
+            <span className={`text-lg ${item.highlight ? 'text-orange-400' : 'text-slate-600'}`}>›</span>
+          </a>
+        ))}
+
+        {/* 退出登录 */}
         <button
           onClick={onSignOut}
-          className="w-full flex items-center justify-center space-x-2 bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-4 text-red-400"
+          className="w-full flex items-center space-x-3 bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-4 active:bg-red-500/20 transition-colors mt-4"
         >
-          <span>🚪</span>
-          <span className="text-sm font-medium">退出登录</span>
+          <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-lg flex-shrink-0">
+            🚪
+          </div>
+          <div className="text-left">
+            <div className="text-sm font-semibold text-red-400">退出登录</div>
+            <div className="text-xs text-slate-600 mt-0.5">下次见 👋</div>
+          </div>
         </button>
       </div>
     </div>
@@ -2755,7 +2794,9 @@ export default function HomePage() {
             <div className="px-4 pt-5 pb-3 flex-shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h1 className="text-white font-bold text-lg leading-tight">个人AI团队</h1>
+                  <h1 className="text-white font-bold text-lg leading-tight">
+                    {session?.user?.name || session?.user?.email?.split('@')[0] || '我'} 的 AI 团队
+                  </h1>
                   <p className="text-slate-400 text-xs">手机指挥Agent干活 🐙</p>
                 </div>
                 {!myAgent && agentChecked && (
@@ -2774,7 +2815,10 @@ export default function HomePage() {
                   🦞
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-white font-semibold text-sm">{myAgent?.name || 'AI 助手'}</div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-white font-semibold text-sm">{myAgent?.name || 'AI 助手'}</span>
+                    <span className="text-xs px-1.5 py-0.5 bg-orange-500/20 text-orange-300 rounded-md font-medium">主Agent</span>
+                  </div>
                   <div className="flex items-center space-x-1.5">
                     <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${myAgent?.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
                     <span className="text-slate-400 text-xs">{myAgent?.status === 'online' ? '在线 · 随时响应' : (myAgent ? '离线' : '未配对')}</span>
@@ -2801,13 +2845,13 @@ export default function HomePage() {
             {tasks.length > 0 && (
               <button
                 onClick={() => setActiveTab('tasks')}
-                className="mx-4 mb-2 flex items-center justify-between bg-slate-800/40 border border-slate-700/30 rounded-xl px-4 py-2.5 flex-shrink-0"
+                className="mx-4 mb-2 flex items-center justify-between bg-slate-700/70 border border-slate-600/60 rounded-xl px-4 py-3 flex-shrink-0 active:bg-slate-600/70 transition-colors"
               >
-                <div className="flex items-center space-x-4 text-xs">
-                  <span className="text-slate-400">📋 {pendingTaskCount} 个任务待处理</span>
-                  {doneTaskCount > 0 && <span className="text-emerald-500">✅ 今日完成 {doneTaskCount} 个</span>}
+                <div className="flex items-center space-x-4">
+                  <span className="text-white text-xs font-medium">📋 <span className="text-orange-300 font-semibold">{pendingTaskCount}</span> 个任务待处理</span>
+                  {doneTaskCount > 0 && <span className="text-emerald-400 text-xs font-medium">✅ 完成 {doneTaskCount}</span>}
                 </div>
-                <span className="text-slate-500 text-xs">→</span>
+                <span className="text-slate-400 text-sm">›</span>
               </button>
             )}
 
@@ -2818,7 +2862,7 @@ export default function HomePage() {
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
-                  placeholder={myAgent ? `和 ${myAgent.name} 说话...` : '和 Agent 说话...'}
+                  placeholder="和你的Agent说话..."
                   className="flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 border border-slate-700/50"
                 />
                 <button
