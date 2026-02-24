@@ -21,14 +21,15 @@ export default function LoginPage() {
       const result = await signIn('credentials', {
         email,
         password,
-        redirect: false
+        redirect: false,
+        callbackUrl: '/'
       })
 
       if (result?.error) {
         setError(result.error)
       } else {
-        router.push('/')
-        router.refresh()
+        // 强制跳到主页（对话页），忽略 callbackUrl
+        window.location.href = '/'
       }
     } catch (err) {
       setError('登录失败，请重试')
