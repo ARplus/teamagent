@@ -77,8 +77,8 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
 
   return (
     <>
-      {/* 连接状态指示器 */}
-      <div className="fixed bottom-4 left-4 z-50">
+      {/* 连接状态指示器 — 桌面端显示在左下角，移动端隐藏（移动端用 tab 内联状态） */}
+      <div className="hidden md:block fixed bottom-4 left-4 z-50">
         <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs transition-all ${
           connected 
             ? 'bg-green-100 text-green-700'
