@@ -95,13 +95,6 @@ interface Task {
   creatorComment?: string | null
 }
 
-interface ChatMessage {
-  id: string
-  content: string
-  role: 'user' | 'agent'
-  createdAt: string
-}
-
 // ============ Utils ============
 
 function formatDuration(ms: number | null | undefined): string {
@@ -150,43 +143,6 @@ const agentStatusConfig: Record<string, { dot: string; label: string }> = {
   working: { dot: 'bg-blue-500', label: '工作中' },
   waiting: { dot: 'bg-amber-500', label: '等待中' },
   offline: { dot: 'bg-slate-400', label: '离线' }
-}
-
-// ============ Chat Types & Bubble ============
-
-interface ChatMessage {
-  id: string
-  content: string
-  role: 'user' | 'agent'
-  createdAt: string
-}
-
-function ChatBubble({ message }: { message: ChatMessage }) {
-  const isUser = message.role === 'user'
-  const isPending = message.content === '...' || message.content === '__pending__'
-
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      {!isUser && (
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-sm mr-2 flex-shrink-0 mt-0.5">
-          🦞
-        </div>
-      )}
-      <div
-        className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-          isUser
-            ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-br-md'
-            : 'bg-slate-800 text-slate-200 rounded-bl-md'
-        } ${isPending ? 'animate-pulse' : ''}`}
-      >
-        {isPending ? (
-          <span className="tracking-widest text-slate-400">···</span>
-        ) : (
-          <span className="whitespace-pre-wrap break-words">{message.content}</span>
-        )}
-      </div>
-    </div>
-  )
 }
 
 // ============ Left Sidebar: Task List ============
@@ -299,20 +255,6 @@ function TaskList({
       </div>
 
       <div className="p-4 space-y-2">
-        {/* 💬 与 Agent 对话 — 最顶部入口 */}
-        <a
-          href="/chat"
-          className={`w-full py-3 rounded-xl font-medium flex items-center justify-center space-x-2 text-sm transition-all ${
-            hasAgent
-              ? 'bg-gradient-to-r from-orange-500/20 to-rose-500/20 border border-orange-400/30 hover:border-orange-400/50 text-orange-200 hover:text-white'
-              : 'bg-slate-800/40 border border-slate-700/50 text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          <span>💬</span>
-          <span>与 Agent 对话</span>
-          {hasAgent && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-        </a>
-
         {/* 官网预览 */}
         <a
           href="/landing"
@@ -331,6 +273,17 @@ function TaskList({
           <span>🌊</span>
           <span>我的战队</span>
         </a>
+
+        {/* 与 Agent 对话 */}
+        {hasAgent && (
+          <a
+            href="/chat"
+            className="w-full py-2 rounded-xl text-xs text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 flex items-center justify-center space-x-1.5 transition-colors border border-orange-500/20 hover:border-orange-500/40"
+          >
+            <span>💬</span>
+            <span>与 Agent 对话</span>
+          </a>
+        )}
 
         {/* 配对 Agent 按钮 */}
         <button
@@ -2411,47 +2364,6 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
 
 // ============ Empty State ============
 
-// ============ Mobile Profile Tab ============
-
-function MobileProfileView({ userEmail, userName, onSignOut }: {
-  userEmail: string; userName: string; onSignOut: () => void
-}) {
-  return (
-    <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-900 to-slate-800 px-4 pt-8">
-      <div className="flex flex-col items-center mb-8">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-4xl shadow-2xl shadow-orange-500/30 mb-4">
-          👤
-        </div>
-        <h2 className="text-xl font-bold text-white">{userName || '用户'}</h2>
-        <p className="text-slate-400 text-sm mt-1">{userEmail}</p>
-      </div>
-      <div className="space-y-3">
-        <a href="/settings" className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-4">
-          <div className="flex items-center space-x-3">
-            <span className="text-lg">⚙️</span>
-            <span className="text-white text-sm">设置</span>
-          </div>
-          <span className="text-slate-500">›</span>
-        </a>
-        <a href="/team" className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-4">
-          <div className="flex items-center space-x-3">
-            <span className="text-lg">🌊</span>
-            <span className="text-white text-sm">我的战队</span>
-          </div>
-          <span className="text-slate-500">›</span>
-        </a>
-        <button
-          onClick={onSignOut}
-          className="w-full flex items-center justify-center space-x-2 bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-4 text-red-400"
-        >
-          <span>🚪</span>
-          <span className="text-sm font-medium">退出登录</span>
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/30 px-4">
@@ -2486,120 +2398,7 @@ export default function HomePage() {
   const [agentChecked, setAgentChecked] = useState(false)
   const [showPairingModal, setShowPairingModal] = useState(false)
 
-  // ── 移动端 chat-first 状态 ──────────────────────────────────────
-  const [isMobile, setIsMobile] = useState(false)
-  const [activeTab, setActiveTab] = useState<'chat' | 'tasks' | 'profile'>('chat')
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput] = useState('')
-  const [chatLoading, setChatLoading] = useState(false)
-  const [pendingMsgId, setPendingMsgId] = useState<string | null>(null)
-  const chatEndRef = useRef<HTMLDivElement>(null)
-
   // 未登录由下方 LandingPage 处理，不再强制跳转
-
-  // ── 移动端检测 + 聊天历史加载 ──────────────────────────────────
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
-
-  const loadChatHistory = useCallback(async () => {
-    try {
-      const res = await fetch('/api/chat/history?limit=50')
-      if (res.ok) {
-        const data = await res.json()
-        // 过滤掉 __pending__ 消息
-        setChatMessages((data.messages || []).filter((m: ChatMessage) => m.content !== '__pending__'))
-      }
-    } catch (e) {
-      console.error('加载聊天历史失败:', e)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (session) loadChatHistory()
-  }, [session, loadChatHistory])
-
-  // 新消息时滚到底部
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
-
-  const pollForReply = useCallback(async (msgId: string) => {
-    for (let i = 0; i < 40; i++) {
-      await new Promise(r => setTimeout(r, 1500))
-      try {
-        const res = await fetch(`/api/chat/poll?msgId=${msgId}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.ready && data.message?.content) {
-            setChatMessages(prev => prev.map(m =>
-              m.id === msgId ? { ...m, content: data.message.content } : m
-            ))
-            setPendingMsgId(null)
-            return
-          }
-        }
-      } catch {}
-    }
-    // 超时兜底
-    setChatMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: '（回复超时，请重试）' } : m))
-    setPendingMsgId(null)
-  }, [])
-
-  const handleChatSend = useCallback(async () => {
-    if (!chatInput.trim() || chatLoading) return
-    const content = chatInput.trim()
-    setChatInput('')
-    setChatLoading(true)
-
-    // 乐观更新：先加用户消息
-    const tempUserMsg: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      content,
-      role: 'user',
-      createdAt: new Date().toISOString(),
-    }
-    setChatMessages(prev => [...prev, tempUserMsg])
-
-    try {
-      const res = await fetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      })
-      if (!res.ok) throw new Error('发送失败')
-      const data = await res.json()
-
-      if (data.pending && data.agentMessageId) {
-        // 路由到真实 Lobster：加 pending 占位
-        const pendingMsg: ChatMessage = {
-          id: data.agentMessageId,
-          content: '...',
-          role: 'agent',
-          createdAt: new Date().toISOString(),
-        }
-        setChatMessages(prev => [...prev, pendingMsg])
-        setPendingMsgId(data.agentMessageId)
-        pollForReply(data.agentMessageId)
-      } else if (data.agentMessage) {
-        // LLM 直接回复
-        setChatMessages(prev => [...prev, data.agentMessage])
-      }
-    } catch (e) {
-      console.error('发送消息失败:', e)
-      setChatMessages(prev => [...prev, {
-        id: `err-${Date.now()}`,
-        content: '发送失败，请重试 😔',
-        role: 'agent',
-        createdAt: new Date().toISOString(),
-      }])
-    } finally {
-      setChatLoading(false)
-    }
-  }, [chatInput, chatLoading, pollForReply])
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -2711,237 +2510,6 @@ export default function HomePage() {
     }
   }
 
-  // ── 任务统计（用于移动端首页摘要）──────────────────────────────
-  const pendingTaskCount = tasks.filter(t => t.status !== 'done').length
-  const doneTaskCount = tasks.filter(t => t.status === 'done').length
-
-  // ── 移动端布局 ──────────────────────────────────────────────────
-  if (isMobile) {
-    // 任务详情全屏（覆盖所有 tab）
-    if (selectedTask) {
-      return (
-        <div className="h-[100svh] flex flex-col overflow-hidden bg-white">
-          {/* 顶部返回栏 */}
-          <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-3 py-3 flex items-center justify-between flex-shrink-0">
-            <button
-              onClick={() => { setSelectedId(null); setSelectedTask(null) }}
-              className="flex items-center space-x-1.5 text-slate-300 active:text-white px-2 py-1.5 rounded-lg"
-            >
-              <span className="text-base">←</span>
-              <span className="text-xs">返回</span>
-            </button>
-            <span className="text-sm font-semibold text-white truncate max-w-[180px] mx-2">{selectedTask.title}</span>
-            <div className="w-12" />
-          </div>
-          <TaskDetail
-            task={selectedTask}
-            onRefresh={handleRefresh}
-            canApprove={(selectedTask as any).viewerIsCreator ?? (session?.user?.id === selectedTask.creator?.id)}
-            onDelete={handleDelete}
-            myAgent={myAgent}
-            currentUserId={session?.user?.id || ''}
-          />
-        </div>
-      )
-    }
-
-    return (
-      <div className="h-[100svh] flex flex-col overflow-hidden bg-gradient-to-b from-slate-900 to-slate-800">
-
-        {/* ═══════════ 对话 Tab ═══════════ */}
-        {activeTab === 'chat' && (
-          <>
-            {/* Header */}
-            <div className="px-4 pt-5 pb-3 flex-shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h1 className="text-white font-bold text-lg leading-tight">个人AI团队</h1>
-                  <p className="text-slate-400 text-xs">手机指挥Agent干活 🐙</p>
-                </div>
-                {!myAgent && agentChecked && (
-                  <button
-                    onClick={() => setShowPairingModal(true)}
-                    className="text-xs px-3 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl"
-                  >
-                    ⚡ 配对 Agent
-                  </button>
-                )}
-              </div>
-
-              {/* Agent 信息栏 */}
-              <div className="flex items-center space-x-3 bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-lg shadow-lg shadow-orange-500/20 flex-shrink-0">
-                  🦞
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-semibold text-sm">{myAgent?.name || 'AI 助手'}</div>
-                  <div className="flex items-center space-x-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${myAgent?.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                    <span className="text-slate-400 text-xs">{myAgent?.status === 'online' ? '在线 · 随时响应' : (myAgent ? '离线' : '未配对')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 聊天消息区 — 占据主体空间 */}
-            <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 min-h-0">
-              {chatMessages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center px-6">
-                  <div className="text-4xl mb-3">💬</div>
-                  <p className="text-slate-400 text-sm">和你的 Agent 说点什么吧</p>
-                  <p className="text-slate-600 text-xs mt-1">它能帮你管理任务、汇报进度</p>
-                </div>
-              ) : (
-                chatMessages.map(msg => <ChatBubble key={msg.id} message={msg} />)
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* 任务摘要 — 次要信息，点击切到任务 tab */}
-            {tasks.length > 0 && (
-              <button
-                onClick={() => setActiveTab('tasks')}
-                className="mx-4 mb-2 flex items-center justify-between bg-slate-800/40 border border-slate-700/30 rounded-xl px-4 py-2.5 flex-shrink-0"
-              >
-                <div className="flex items-center space-x-4 text-xs">
-                  <span className="text-slate-400">📋 {pendingTaskCount} 个任务待处理</span>
-                  {doneTaskCount > 0 && <span className="text-emerald-500">✅ 今日完成 {doneTaskCount} 个</span>}
-                </div>
-                <span className="text-slate-500 text-xs">→</span>
-              </button>
-            )}
-
-            {/* 输入框 — 常驻 */}
-            <div className="px-4 pb-3 pt-2 border-t border-slate-700/50 bg-slate-900/80 flex-shrink-0">
-              <div className="flex items-center space-x-2">
-                <input
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
-                  placeholder={myAgent ? `和 ${myAgent.name} 说话...` : '和 Agent 说话...'}
-                  className="flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 border border-slate-700/50"
-                />
-                <button
-                  onClick={handleChatSend}
-                  disabled={!chatInput.trim() || chatLoading}
-                  className="w-11 h-11 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 flex items-center justify-center disabled:opacity-40 transition-all active:scale-95 shadow-lg shadow-orange-500/30 flex-shrink-0"
-                >
-                  <span className="text-white text-lg">→</span>
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ═══════════ 任务 Tab ═══════════ */}
-        {activeTab === 'tasks' && (
-          <>
-            <div className="px-4 pt-5 pb-3 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <h1 className="text-white font-bold text-lg">任务列表</h1>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="text-xs px-3 py-1.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold"
-                >
-                  + 新建
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 space-y-2 pb-4 min-h-0">
-              {agentChecked && tasks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <div className="text-4xl mb-3">📋</div>
-                  <p className="text-slate-400 text-sm">还没有任务</p>
-                  <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="mt-4 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold"
-                  >
-                    创建第一个任务
-                  </button>
-                </div>
-              ) : (
-                tasks.map(task => {
-                  const stepsDone = task.steps?.filter(s => s.status === 'done').length || 0
-                  const stepsTotal = task.steps?.length || 0
-                  const hasWaiting = task.steps?.some(s => s.status === 'waiting_approval')
-                  const st = statusConfig[task.status] || statusConfig.todo
-                  const progress = stepsTotal > 0 ? Math.round((stepsDone / stepsTotal) * 100) : 0
-
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => setSelectedId(task.id)}
-                      className="bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-3 active:bg-slate-700/60 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between mb-1">
-                        <span className="font-semibold text-white text-sm flex-1 pr-2 leading-snug">{task.title}</span>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${st.bg} ${st.color}`}>{st.label}</span>
-                          {hasWaiting && <span className="text-xs text-amber-400 font-medium">待审 ▶</span>}
-                        </div>
-                      </div>
-                      {stepsTotal > 0 && (
-                        <div className="flex items-center space-x-2 mt-2">
-                          <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-orange-400 to-emerald-400" style={{ width: `${progress}%` }} />
-                          </div>
-                          <span className="text-xs text-slate-500 flex-shrink-0">{stepsDone}/{stepsTotal}</span>
-                        </div>
-                      )}
-                      <div className="text-xs text-slate-600 mt-1">{formatTime(task.updatedAt)}</div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ═══════════ 我 Tab ═══════════ */}
-        {activeTab === 'profile' && (
-          <MobileProfileView
-            userEmail={session?.user?.email || ''}
-            userName={session?.user?.name || ''}
-            onSignOut={() => router.push('/api/auth/signout')}
-          />
-        )}
-
-        {/* 底部 Tab 栏 */}
-        <div className="flex border-t border-slate-700/60 bg-slate-900 flex-shrink-0">
-          {([
-            { id: 'chat' as const, icon: '💬', label: '对话' },
-            { id: 'tasks' as const, icon: '📋', label: '任务' },
-            { id: 'profile' as const, icon: '👤', label: '我' },
-          ] as const).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-3 flex flex-col items-center space-y-0.5 transition-colors ${
-                activeTab === tab.id ? 'text-orange-400' : 'text-slate-500'
-              }`}
-            >
-              <span className="text-xl leading-none">{tab.icon}</span>
-              <span className="text-xs font-medium">{tab.label}</span>
-              {tab.id === 'tasks' && tasks.filter(t => t.steps?.some(s => s.status === 'waiting_approval')).length > 0 && (
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 absolute mt-0.5" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Modals */}
-        {showCreateModal && (
-          <CreateTaskModal onClose={() => setShowCreateModal(false)} onCreated={(id) => { setShowCreateModal(false); fetchTasks(); setSelectedId(id) }} />
-        )}
-        {showPairingModal && (
-          <PairingModal onClose={() => setShowPairingModal(false)} />
-        )}
-      </div>
-    )
-  }
-
-  // ── 桌面端布局（原有逻辑）──────────────────────────────────────
   return (
     <div className="h-[100svh] flex flex-col overflow-hidden">
       {/* 无 Agent 引导 Banner */}
@@ -2964,15 +2532,78 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* 移动端顶部导航栏 */}
+      <div className="md:hidden bg-gradient-to-r from-slate-900 to-slate-800 px-3 py-3 flex items-center justify-between flex-shrink-0 min-h-[52px]">
+        {selectedTask ? (
+          /* 任务详情模式：显示返回按钮 + 任务标题 */
+          <>
+            <button
+              onClick={() => { setSelectedId(null); setSelectedTask(null) }}
+              className="flex items-center space-x-1.5 text-slate-300 hover:text-white px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+              aria-label="返回任务列表"
+            >
+              <span className="text-base">←</span>
+              <span className="text-xs">列表</span>
+            </button>
+            <span className="text-sm font-semibold text-white truncate max-w-[160px] mx-2">{selectedTask.title}</span>
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="text-slate-300 hover:text-white p-2 hover:bg-white/10 rounded-lg text-base leading-none flex-shrink-0"
+              aria-label="打开菜单"
+            >
+              ☰
+            </button>
+          </>
+        ) : (
+          /* 列表/空状态模式：显示 logo + 菜单按钮 */
+          <>
+            <div className="flex items-center space-x-2">
+              <span className="text-xl">🦞</span>
+              <span className="font-bold text-white text-sm">TeamAgent</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              {myAgent && (
+                <button
+                  onClick={() => router.push('/chat')}
+                  className="flex items-center space-x-1.5 bg-orange-500/20 border border-orange-400/40 text-orange-200 px-3 py-1.5 rounded-full text-xs font-medium hover:bg-orange-500/30 transition-colors"
+                >
+                  <span>💬</span>
+                  <span>对话</span>
+                </button>
+              )}
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="text-white p-2 hover:bg-white/10 rounded-lg text-lg leading-none"
+                aria-label="打开菜单"
+              >
+                ☰
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="flex-1 flex overflow-hidden relative">
-        {/* 侧边栏 */}
-        <div className="flex-shrink-0 flex" style={{ width: sidebarCollapsed ? '4rem' : '18rem' }}>
+        {/* 移动端遮罩层 */}
+        {!sidebarCollapsed && (
+          <div
+            className="absolute inset-0 bg-black/50 z-30 md:hidden"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+        )}
+
+        {/* 侧边栏：移动端为抽屉式，桌面端为内联 */}
+        <div className={`
+          absolute md:relative inset-y-0 left-0 z-40 md:z-auto flex-shrink-0 flex
+          transition-transform duration-300 ease-in-out
+          ${sidebarCollapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
+        `}>
           <TaskList
             tasks={tasks}
             selectedId={selectedId}
-            onSelect={(id) => setSelectedId(id)}
-            onCreateNew={() => setShowCreateModal(true)}
-            onPairAgent={() => setShowPairingModal(true)}
+            onSelect={(id) => { setSelectedId(id); handleMobileClose() }}
+            onCreateNew={() => { setShowCreateModal(true); handleMobileClose() }}
+            onPairAgent={() => { setShowPairingModal(true); handleMobileClose() }}
             currentUserId={session?.user?.id || ''}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -3013,6 +2644,34 @@ export default function HomePage() {
       {showPairingModal && (
         <PairingModal onClose={() => setShowPairingModal(false)} />
       )}
+
+      {/* 底部 Tab Bar（仅移动端显示） */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-slate-200 z-50">
+        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-4">
+          <button
+            className="flex flex-col items-center gap-0.5 text-orange-500 px-4 py-1"
+          >
+            <span className="text-xl">📋</span>
+            <span className="text-xs font-medium">任务</span>
+          </button>
+          {myAgent && (
+            <button
+              onClick={() => router.push('/chat')}
+              className="flex flex-col items-center gap-0.5 text-slate-400 hover:text-orange-500 transition-colors px-4 py-1"
+            >
+              <span className="text-xl">💬</span>
+              <span className="text-xs">对话</span>
+            </button>
+          )}
+          <button
+            onClick={() => router.push('/settings')}
+            className="flex flex-col items-center gap-0.5 text-slate-400 hover:text-slate-600 transition-colors px-4 py-1"
+          >
+            <span className="text-xl">👤</span>
+            <span className="text-xs">我</span>
+          </button>
+        </div>
+      </nav>
     </div>
   )
 }
