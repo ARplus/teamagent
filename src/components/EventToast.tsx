@@ -43,7 +43,7 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
     }, 5000)
   }
 
-  const { connected, disconnect } = useAgentEvents({
+  const { connected, reconnecting, disconnect } = useAgentEvents({
     enabled: !!session, // 只在登录后启用 SSE
     onEvent: (event: TeamAgentEvent) => {
       // 只处理重要事件，忽略 connected（太频繁）
@@ -79,15 +79,19 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
     <>
       {/* 连接状态指示器 */}
       <div className="fixed bottom-4 left-4 z-50">
-        <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs ${
+        <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs transition-all ${
           connected 
-            ? 'bg-green-100 text-green-700' 
+            ? 'bg-green-100 text-green-700'
+            : reconnecting
+            ? 'bg-amber-100 text-amber-700'
             : 'bg-gray-100 text-gray-500'
         }`}>
           <span className={`w-2 h-2 rounded-full ${
-            connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+            connected ? 'bg-green-500 animate-pulse' 
+            : reconnecting ? 'bg-amber-400 animate-ping'
+            : 'bg-gray-400'
           }`} />
-          <span>{connected ? '实时连接中' : '未连接'}</span>
+          <span>{connected ? '实时连接中' : reconnecting ? '重连中...' : '未连接'}</span>
         </div>
       </div>
 
