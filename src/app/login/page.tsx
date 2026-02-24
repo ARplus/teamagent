@@ -1,12 +1,18 @@
 'use client'
 
-import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { useState, useEffect } from 'react'
+import { signIn, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { status } = useSession()
+
+  // 已登录的话直接去首页
+  useEffect(() => {
+    if (status === 'authenticated') router.replace('/')
+  }, [status, router])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -28,8 +34,8 @@ export default function LoginPage() {
       if (result?.error) {
         setError(result.error)
       } else {
-        // 强制跳到主页（对话页），忽略 callbackUrl
-        window.location.href = '/'
+        router.push('/')
+        router.refresh()
       }
     } catch (err) {
       setError('登录失败，请重试')

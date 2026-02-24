@@ -10,8 +10,10 @@ export function MobileBottomNav() {
   const { status } = useSession()
   const pathname = usePathname()
 
+  // 未登录、加载中、或在认证页 → 不显示
   if (status !== 'authenticated') return null
-  if (['/landing', '/login', '/register', '/build-agent'].includes(pathname)) return null
+  const authPages = ['/login', '/register', '/landing', '/build-agent']
+  if (authPages.some(p => pathname === p || pathname.startsWith(p + '?'))) return null
 
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
   const isRoot = pathname === '/'
