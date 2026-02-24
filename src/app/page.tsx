@@ -2544,6 +2544,24 @@ export default function HomePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // ── URL ?t= 参数 + custom event 同步 activeTab（配合全局底导航） ──
+  useEffect(() => {
+    if (!isMobile) return
+    // 初始读取 URL 参数（从其他页面跳过来时）
+    const t = new URLSearchParams(window.location.search).get('t')
+    if (t === 'tasks') setActiveTab('tasks')
+    else if (t === 'profile') setActiveTab('profile')
+    else setActiveTab('chat')
+
+    // 监听底导航的 custom event（在同一页面切换时）
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab: 'chat' | 'tasks' | 'profile' }>).detail.tab
+      setActiveTab(tab)
+    }
+    window.addEventListener('mobileTabChange', handler)
+    return () => window.removeEventListener('mobileTabChange', handler)
+  }, [isMobile])
+
   const loadChatHistory = useCallback(async () => {
     try {
       const res = await fetch('/api/chat/history?limit=50')
@@ -2680,8 +2698,11 @@ export default function HomePage() {
   useEffect(() => {
     const hash = window.location.hash.slice(1)
     if (hash && tasks.some(t => t.id === hash)) setSelectedId(hash)
-    else if (tasks.length > 0 && !selectedId) setSelectedId(tasks[0].id)
-  }, [tasks])
+    else if (tasks.length > 0 && !selectedId && !isMobile) {
+      // 桌面端自动选第一个任务，移动端不自动选（进入聊天首页）
+      setSelectedId(tasks[0].id)
+    }
+  }, [tasks, isMobile])
 
   useEffect(() => {
     if (selectedId) window.history.replaceState(null, '', `#${selectedId}`)
@@ -2951,28 +2972,8 @@ export default function HomePage() {
           />
         )}
 
-        {/* 底部 Tab 栏 */}
-        <div className="flex border-t border-slate-700/60 bg-slate-900 flex-shrink-0">
-          {([
-            { id: 'chat' as const, icon: '💬', label: '对话' },
-            { id: 'tasks' as const, icon: '📋', label: '任务' },
-            { id: 'profile' as const, icon: '👤', label: '我' },
-          ] as const).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-3 flex flex-col items-center space-y-0.5 transition-colors ${
-                activeTab === tab.id ? 'text-orange-400' : 'text-slate-500'
-              }`}
-            >
-              <span className="text-xl leading-none">{tab.icon}</span>
-              <span className="text-xs font-medium">{tab.label}</span>
-              {tab.id === 'tasks' && tasks.filter(t => t.steps?.some(s => s.status === 'waiting_approval')).length > 0 && (
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 absolute mt-0.5" />
-              )}
-            </button>
-          ))}
-        </div>
+        {/* 底部 spacer — 为全局固定 tab bar 留出空间 */}
+        <div className="h-16 flex-shrink-0" />
 
         {/* Modals */}
         {showCreateModal && (

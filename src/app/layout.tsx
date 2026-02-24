@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Providers } from '@/components/Providers'
+import { MobileBottomNav } from '@/components/MobileBottomNav'
 
 export const metadata: Metadata = {
   title: 'TeamAgent - 团队协作新范式',
@@ -37,6 +38,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-gray-50">
         <Providers>
           {children}
+          <MobileBottomNav />
         </Providers>
       </body>
     </html>
