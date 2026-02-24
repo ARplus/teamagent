@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     const commander = {
       id: currentUser.id,
       name: currentUser.name,
+      nickname: currentUser.nickname,
       email: currentUser.email,
       avatar: currentUser.avatar,
       createdAt: currentUser.createdAt,

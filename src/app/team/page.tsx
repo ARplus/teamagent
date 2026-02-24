@@ -8,7 +8,12 @@ import { PairingModal } from '@/components/PairingModal'
 
 // ============ Types ============
 interface Commander {
-  id: string; name: string | null; email: string; avatar: string | null; createdAt: string
+  id: string
+  name: string | null
+  nickname?: string | null
+  email: string
+  avatar: string | null
+  createdAt: string
 }
 interface AgentData {
   id: string; name: string; personality: string | null; avatar: string | null
@@ -45,9 +50,13 @@ const gradients = [
 const grad = (name: string) => gradients[name.charCodeAt(0) % gradients.length]
 
 // Extract emoji from agent name, fallback to first letter
-function agentAvatar(name: string): string {
+function agentAvatar(name: string, avatar?: string | null): string {
+  if (avatar && avatar.trim()) return avatar.trim()
   const match = name.match(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/u)
-  return match ? match[0] : name.charAt(0).toUpperCase()
+  if (match) return match[0]
+  const lower = name.toLowerCase()
+  if (lower.includes('lobster') || name.includes('龙虾')) return '🦞'
+  return name.charAt(0).toUpperCase()
 }
 
 function msToHours(ms: number) {
@@ -77,7 +86,7 @@ function AgentRow({ agent }: { agent: AgentData }) {
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${grad(agent.name)} flex items-center justify-center text-white font-bold text-xl shadow-sm`}>
-          {agentAvatar(agent.name)}
+          {agentAvatar(agent.name, agent.avatar)}
         </div>
         <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusDot[agent.status] || statusDot.offline}`} />
       </div>
@@ -157,7 +166,7 @@ function MainAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: st
         </div>
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-2xl font-bold border border-white/30">
-            {agentAvatar(agent.name)}
+            {agentAvatar(agent.name, agent.avatar)}
           </div>
           <div>
             <div className="text-white font-bold text-lg">{agent.name}</div>
@@ -202,6 +211,7 @@ function InlineMission({ value, onSave }: { value: string; onSave: (v: string) =
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { setDraft(value) }, [value])
   useEffect(() => { if (editing) { ref.current?.focus(); ref.current?.select() } }, [editing])
   const save = () => { setEditing(false); onSave(draft) }
   if (editing) return (
@@ -462,7 +472,12 @@ export default function TeamPage() {
   const fetchTeam = async () => {
     try {
       const res = await fetch('/api/agents/team')
-      if (res.ok) { const d: TeamData = await res.json(); setData(d); setNameValue(d.commander.name || '') }
+      if (res.ok) {
+        const d: TeamData = await res.json()
+        setData(d)
+        setNameValue(d.commander.name || '')
+        setMission(d.commander.nickname || '')
+      }
     } finally { setLoading(false) }
   }
 
@@ -489,6 +504,9 @@ export default function TeamPage() {
   const allAgents = mainAgent ? [mainAgent, ...subAgents] : subAgents
   const onlineCount = allAgents.filter(a => a.status !== 'offline').length
   const totalMs = (ts?.totalAgentMs ?? 0) + (ts?.totalHumanMs ?? 0)
+  const doneStepsTotal = allAgents.reduce((sum, a) => sum + (a.stats?.doneSteps || 0), 0)
+  const inProgressStepsTotal = allAgents.reduce((sum, a) => sum + (a.stats?.pendingSteps || 0), 0)
+  const totalStepsAll = doneStepsTotal + inProgressStepsTotal
   const initials = (nameValue || c?.name || '?').charAt(0).toUpperCase()
   const displayName = nameValue || c?.name || c?.email || 'Commander'
 
@@ -544,8 +562,8 @@ export default function TeamPage() {
           {/* Stats bar — X/Y format */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 mt-6 sm:mt-8 pt-5 sm:pt-7 border-t border-slate-800">
             <StatPill a={onlineCount} b={allAgents.length} labelA="在线" labelB="全部成员" icon="🤖" />
-            <StatPill a={ts?.inProgressTasks ?? 0} b={(ts?.inProgressTasks ?? 0) + (ts?.doneTasks ?? 0)} labelA="进行中" labelB="全部任务" icon="📋" />
-            <StatPill a={ts?.doneTasks ?? 0} b={(ts?.inProgressTasks ?? 0) + (ts?.doneTasks ?? 0)} labelA="已完成" labelB="全部任务" icon="✅" />
+            <StatPill a={inProgressStepsTotal} b={totalStepsAll} labelA="进行中" labelB="全部步骤" icon="📋" />
+            <StatPill a={doneStepsTotal} b={totalStepsAll} labelA="已完成" labelB="全部步骤" icon="✅" />
             <div className="text-center">
               <div className="text-2xl font-bold text-white">{totalMs > 0 ? msToHours(totalMs) : '—'} ⏱️</div>
               <div className="text-xs text-slate-500 mt-0.5">总协作耗时</div>
@@ -562,7 +580,7 @@ export default function TeamPage() {
           <div className="lg:w-72 flex-shrink-0 space-y-4">
             {/* Main Agent card */}
             {mainAgent
-              ? <a href="/agent"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>
+              ? <a href="/?t=chat" title="和主Agent对话"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>
               : (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6 text-center">
                   <div className="text-3xl mb-2">🤖</div>

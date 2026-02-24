@@ -2598,10 +2598,16 @@ export default function HomePage() {
     return () => clearInterval(timer)
   }, [session, isMobile, activeTab, loadChatHistory])
 
-  // 新消息时滚到底部
+  // 新消息时滚到底部（仅当用户接近底部，避免页面“晃荡”）
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+    if (!isMobile || activeTab !== 'chat') return
+    const container = chatEndRef.current?.parentElement
+    if (!container) return
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    if (distanceFromBottom < 140) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [chatMessages, isMobile, activeTab])
 
   const pollForReply = useCallback(async (msgId: string) => {
     // 最长等待约 3 分钟
