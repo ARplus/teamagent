@@ -33,6 +33,11 @@ export default function ChatPage() {
   const [typing, setTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // SSE 连接状态
+  const [sseStatus, setSseStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>('connecting')
+  const sseRef = useRef<EventSource | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectDelayRef = useRef(2000) // 初始 2s，指数退避
 
   // 认证检查
   useEffect(() => {
@@ -52,6 +57,52 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, typing])
+
+  // ── SSE 实时连接 + 自动重连 ──────────────────────────────────
+  useEffect(() => {
+    if (!session?.user) return
+
+    let destroyed = false
+
+    const connect = () => {
+      if (destroyed) return
+      setSseStatus(prev => prev === 'connected' ? 'reconnecting' : 'connecting')
+
+      const es = new EventSource('/api/events')
+      sseRef.current = es
+
+      es.onopen = () => {
+        if (destroyed) return
+        setSseStatus('connected')
+        reconnectDelayRef.current = 2000 // 重置延迟
+      }
+
+      es.addEventListener('ping', () => {
+        // 心跳收到，保持 connected 状态
+        setSseStatus('connected')
+      })
+
+      es.onerror = () => {
+        if (destroyed) return
+        es.close()
+        sseRef.current = null
+        setSseStatus('reconnecting')
+        // 指数退避重连（最多 30s）
+        const delay = Math.min(reconnectDelayRef.current, 30000)
+        reconnectDelayRef.current = delay * 1.5
+        reconnectTimerRef.current = setTimeout(connect, delay)
+      }
+    }
+
+    connect()
+
+    return () => {
+      destroyed = true
+      sseRef.current?.close()
+      sseRef.current = null
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    }
+  }, [session])
 
   const loadAgentAndHistory = async () => {
     try {
@@ -334,9 +385,28 @@ export default function ChatPage() {
             </button>
           </div>
           
-          <p className="text-center text-white/30 text-xs mt-2">
-            个人AI团队 · 手机指挥Agent干活
-          </p>
+          <div className="flex items-center justify-center space-x-1.5 mt-2">
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${
+              sseStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
+              sseStatus === 'reconnecting' ? 'bg-amber-400 animate-bounce' :
+              sseStatus === 'connecting' ? 'bg-blue-400 animate-pulse' :
+              'bg-red-400'
+            }`} />
+            <span className="text-white/30 text-xs">
+              {sseStatus === 'connected' ? '实时连接中' :
+               sseStatus === 'reconnecting' ? '重连中...' :
+               sseStatus === 'connecting' ? '连接中...' :
+               '未连接'}
+            </span>
+            {sseStatus === 'disconnected' && (
+              <button
+                onClick={() => { reconnectDelayRef.current = 2000; setSseStatus('connecting') }}
+                className="text-xs text-orange-400 underline"
+              >
+                重试
+              </button>
+            )}
+          </div>
         </div>
       </footer>
     </div>
