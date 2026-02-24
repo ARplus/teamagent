@@ -84,9 +84,9 @@ function AgentRow({ agent }: { agent: AgentData }) {
 
       {/* Name + personality */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-slate-800 text-sm">{agent.name}</span>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+        <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+          <span className="font-semibold text-slate-800 text-sm truncate max-w-[12rem]">{agent.name}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
             isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
           }`}>
             {statusLabel[agent.status] || '离线'}
@@ -493,7 +493,7 @@ export default function TeamPage() {
   const displayName = nameValue || c?.name || c?.email || 'Commander'
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 pb-16 md:pb-0">
       <Navbar />
 
       {/* ── Hero Banner ── */}
@@ -537,10 +537,7 @@ export default function TeamPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              <button onClick={() => setShowPairing(true)}
-                className="px-3 sm:px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-orange-500/25 transition flex items-center gap-1 sm:gap-2">
-                + 招募
-              </button>
+              {/* 顶部招募按钮已移至战队成员区，避免重复 */}
             </div>
           </div>
 
@@ -548,7 +545,7 @@ export default function TeamPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 mt-6 sm:mt-8 pt-5 sm:pt-7 border-t border-slate-800">
             <StatPill a={onlineCount} b={allAgents.length} labelA="在线" labelB="全部成员" icon="🤖" />
             <StatPill a={ts?.inProgressTasks ?? 0} b={(ts?.inProgressTasks ?? 0) + (ts?.doneTasks ?? 0)} labelA="进行中" labelB="全部任务" icon="📋" />
-            <StatPill a={ts?.teamTasks ?? 0} b={(ts?.soloTasks ?? 0) + (ts?.teamTasks ?? 0)} labelA="外部" labelB="内部任务" icon="🌐" />
+            <StatPill a={ts?.doneTasks ?? 0} b={(ts?.inProgressTasks ?? 0) + (ts?.doneTasks ?? 0)} labelA="已完成" labelB="全部任务" icon="✅" />
             <div className="text-center">
               <div className="text-2xl font-bold text-white">{totalMs > 0 ? msToHours(totalMs) : '—'} ⏱️</div>
               <div className="text-xs text-slate-500 mt-0.5">总协作耗时</div>
@@ -616,8 +613,9 @@ export default function TeamPage() {
                   </p>
                 </div>
                 <button onClick={() => setShowPairing(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition">
-                  + 招募成员
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition"
+                  title="配对你在 OpenClaw 上运行的 Agent">
+                  🔗 配对 Agent
                 </button>
               </div>
 
@@ -636,7 +634,7 @@ export default function TeamPage() {
                   <p className="text-slate-400 text-sm">还没有其他战队成员</p>
                   <button onClick={() => setShowPairing(true)}
                     className="mt-4 px-5 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold">
-                    招募第一位成员
+                    🔗 配对第一位 Agent
                   </button>
                 </div>
               ) : (
