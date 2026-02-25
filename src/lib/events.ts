@@ -68,24 +68,43 @@ export function removeSubscriber(subscriberId: string) {
 
 /**
  * 向指定用户发送事件
+ * 对于 chat:incoming / step:ready 等 agent 操作类事件，
+ * 每个 agentId 只投递一次（取最新连接），避免多连接重复处理
  */
 export function sendToUser(userId: string, event: TeamAgentEvent) {
   const encoder = new TextEncoder()
   const data = `data: ${JSON.stringify(event)}\n\n`
-  
-  let sent = 0
+
+  const agentActionTypes = new Set(['chat:incoming', 'step:ready', 'step:assigned', 'approval:requested'])
+  const isAgentAction = agentActionTypes.has(event.type)
+
+  // 对 agent 操作类事件：每个 agentId 只选最新一条连接投递
+  const toSend: Map<string, { subId: string; sub: Subscriber }> = new Map()
+
   subscribers.forEach((sub, id) => {
-    if (sub.userId === userId) {
-      try {
-        sub.controller.enqueue(encoder.encode(data))
-        sent++
-      } catch (error) {
-        console.log(`[Events] 发送失败，移除订阅者: ${id}`)
-        removeSubscriber(id)
+    if (sub.userId !== userId) return
+    if (isAgentAction) {
+      // 保留每个 agentId 的最新连接（subscriberId 含时间戳，越大越新）
+      const existing = toSend.get(sub.agentId)
+      if (!existing || id > existing.subId) {
+        toSend.set(sub.agentId, { subId: id, sub })
       }
+    } else {
+      toSend.set(id, { subId: id, sub })
     }
   })
-  
+
+  let sent = 0
+  toSend.forEach(({ subId, sub }) => {
+    try {
+      sub.controller.enqueue(encoder.encode(data))
+      sent++
+    } catch (error) {
+      console.log(`[Events] 发送失败，移除订阅者: ${subId}`)
+      removeSubscriber(subId)
+    }
+  })
+
   if (sent > 0) {
     console.log(`[Events] 发送给用户 ${userId}: ${event.type} (${sent} 个连接)`)
   }
