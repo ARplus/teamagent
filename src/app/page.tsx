@@ -167,11 +167,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      {!isUser && (
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-sm mr-2 flex-shrink-0 mt-0.5">
-          🦞
-        </div>
-      )}
+
       <div
         className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
           isUser
@@ -2844,63 +2840,6 @@ export default function HomePage() {
         {/* ═══════════ 对话 Tab ═══════════ */}
         {activeTab === 'chat' && (
           <>
-            {/* Header */}
-            <div className="px-4 pt-5 pb-3 flex-shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h1 className="text-white font-bold text-lg leading-tight">
-                    {session?.user?.name || session?.user?.email?.split('@')[0] || '我'} 的 AI 团队
-                  </h1>
-                  <p className="text-slate-400 text-xs">手机指挥Agent干活 🐙</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={reloadChatHistory}
-                    disabled={chatReloading}
-                    className="text-xs px-3 py-1.5 bg-slate-800/70 border border-slate-600/50 text-slate-300 rounded-xl disabled:opacity-50"
-                    title="重新拉取聊天消息"
-                  >
-                    {chatReloading ? '刷新中…' : '↻ 刷新'}
-                  </button>
-
-                  {!myAgent && agentChecked && (
-                    <button
-                      onClick={() => setShowPairingModal(true)}
-                      className="text-xs px-3 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl"
-                    >
-                      ⚡ 配对 Agent
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Agent 信息栏 */}
-              <div className="flex items-center space-x-3 bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-lg shadow-lg shadow-orange-500/20 flex-shrink-0">
-                  🦞
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-white font-semibold text-sm">{myAgent?.name || 'AI 助手'}</span>
-                    <span className="text-xs px-1.5 py-0.5 bg-orange-500/20 text-orange-300 rounded-md font-medium">主Agent</span>
-                  </div>
-                  <div className="flex items-center space-x-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${myAgent?.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                    <span className="text-slate-400 text-xs">{myAgent?.status === 'online' ? '在线 · 随时响应' : (myAgent ? '离线' : '未配对')}</span>
-                  </div>
-                </div>
-                {/* 任务统计 — 右侧 */}
-                {tasks.length > 0 && (
-                  <button
-                    onClick={() => setActiveTab('tasks')}
-                    className="flex-shrink-0 flex flex-col items-end gap-0.5 active:opacity-70"
-                  >
-                    <span className="text-orange-300 text-xs font-semibold">📋 {pendingTaskCount} 待处理</span>
-                    {doneTaskCount > 0 && <span className="text-emerald-400 text-xs">✅ {doneTaskCount} 完成</span>}
-                  </button>
-                )}
-              </div>
-            </div>
 
             {/* 聊天消息区 — 占据主体空间，overscroll-contain 防止页面抖动 */}
             <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-2 space-y-3 min-h-0">
