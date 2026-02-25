@@ -87,6 +87,48 @@ export async function GET(req: NextRequest) {
   // 确保心跳已启动
   startHeartbeat()
 
+  // 断点续传：读取 Last-Event-ID 或 since 参数
+  const lastEventId = req.headers.get('last-event-id') || req.nextUrl.searchParams.get('since')
+  const sinceDate = lastEventId ? new Date(lastEventId) : null
+
+  // 预查断连期间漏掉的 chat:incoming：找还是 __pending__ 的 agent 消息
+  // 并关联上前一条 user 消息内容
+  interface MissedMsg { agentMsgId: string; content: string; createdAt: Date }
+  let missedMessages: MissedMsg[] = []
+  if (sinceDate && !isNaN(sinceDate.getTime())) {
+    const pendingAgentMsgs = await prisma.chatMessage.findMany({
+      where: { userId: auth.userId, role: 'agent', content: '__pending__', createdAt: { gt: sinceDate } },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+      select: { id: true, createdAt: true }
+    })
+    for (const pm of pendingAgentMsgs) {
+      // 找同一毫秒前后的 user 消息
+      const userMsg = await prisma.chatMessage.findFirst({
+        where: { userId: auth.userId, role: 'user', createdAt: { lte: pm.createdAt } },
+        orderBy: { createdAt: 'desc' },
+        select: { content: true }
+      })
+      missedMessages.push({ agentMsgId: pm.id, content: userMsg?.content || '', createdAt: pm.createdAt })
+    }
+  } else {
+    // 无 since：只补发当前已存在的 __pending__（启动时兜底）
+    const pendingAgentMsgs = await prisma.chatMessage.findMany({
+      where: { userId: auth.userId, role: 'agent', content: '__pending__' },
+      orderBy: { createdAt: 'asc' },
+      take: 10,
+      select: { id: true, createdAt: true }
+    })
+    for (const pm of pendingAgentMsgs) {
+      const userMsg = await prisma.chatMessage.findFirst({
+        where: { userId: auth.userId, role: 'user', createdAt: { lte: pm.createdAt } },
+        orderBy: { createdAt: 'desc' },
+        select: { content: true }
+      })
+      missedMessages.push({ agentMsgId: pm.id, content: userMsg?.content || '', createdAt: pm.createdAt })
+    }
+  }
+
   // 创建 SSE 流
   const stream = new ReadableStream({
     start(controller) {
@@ -100,6 +142,18 @@ export async function GET(req: NextRequest) {
         message: '🦞 已连接到 TeamAgent'
       })}\n\n`
       controller.enqueue(encoder.encode(welcomeMsg))
+
+      // 补发断连期间漏掉的消息（chat:incoming，agentMsgId 就是占位消息 id）
+      for (const m of missedMessages) {
+        const catchupMsg = `data: ${JSON.stringify({
+          type: 'chat:incoming',
+          msgId: m.agentMsgId,
+          content: m.content,
+          senderName: '用户',
+          catchup: true
+        })}\n\n`
+        controller.enqueue(encoder.encode(catchupMsg))
+      }
 
       // 注册订阅者
       const subscriberId = addSubscriber(auth.userId, agent.id, controller)
