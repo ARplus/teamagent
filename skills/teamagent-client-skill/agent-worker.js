@@ -291,6 +291,12 @@ async function main() {
             try { inner = JSON.parse(innerText) } catch { inner = null }
           }
 
+          // 检测 timeout / error 状态，不把 JSON 错误对象当回复
+          const isErrorResult = inner?.status === 'timeout' || inner?.status === 'error' ||
+            parsed?.result?.details?.status === 'timeout' || parsed?.status === 'timeout'
+
+          if (isErrorResult) return ''  // 交给 fallback 处理
+
           const candidate =
             inner?.reply?.trim?.() ||
             inner?.details?.reply?.trim?.() ||
