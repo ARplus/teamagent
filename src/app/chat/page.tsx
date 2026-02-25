@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { VoiceMicButton } from '@/components/VoiceMicButton'
+
 
 interface Message {
   id: string
@@ -206,9 +206,6 @@ export default function ChatPage() {
     }
   }
 
-  const handleVoiceResult = (text: string) => {
-    if (text.trim()) sendMessage(text)
-  }
 
   if (status === 'loading') {
     return (
@@ -331,11 +328,6 @@ export default function ChatPage() {
                 style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
               />
             </div>
-
-            <VoiceMicButton
-              onResult={handleVoiceResult}
-              className="mb-1"
-            />
 
             <button
               onClick={() => sendMessage()}
