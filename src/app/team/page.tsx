@@ -541,6 +541,9 @@ export default function TeamPage() {
                   <span className="text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-medium flex-shrink-0">
                     👑 总司令
                   </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-medium flex-shrink-0">
+                    🌊 水族军团
+                  </span>
                   {!editingName && (
                     <button onClick={() => setEditingName(true)}
                       className="text-slate-500 hover:text-slate-300 transition flex-shrink-0" title="编辑名字">
@@ -559,16 +562,7 @@ export default function TeamPage() {
             </div>
           </div>
 
-          {/* Stats bar — X/Y format */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 mt-6 sm:mt-8 pt-5 sm:pt-7 border-t border-slate-800">
-            <StatPill a={onlineCount} b={allAgents.length} labelA="在线" labelB="全部成员" icon="🤖" />
-            <StatPill a={inProgressStepsTotal} b={totalStepsAll} labelA="进行中" labelB="全部步骤" icon="📋" />
-            <StatPill a={doneStepsTotal} b={totalStepsAll} labelA="已完成" labelB="全部步骤" icon="✅" />
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white">{totalMs > 0 ? msToHours(totalMs) : '—'} ⏱️</div>
-              <div className="text-xs text-slate-500 mt-0.5">总协作耗时</div>
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -604,20 +598,7 @@ export default function TeamPage() {
               </button>
             )}
 
-            {/* Quick links */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-1">
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">快捷操作</div>
-              {[
-                { icon: '📋', label: '查看所有任务', href: '/' },
-                { icon: '🤖', label: '我的 Agent 详情', href: '/agent' },
-                { icon: '🌐', label: '官网首页', href: '/landing' },
-              ].map(l => (
-                <a key={l.href} href={l.href}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-slate-800 text-sm transition">
-                  <span>{l.icon}</span><span>{l.label}</span>
-                </a>
-              ))}
-            </div>
+
           </div>
 
           {/* ── RIGHT: Sub-agent list ── */}

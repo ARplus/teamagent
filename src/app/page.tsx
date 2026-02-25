@@ -2802,6 +2802,8 @@ export default function HomePage() {
   // ── 任务统计（用于移动端首页摘要）──────────────────────────────
   const pendingTaskCount = tasks.filter(t => t.status !== 'done').length
   const doneTaskCount = tasks.filter(t => t.status === 'done').length
+  const totalStepsDone = tasks.reduce((sum, t) => sum + (t.steps?.filter((s: any) => s.status === 'done').length || 0), 0)
+  const totalStepsAll = tasks.reduce((sum, t) => sum + (t.steps?.length || 0), 0)
   const hasStalePendingReply = chatMessages.some(m => m.role === 'agent' && m.content.includes('还在路上'))
 
   // ── 移动端布局 ──────────────────────────────────────────────────
@@ -2922,15 +2924,38 @@ export default function HomePage() {
         {/* ═══════════ 任务 Tab ═══════════ */}
         {activeTab === 'tasks' && (
           <>
-            <div className="px-4 pt-5 pb-3 flex-shrink-0">
+            {/* Tasks Banner */}
+            <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
+              {/* Title row */}
               <div className="flex items-center justify-between">
-                <h1 className="text-white font-bold text-lg">任务列表</h1>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🤝</span>
+                  <span className="text-white font-bold text-lg tracking-tight">TeamAgent</span>
+                  {myAgent && (
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${myAgent.status === 'online' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                  )}
+                </div>
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="text-xs px-3 py-1.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold"
                 >
                   + 新建
                 </button>
+              </div>
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2 text-center">
+                  <div className="text-white font-bold text-base leading-tight">{pendingTaskCount}</div>
+                  <div className="text-slate-500 text-xs mt-0.5">进行中</div>
+                </div>
+                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2 text-center">
+                  <div className="text-emerald-400 font-bold text-base leading-tight">{doneTaskCount}</div>
+                  <div className="text-slate-500 text-xs mt-0.5">已完成</div>
+                </div>
+                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2 text-center">
+                  <div className="text-orange-300 font-bold text-base leading-tight">{totalStepsDone}<span className="text-slate-600 text-xs font-normal">/{totalStepsAll}</span></div>
+                  <div className="text-slate-500 text-xs mt-0.5">步骤完成</div>
+                </div>
               </div>
             </div>
 
