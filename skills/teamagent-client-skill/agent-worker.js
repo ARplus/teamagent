@@ -258,7 +258,7 @@ async function main() {
               args: {
                 sessionKey: CHAT_ROUTER_SESSION_KEY,
                 message: prompt,
-                timeoutSeconds: 45
+                timeoutSeconds: 120
               }
             })
             const req = http.request({
@@ -277,7 +277,7 @@ async function main() {
               res.on('end', () => resolve(data))
             })
             req.on('error', reject)
-            req.setTimeout(50000, () => { req.destroy(); reject(new Error('inject timeout')) })
+            req.setTimeout(130000, () => { req.destroy(); reject(new Error('inject timeout')) })
             req.write(body)
             req.end()
           })
@@ -305,9 +305,27 @@ async function main() {
           return candidate
         }
 
-        const seenChatMsgIds = new Map()
         const inFlightChatMsgIds = new Set()
-        const CHAT_DEDUPE_TTL_MS = 10 * 60 * 1000
+        const CHAT_DEDUPE_TTL_MS = 60 * 60 * 1000 // 1小时去重窗口
+        const SEEN_FILE = path.join(process.env.HOME || process.env.USERPROFILE, '.teamagent', 'seen-messages.json')
+
+        // 从文件加载已处理的 msgId
+        let seenChatMsgIds = new Map()
+        try {
+          const data = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8'))
+          const now = Date.now()
+          for (const [k, ts] of Object.entries(data)) {
+            if (now - ts <= CHAT_DEDUPE_TTL_MS) seenChatMsgIds.set(k, ts)
+          }
+          console.log(`📋 加载 ${seenChatMsgIds.size} 条已处理消息记录`)
+        } catch { /* 文件不存在，正常 */ }
+
+        function saveSeen() {
+          try {
+            const obj = Object.fromEntries(seenChatMsgIds)
+            fs.writeFileSync(SEEN_FILE, JSON.stringify(obj), 'utf8')
+          } catch { /* 写入失败不影响主流程 */ }
+        }
 
         function markSeen(msgId) {
           seenChatMsgIds.set(msgId, Date.now())
@@ -315,6 +333,7 @@ async function main() {
           for (const [k, ts] of seenChatMsgIds.entries()) {
             if (now - ts > CHAT_DEDUPE_TTL_MS) seenChatMsgIds.delete(k)
           }
+          saveSeen()
         }
 
         function isDuplicate(msgId) {
@@ -333,29 +352,44 @@ async function main() {
 
             inFlightChatMsgIds.add(msgId)
             console.log(`\n💬 [SSE] chat:incoming → msgId=${msgId}, from=${senderName || '用户'}`)
-            try {
-              const replyText = await injectToOpenClawSession(content, senderName || '用户', msgId)
-              if (!replyText || replyText === 'NO_REPLY') {
-                throw new Error('empty reply from main session')
+
+            const MAX_RETRIES = 1
+            let lastError = null
+            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+              try {
+                if (attempt > 0) console.log(`   🔄 重试第 ${attempt} 次...`)
+                const replyText = await injectToOpenClawSession(content, senderName || '用户', msgId)
+                if (!replyText || replyText === 'NO_REPLY') {
+                  throw new Error('empty reply from main session')
+                }
+
+                await client.request('POST', '/api/chat/reply', {
+                  msgId,
+                  content: replyText
+                })
+
+                markSeen(msgId)
+                console.log('   ✅ 已收到 OpenClaw 回复并回写到手机端')
+                lastError = null
+                break
+              } catch (e) {
+                lastError = e
+                console.error(`   ❌ chat 路由失败 (attempt ${attempt + 1}):`, e.message)
+                if (attempt < MAX_RETRIES) {
+                  await new Promise(r => setTimeout(r, 3000))
+                }
               }
+            }
 
+            if (lastError) {
               await client.request('POST', '/api/chat/reply', {
                 msgId,
-                content: replyText
-              })
-
-              markSeen(msgId)
-              console.log('   ✅ 已收到 OpenClaw 回复并回写到手机端')
-            } catch (e) {
-              console.error('   ❌ chat 路由失败:', e.message)
-              await client.request('POST', '/api/chat/reply', {
-                msgId,
-                content: '🦞 我这边刚刚走神了一下，你再发一次，我马上回。'
+                content: '🐙 八爪刚刚在忙，你再说一次？马上回！'
               }).catch(() => {})
               markSeen(msgId)
-            } finally {
-              inFlightChatMsgIds.delete(msgId)
             }
+
+            inFlightChatMsgIds.delete(msgId)
             return
           }
 
@@ -406,6 +440,23 @@ async function main() {
               return
             }
             console.log('✅ SSE 已连接，实时监听事件...\n')
+
+            // 重连后补拉 pending steps（防断连期间丢失任务通知）
+            checkPendingSteps().then(steps => {
+              if (steps && steps.length > 0) {
+                const decompose = steps.find(s => s.stepType === 'decompose')
+                if (decompose) {
+                  console.log('🔀 [重连补拉] 发现 decompose 步骤，立即执行...')
+                  executeDecomposeStep(decompose).catch(e => console.error('❌', e.message))
+                } else {
+                  console.log(`💡 [重连补拉] 有 ${steps.length} 个待执行步骤`)
+                }
+              }
+            }).catch(() => {})
+
+            // TODO: 重连后补拉未读聊天消息（需 Hub 端提供 GET /api/chat/unread API）
+            // client.request('GET', '/api/chat/unread').then(msgs => { ... })
+
             let buf = ''
             res.setEncoding('utf8')
             res.on('data', (chunk) => {

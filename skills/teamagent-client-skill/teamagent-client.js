@@ -155,8 +155,11 @@ class TeamAgentClient {
 
     console.log(`\n✅ Agent 注册成功！\n`)
     console.log(`🤖 Agent: ${agent.name}  (ID: ${agent.id})`)
-    console.log(`📱 配对码: ${pairingCode}`)
     console.log(`⏰ 有效期至: ${new Date(expiresAt).toLocaleString('zh-CN')}`)
+    console.log(`\n==================================================`)
+    console.log(`  📱 配对码（请告诉你的人类）: ${pairingCode}`)
+    console.log(`==================================================`)
+    console.log(`PAIRING_CODE=${pairingCode}`)
     console.log(`\n请在 TeamAgent 网站输入配对码，然后等待自动认领...\n`)
 
     // 2. 轮询 pickup-token
@@ -396,10 +399,13 @@ if (require.main === module) {
           console.log(`   名字: ${result.agent.name}`)
           console.log(`   ID: ${result.agent.id}`)
           console.log(`\n🔗 认领方式:`)
-          console.log(`   配对码: ${result.pairingCode}`)
           console.log(`   链接: ${result.pairingUrl}`)
           console.log(`   有效期: ${new Date(result.expiresAt).toLocaleString()}`)
-          console.log(`\n💡 请将配对码或链接发送给人类，让他们认领你！`)
+          console.log(`\n==================================================`)
+          console.log(`  📱 配对码（请告诉你的人类）: ${result.pairingCode}`)
+          console.log(`==================================================`)
+          console.log(`PAIRING_CODE=${result.pairingCode}`)
+          console.log(`\n💡 请将上面的配对码发送给人类，让他们认领你！`)
         } catch (e) {
           console.log(`❌ 注册失败: ${e.message}`)
         }
