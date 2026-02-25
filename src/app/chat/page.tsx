@@ -4,16 +4,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
-
 interface Message {
   id: string
   content: string
   role: 'user' | 'agent'
   createdAt: string
-  metadata?: {
-    voice?: boolean
-    action?: string
-  }
 }
 
 interface AgentInfo {
@@ -39,8 +34,8 @@ export default function ChatPage() {
   const [stats, setStats] = useState<TaskStats>({ inProgress: 0, done: 0 })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const isInitialLoad = useRef(true)
   const latestMsgIdRef = useRef<string | null>(null)
+  const isFirstLoad = useRef(true)
 
   // 认证检查
   useEffect(() => {
@@ -49,22 +44,27 @@ export default function ChatPage() {
     }
   }, [status, router])
 
-  // 加载 Agent 信息和历史消息
+  // 初始加载
   useEffect(() => {
     if (session?.user) {
-      loadAgentAndHistory()
+      loadAll()
     }
   }, [session])
 
-  // 滚动到底部 — 初次加载用 instant，后续用 smooth
+  // 滚动到底部 — 首次用 auto，后续用 smooth
   useEffect(() => {
     if (messages.length === 0) return
-    const behavior = isInitialLoad.current ? 'instant' : 'smooth'
-    messagesEndRef.current?.scrollIntoView({ behavior })
-    if (isInitialLoad.current) isInitialLoad.current = false
+    const el = messagesEndRef.current
+    if (!el) return
+    if (isFirstLoad.current) {
+      el.scrollIntoView()
+      isFirstLoad.current = false
+    } else {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, typing])
 
-  // ── 后台轮询：每 4 秒检查有没有新消息 ──────────────────────────
+  // 后台轮询：每 4 秒刷新消息
   useEffect(() => {
     if (!session?.user) return
     const interval = setInterval(async () => {
@@ -79,35 +79,28 @@ export default function ChatPage() {
           latestMsgIdRef.current = latestId
           setMessages(newMsgs)
         }
-      } catch (_) { /* 静默 */ }
+      } catch (_) {}
     }, 4000)
     return () => clearInterval(interval)
   }, [session])
 
-  const loadAgentAndHistory = async () => {
+  const loadAll = async () => {
     try {
-      const agentRes = await fetch('/api/agent/my')
-      if (agentRes.ok) {
-        const agentData = await agentRes.json()
-        setAgent(agentData)
-      }
-
-      const historyRes = await fetch('/api/chat/history?limit=50')
+      const [agentRes, historyRes, statsRes] = await Promise.all([
+        fetch('/api/agent/my'),
+        fetch('/api/chat/history?limit=50'),
+        fetch('/api/tasks/stats'),
+      ])
+      if (agentRes.ok) setAgent(await agentRes.json())
       if (historyRes.ok) {
-        const history = await historyRes.json()
-        const msgs: Message[] = history.messages || []
+        const data = await historyRes.json()
+        const msgs: Message[] = data.messages || []
         setMessages(msgs)
-        if (msgs.length > 0) {
-          latestMsgIdRef.current = msgs[msgs.length - 1].id
-        }
+        if (msgs.length > 0) latestMsgIdRef.current = msgs[msgs.length - 1].id
       }
-      const statsRes = await fetch('/api/tasks/stats')
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setStats(statsData)
-      }
+      if (statsRes.ok) setStats(await statsRes.json())
     } catch (e) {
-      console.error('Failed to load agent/history:', e)
+      console.error('loadAll error:', e)
     }
   }
 
@@ -118,8 +111,9 @@ export default function ChatPage() {
     setInput('')
     setLoading(true)
 
+    const tempId = 'temp-' + Date.now()
     const userMsg: Message = {
-      id: 'temp-' + Date.now(),
+      id: tempId,
       content,
       role: 'user',
       createdAt: new Date().toISOString(),
@@ -141,67 +135,58 @@ export default function ChatPage() {
         if (data.pending && data.agentMessageId) {
           pendingMode = true
           setMessages(prev => [
-            ...prev.filter(m => m.id !== userMsg.id),
+            ...prev.filter(m => m.id !== tempId),
             { ...userMsg, id: data.userMessageId },
             { id: data.agentMessageId, content: '...', role: 'agent' as const, createdAt: new Date().toISOString() },
           ])
           latestMsgIdRef.current = data.agentMessageId
 
-          // 轮询，不设上限 — 直到回复为止（后台轮询也会同步更新）
+          // 持续轮询，不超时放弃
           let attempts = 0
           const poll = async () => {
             attempts++
             try {
-              const pollRes = await fetch(`/api/chat/poll?msgId=${data.agentMessageId}`)
-              if (pollRes.ok) {
-                const pollData = await pollRes.json()
-                if (pollData.ready) {
+              const r = await fetch(`/api/chat/poll?msgId=${data.agentMessageId}`)
+              if (r.ok) {
+                const d = await r.json()
+                if (d.ready) {
                   setMessages(prev => prev.map(m =>
-                    m.id === data.agentMessageId ? { ...pollData.message, role: 'agent' as const } : m
+                    m.id === data.agentMessageId ? { ...d.message, role: 'agent' as const } : m
                   ))
-                  latestMsgIdRef.current = pollData.message.id
+                  latestMsgIdRef.current = d.message.id
                   setLoading(false)
                   setTyping(false)
                   return
                 }
               }
-            } catch (_) { /* 继续重试 */ }
-            // 前 30 次每 2 秒，之后每 5 秒（后台轮询兜底）
-            const delay = attempts < 30 ? 2000 : 5000
-            setTimeout(poll, delay)
+            } catch (_) {}
+            setTimeout(poll, attempts < 30 ? 2000 : 5000)
           }
           poll()
         } else {
           setMessages(prev => [
-            ...prev.filter(m => m.id !== userMsg.id),
+            ...prev.filter(m => m.id !== tempId),
             { ...userMsg, id: data.userMessageId },
             data.agentMessage,
           ])
           latestMsgIdRef.current = data.agentMessage?.id
         }
       } else {
-        const err = await res.json()
-        setMessages(prev => [
-          ...prev,
-          {
-            id: 'error-' + Date.now(),
-            content: `❌ ${err.error || '发送失败，请重试'}`,
-            role: 'agent' as const,
-            createdAt: new Date().toISOString(),
-          },
-        ])
-      }
-    } catch (e) {
-      console.error('Send failed:', e)
-      setMessages(prev => [
-        ...prev,
-        {
-          id: 'error-' + Date.now(),
-          content: '❌ 网络错误，请重试',
+        const err = await res.json().catch(() => ({}))
+        setMessages(prev => [...prev, {
+          id: 'err-' + Date.now(),
+          content: `❌ ${err.error || '发送失败，请重试'}`,
           role: 'agent' as const,
           createdAt: new Date().toISOString(),
-        },
-      ])
+        }])
+      }
+    } catch (_) {
+      setMessages(prev => [...prev, {
+        id: 'err-' + Date.now(),
+        content: '❌ 网络错误，请重试',
+        role: 'agent' as const,
+        createdAt: new Date().toISOString(),
+      }])
     } finally {
       if (!pendingMode) {
         setLoading(false)
@@ -217,7 +202,6 @@ export default function ChatPage() {
     }
   }
 
-
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -227,17 +211,18 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-[100svh] bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
+    <div style={{ minHeight: '100svh' }} className="bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
+
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
+      <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/80 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => router.push('/')}
-            className="text-white/60 hover:text-white text-sm"
-          >
+
+          {/* 左：返回 */}
+          <button onClick={() => router.push('/')} className="text-white/60 hover:text-white text-sm">
             ← 任务
           </button>
 
+          {/* 中：Agent 信息 */}
           <div className="flex items-center gap-2">
             {agent ? (
               <>
@@ -247,7 +232,7 @@ export default function ChatPage() {
                 <div>
                   <div className="text-white text-sm font-medium">{agent.name}</div>
                   <div className="text-white/40 text-xs flex items-center gap-1">
-                    <span className={`w-1.5 h-1.5 rounded-full ${agent.status === 'online' ? 'bg-green-400' : 'bg-yellow-400'}`}></span>
+                    <span className={`w-1.5 h-1.5 rounded-full ${agent.status === 'online' ? 'bg-green-400' : 'bg-yellow-400'}`} />
                     {agent.status === 'online' ? '在线' : '忙碌中'}
                   </div>
                 </div>
@@ -257,22 +242,25 @@ export default function ChatPage() {
             )}
           </div>
 
+          {/* 右：任务统计 */}
           <div className="flex flex-col items-end gap-0.5">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <span className="text-orange-400 text-xs font-bold">{stats.inProgress}</span>
               <span className="text-white/40 text-xs">进行中</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <span className="text-emerald-400 text-xs font-bold">{stats.done}</span>
               <span className="text-white/40 text-xs">已完成</span>
             </div>
           </div>
+
         </div>
       </header>
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+
           {messages.length === 0 && !loading && (
             <div className="text-center py-20">
               <div className="text-5xl mb-4">🦞</div>
@@ -280,14 +268,12 @@ export default function ChatPage() {
                 {agent ? `嘿，我是 ${agent.name}！` : '欢迎使用 TeamAgent'}
               </h2>
               <p className="text-white/50 text-sm max-w-xs mx-auto">
-                {agent
-                  ? '有什么需要我帮忙的？说出来或打字都行！'
-                  : '先去配对你的 Agent，然后就能开始聊天了'}
+                {agent ? '有什么需要我帮忙的？' : '先去配对你的 Agent，然后就能开始聊天了'}
               </p>
               {!agent && (
                 <button
                   onClick={() => router.push('/build-agent')}
-                  className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-full text-sm font-medium hover:bg-orange-400"
+                  className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-full text-sm font-medium"
                 >
                   配对 Agent
                 </button>
@@ -296,18 +282,13 @@ export default function ChatPage() {
           )}
 
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                  msg.role === 'user'
-                    ? 'bg-orange-500 text-white rounded-br-md'
-                    : 'bg-white/10 text-white/90 rounded-bl-md'
-                }`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                msg.role === 'user'
+                  ? 'bg-orange-500 text-white rounded-br-md'
+                  : 'bg-white/10 text-white/90 rounded-bl-md'
+              }`}>
+                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                 <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/60' : 'text-white/40'}`}>
                   {new Date(msg.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                 </div>
@@ -319,9 +300,9 @@ export default function ChatPage() {
             <div className="flex justify-start">
               <div className="bg-white/10 rounded-2xl rounded-bl-md px-4 py-3">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -332,10 +313,10 @@ export default function ChatPage() {
       </main>
 
       {/* Input */}
-      <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/80 backdrop-blur">
+      <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/80">
         <div className="max-w-2xl mx-auto px-4 py-3">
           <div className="flex items-end gap-2">
-            <div className="flex-1 relative">
+            <div className="flex-1">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -348,21 +329,17 @@ export default function ChatPage() {
                 style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
               />
             </div>
-
             <button
               onClick={() => sendMessage()}
               disabled={!input.trim() || loading || !agent}
-              className="w-12 h-12 bg-orange-500 hover:bg-orange-400 disabled:bg-white/10 disabled:text-white/30 text-white rounded-full flex items-center justify-center transition-colors"
+              className="w-12 h-12 bg-orange-500 hover:bg-orange-400 disabled:bg-white/10 disabled:text-white/30 text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0"
             >
-              {loading ? (
-                <span className="animate-spin">⏳</span>
-              ) : (
-                <span className="text-lg">↑</span>
-              )}
+              {loading ? <span className="animate-spin text-base">⏳</span> : <span className="text-lg">↑</span>}
             </button>
           </div>
         </div>
       </footer>
+
     </div>
   )
 }
