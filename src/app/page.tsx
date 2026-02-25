@@ -2841,6 +2841,34 @@ export default function HomePage() {
         {activeTab === 'chat' && (
           <>
 
+            {/* Agent 信息卡 */}
+            <div className="px-4 pt-3 pb-2 flex-shrink-0">
+              <div className="flex items-center space-x-3 bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-lg shadow-lg shadow-orange-500/20 flex-shrink-0">
+                  🦞
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-white font-semibold text-sm">{myAgent?.name || 'AI 助手'}</span>
+                    <span className="text-xs px-1.5 py-0.5 bg-orange-500/20 text-orange-300 rounded-md font-medium">主Agent</span>
+                  </div>
+                  <div className="flex items-center space-x-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${myAgent?.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                    <span className="text-slate-400 text-xs">{myAgent?.status === 'online' ? '在线 · 随时响应' : (myAgent ? '离线' : '未配对')}</span>
+                  </div>
+                </div>
+                {tasks.length > 0 && (
+                  <button
+                    onClick={() => setActiveTab('tasks')}
+                    className="flex-shrink-0 flex flex-col items-end gap-0.5 active:opacity-70"
+                  >
+                    <span className="text-orange-300 text-xs font-semibold">📋 {pendingTaskCount} 待处理</span>
+                    {doneTaskCount > 0 && <span className="text-emerald-400 text-xs">✅ {doneTaskCount} 完成</span>}
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* 聊天消息区 — 占据主体空间，overscroll-contain 防止页面抖动 */}
             <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-2 space-y-3 min-h-0">
               {chatMessages.length === 0 ? (
