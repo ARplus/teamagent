@@ -11,11 +11,11 @@ export function MobileBottomNav() {
   const pathname = usePathname()
 
   if (status !== 'authenticated') return null
-  const authPages = ['/login', '/register', '/landing', '/build-agent', '/chat']
+  const authPages = ['/login', '/register', '/landing', '/build-agent']
   if (authPages.some(p => pathname === p || pathname.startsWith(p + '?'))) return null
 
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
-  const isChat = pathname === '/chat'
+  const isChat = pathname === '/'
   const isRoot = pathname === '/'
 
   const searchParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('t') : null
@@ -51,8 +51,8 @@ export function MobileBottomNav() {
 
         {/* 对话 — 中间大按钮 */}
         <Link
-          href="/chat"
-          onClick={(e) => { if (isChat) e.preventDefault() }}
+          href="/"
+          onClick={(e) => { if (handleRootTabClick('chat')) e.preventDefault() }}
           className="flex flex-col items-center gap-1 -mt-4"
         >
           <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all ${
