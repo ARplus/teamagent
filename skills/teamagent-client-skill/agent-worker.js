@@ -215,15 +215,155 @@ async function main() {
         writePid()
         console.log(`📡 开始 SSE 实时监控模式（PID=${process.pid}，Ctrl+C 退出）\n`)
 
+        // ================================================================
+        // 💬 OpenClaw Gateway 调用（注入消息到真实 Lobster session）
+        // ================================================================
+        const OPENCLAW_CONFIG_PATH = path.join(
+          process.env.HOME || process.env.USERPROFILE,
+          '.openclaw', 'openclaw.json'
+        )
+
+        function getGatewayToken() {
+          try {
+            const raw = fs.readFileSync(OPENCLAW_CONFIG_PATH, 'utf-8')
+            try {
+              const cfg = JSON.parse(raw)
+              if (cfg?.gateway?.auth?.token) return cfg.gateway.auth.token
+            } catch (_) {}
+            const m = raw.match(/"token"\s*:\s*"([^"]+)"/)
+            return m?.[1] || ''
+          } catch (_) { return '' }
+        }
+
+        const CHAT_ROUTER_SESSION_KEY = process.env.TEAMAGENT_CHAT_SESSION_KEY || 'agent:main:main'
+
+        async function injectToOpenClawSession(userMessage, agentName, msgId) {
+          const gatewayToken = getGatewayToken()
+          if (!gatewayToken) throw new Error('Gateway token not found in openclaw config')
+
+          const prompt = [
+            `[TeamAgent Mobile Chat from ${agentName}]`,
+            `[msgId: ${msgId}]`,
+            '',
+            userMessage,
+            '',
+            '请直接回复给手机用户：中文、简洁、自然。',
+            '只返回最终回复文本，不要调用任何工具，不要返回 NO_REPLY。',
+          ].join('\n')
+
+          const http = require('http')
+          const raw = await new Promise((resolve, reject) => {
+            const body = JSON.stringify({
+              tool: 'sessions_send',
+              args: {
+                sessionKey: CHAT_ROUTER_SESSION_KEY,
+                message: prompt,
+                timeoutSeconds: 45
+              }
+            })
+            const req = http.request({
+              hostname: '127.0.0.1',
+              port: 18789,
+              path: '/tools/invoke',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${gatewayToken}`,
+                'Content-Length': Buffer.byteLength(body)
+              }
+            }, (res) => {
+              let data = ''
+              res.on('data', c => data += c)
+              res.on('end', () => resolve(data))
+            })
+            req.on('error', reject)
+            req.setTimeout(50000, () => { req.destroy(); reject(new Error('inject timeout')) })
+            req.write(body)
+            req.end()
+          })
+
+          let parsed
+          try { parsed = JSON.parse(raw) } catch { parsed = null }
+
+          let inner = null
+          const innerText = parsed?.result?.content?.[0]?.text
+          if (innerText) {
+            try { inner = JSON.parse(innerText) } catch { inner = null }
+          }
+
+          const candidate =
+            inner?.reply?.trim?.() ||
+            inner?.details?.reply?.trim?.() ||
+            parsed?.result?.details?.reply?.trim?.() ||
+            parsed?.result?.response?.trim?.() ||
+            parsed?.response?.trim?.() ||
+            parsed?.result?.message?.trim?.() ||
+            parsed?.message?.trim?.() ||
+            innerText?.trim?.() ||
+            ''
+
+          return candidate
+        }
+
+        const seenChatMsgIds = new Map()
+        const inFlightChatMsgIds = new Set()
+        const CHAT_DEDUPE_TTL_MS = 10 * 60 * 1000
+
+        function markSeen(msgId) {
+          seenChatMsgIds.set(msgId, Date.now())
+          const now = Date.now()
+          for (const [k, ts] of seenChatMsgIds.entries()) {
+            if (now - ts > CHAT_DEDUPE_TTL_MS) seenChatMsgIds.delete(k)
+          }
+        }
+
+        function isDuplicate(msgId) {
+          const ts = seenChatMsgIds.get(msgId)
+          return !!ts && (Date.now() - ts <= CHAT_DEDUPE_TTL_MS)
+        }
+
         // 处理 SSE 事件
         const handleSSEEvent = async (event) => {
           const { type, stepId, taskId, title, stepType, taskDescription } = event
+
+          if (type === 'chat:incoming') {
+            const { msgId, content, senderName } = event
+            if (!msgId) return
+            if (isDuplicate(msgId) || inFlightChatMsgIds.has(msgId)) return
+
+            inFlightChatMsgIds.add(msgId)
+            console.log(`\n💬 [SSE] chat:incoming → msgId=${msgId}, from=${senderName || '用户'}`)
+            try {
+              const replyText = await injectToOpenClawSession(content, senderName || '用户', msgId)
+              if (!replyText || replyText === 'NO_REPLY') {
+                throw new Error('empty reply from main session')
+              }
+
+              await client.request('POST', '/api/chat/reply', {
+                msgId,
+                content: replyText
+              })
+
+              markSeen(msgId)
+              console.log('   ✅ 已收到 OpenClaw 回复并回写到手机端')
+            } catch (e) {
+              console.error('   ❌ chat 路由失败:', e.message)
+              await client.request('POST', '/api/chat/reply', {
+                msgId,
+                content: '🦞 我这边刚刚走神了一下，你再发一次，我马上回。'
+              }).catch(() => {})
+              markSeen(msgId)
+            } finally {
+              inFlightChatMsgIds.delete(msgId)
+            }
+            return
+          }
+
           if (type === 'step:ready') {
             console.log(`\n📨 [SSE] step:ready → "${title || stepId}" | stepType=${stepType || 'task'}`)
             if (stepType === 'decompose') {
               console.log('🔀 收到 decompose 事件，立即执行...')
               try {
-                // executeDecomposeStep 只需要 step.id，其余字段仅做日志用
                 await executeDecomposeStep({ id: stepId, title, task: { title: taskId, description: taskDescription } })
               } catch (e) {
                 console.error('❌ decompose 执行失败:', e.message)
@@ -236,7 +376,6 @@ async function main() {
           } else if (type === 'task:decomposed') {
             console.log(`\n✅ [SSE] 任务已拆解完毕: taskId=${taskId}, steps=${event.stepsCount}`)
           }
-          // 忽略心跳等其他事件
         }
 
         // SSE 连接函数（含自动重连）
