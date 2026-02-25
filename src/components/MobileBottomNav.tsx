@@ -11,7 +11,7 @@ export function MobileBottomNav() {
   const pathname = usePathname()
 
   if (status !== 'authenticated') return null
-  const authPages = ['/login', '/register', '/landing', '/build-agent']
+  const authPages = ['/login', '/register', '/landing', '/build-agent', '/chat']
   if (authPages.some(p => pathname === p || pathname.startsWith(p + '?'))) return null
 
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
