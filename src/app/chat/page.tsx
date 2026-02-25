@@ -23,6 +23,11 @@ interface AgentInfo {
   status: string
 }
 
+interface TaskStats {
+  inProgress: number
+  done: number
+}
+
 export default function ChatPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -31,6 +36,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false)
   const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [typing, setTyping] = useState(false)
+  const [stats, setStats] = useState<TaskStats>({ inProgress: 0, done: 0 })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isInitialLoad = useRef(true)
@@ -94,6 +100,11 @@ export default function ChatPage() {
         if (msgs.length > 0) {
           latestMsgIdRef.current = msgs[msgs.length - 1].id
         }
+      }
+      const statsRes = await fetch('/api/tasks/stats')
+      if (statsRes.ok) {
+        const statsData = await statsRes.json()
+        setStats(statsData)
       }
     } catch (e) {
       console.error('Failed to load agent/history:', e)
@@ -246,7 +257,16 @@ export default function ChatPage() {
             )}
           </div>
 
-          <div className="w-8" />
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-orange-400 text-xs font-bold">{stats.inProgress}</span>
+              <span className="text-white/40 text-xs">进行中</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-emerald-400 text-xs font-bold">{stats.done}</span>
+              <span className="text-white/40 text-xs">已完成</span>
+            </div>
+          </div>
         </div>
       </header>
 
