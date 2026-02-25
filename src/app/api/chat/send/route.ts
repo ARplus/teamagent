@@ -287,8 +287,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // 4. 检查 Agent 是否在线 → 路由到真实 OpenClaw Agent
-    if (agent && agent.status === 'online') {
+    if (agent && agent.status === 'routed_via_openclaw') { // disabled
       // 创建 pending 占位消息
       const agentMessage = await prisma.chatMessage.create({
         data: {
