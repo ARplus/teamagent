@@ -2806,6 +2806,7 @@ export default function HomePage() {
   // ── 任务统计（用于移动端首页摘要）──────────────────────────────
   const pendingTaskCount = tasks.filter(t => t.status !== 'done').length
   const doneTaskCount = tasks.filter(t => t.status === 'done').length
+  const hasStalePendingReply = chatMessages.some(m => m.role === 'agent' && m.content.includes('还在路上'))
 
   // ── 移动端布局 ──────────────────────────────────────────────────
   if (isMobile) {
@@ -2838,7 +2839,7 @@ export default function HomePage() {
     }
 
     return (
-      <div className="h-[100svh] flex flex-col overflow-hidden bg-gradient-to-b from-slate-900 to-slate-800">
+      <div className="h-[100dvh] flex flex-col overflow-hidden bg-gradient-to-b from-slate-900 to-slate-800">
 
         {/* ═══════════ 对话 Tab ═══════════ */}
         {activeTab === 'chat' && (
@@ -2888,11 +2889,21 @@ export default function HomePage() {
                     <span className="text-slate-400 text-xs">{myAgent?.status === 'online' ? '在线 · 随时响应' : (myAgent ? '离线' : '未配对')}</span>
                   </div>
                 </div>
+                {/* 任务统计 — 右侧 */}
+                {tasks.length > 0 && (
+                  <button
+                    onClick={() => setActiveTab('tasks')}
+                    className="flex-shrink-0 flex flex-col items-end gap-0.5 active:opacity-70"
+                  >
+                    <span className="text-orange-300 text-xs font-semibold">📋 {pendingTaskCount} 待处理</span>
+                    {doneTaskCount > 0 && <span className="text-emerald-400 text-xs">✅ {doneTaskCount} 完成</span>}
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* 聊天消息区 — 占据主体空间 */}
-            <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 min-h-0">
+            {/* 聊天消息区 — 占据主体空间，overscroll-contain 防止页面抖动 */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-2 space-y-3 min-h-0">
               {chatMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center px-6">
                   <div className="text-4xl mb-3">💬</div>
@@ -2905,18 +2916,18 @@ export default function HomePage() {
               <div ref={chatEndRef} />
             </div>
 
-            {/* 任务摘要 — 次要信息，点击切到任务 tab */}
-            {tasks.length > 0 && (
-              <button
-                onClick={() => setActiveTab('tasks')}
-                className="mx-4 mb-2 flex items-center justify-between bg-slate-700/70 border border-slate-600/60 rounded-xl px-4 py-3 flex-shrink-0 active:bg-slate-600/70 transition-colors"
-              >
-                <div className="flex items-center space-x-4">
-                  <span className="text-white text-xs font-medium">📋 <span className="text-orange-300 font-semibold">{pendingTaskCount}</span> 个任务待处理</span>
-                  {doneTaskCount > 0 && <span className="text-emerald-400 text-xs font-medium">✅ 完成 {doneTaskCount}</span>}
-                </div>
-                <span className="text-slate-400 text-sm">›</span>
-              </button>
+            {/* 任务摘要已移入 Agent 名卡右侧，此处不再重复显示 */}
+
+            {hasStalePendingReply && (
+              <div className="px-4 pb-2 flex-shrink-0">
+                <button
+                  onClick={reloadChatHistory}
+                  disabled={chatReloading}
+                  className="w-full text-xs py-2 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-300 disabled:opacity-50"
+                >
+                  {chatReloading ? '重载中…' : '有消息可能超时了，点这里重载'}
+                </button>
+              </div>
             )}
 
             {/* 输入框 — 常驻 */}
