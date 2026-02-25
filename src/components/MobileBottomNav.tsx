@@ -10,55 +10,75 @@ export function MobileBottomNav() {
   const { status } = useSession()
   const pathname = usePathname()
 
-  // 未登录、加载中、或在认证页 → 不显示
   if (status !== 'authenticated') return null
   const authPages = ['/login', '/register', '/landing', '/build-agent']
   if (authPages.some(p => pathname === p || pathname.startsWith(p + '?'))) return null
 
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
+  const isChat = pathname === '/chat'
   const isRoot = pathname === '/'
 
-  // 读 URL search param 判断在根页面时的 tab
   const searchParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('t') : null
   const rootTab: TabId = searchParam === 'tasks' ? 'tasks' : searchParam === 'profile' ? 'profile' : 'chat'
 
-  const activeTab: TabId = isTeam ? 'profile' : isRoot ? rootTab : 'chat'
+  const activeTab: TabId = isTeam ? 'profile' : isChat ? 'chat' : isRoot ? rootTab : 'chat'
 
-  const tabs: { id: TabId; icon: string; label: string; href: string }[] = [
-    { id: 'chat',    icon: '💬', label: '对话', href: '/' },
-    { id: 'tasks',   icon: '📋', label: '任务', href: '/?t=tasks' },
-    { id: 'profile', icon: '👤', label: '我',   href: '/team' },
-  ]
-
-  const handleClick = (tab: TabId) => {
+  const handleRootTabClick = (tab: TabId) => {
     if (isRoot && tab !== 'profile') {
-      // 在主页时通过 custom event 切 tab，避免页面跳转
       window.dispatchEvent(new CustomEvent('mobileTabChange', { detail: { tab } }))
       const url = tab === 'tasks' ? '/?t=tasks' : '/'
       window.history.pushState({}, '', url)
-      return true // 阻止 Link 默认跳转
+      return true
     }
     return false
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 flex border-t border-slate-700/60 bg-slate-900">
-      {tabs.map(tab => (
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-slate-700/60 bg-slate-900/95 backdrop-blur-sm pb-safe">
+      <div className="flex items-end justify-around px-4 pt-2 pb-3">
+
+        {/* 任务 */}
         <Link
-          key={tab.id}
-          href={tab.href}
-          onClick={(e) => {
-            const handled = handleClick(tab.id)
-            if (handled) e.preventDefault()
-          }}
-          className={`flex-1 py-3 flex flex-col items-center space-y-0.5 transition-colors ${
-            activeTab === tab.id ? 'text-orange-400' : 'text-slate-500'
+          href="/?t=tasks"
+          onClick={(e) => { if (handleRootTabClick('tasks')) e.preventDefault() }}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 transition-colors ${
+            activeTab === 'tasks' ? 'text-orange-400' : 'text-slate-500'
           }`}
         >
-          <span className="text-xl leading-none">{tab.icon}</span>
-          <span className="text-xs font-medium">{tab.label}</span>
+          <span className="text-xl leading-none">📋</span>
+          <span className="text-xs font-medium">任务</span>
         </Link>
-      ))}
+
+        {/* 对话 — 中间大按钮 */}
+        <Link
+          href="/chat"
+          onClick={(e) => { if (isChat) e.preventDefault() }}
+          className="flex flex-col items-center gap-1 -mt-4"
+        >
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all ${
+            activeTab === 'chat'
+              ? 'bg-orange-500 shadow-orange-500/40 scale-105'
+              : 'bg-slate-700 shadow-slate-900/60'
+          }`}>
+            <span className="text-2xl leading-none">💬</span>
+          </div>
+          <span className={`text-xs font-semibold ${activeTab === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>
+            对话
+          </span>
+        </Link>
+
+        {/* 我 */}
+        <Link
+          href="/team"
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 transition-colors ${
+            activeTab === 'profile' ? 'text-orange-400' : 'text-slate-500'
+          }`}
+        >
+          <span className="text-xl leading-none">👤</span>
+          <span className="text-xs font-medium">我</span>
+        </Link>
+
+      </div>
     </nav>
   )
 }
