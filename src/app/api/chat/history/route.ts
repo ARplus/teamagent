@@ -20,11 +20,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const messages = await prisma.chatMessage.findMany({
+    // 取“最近 N 条”，再反转为时间正序返回给前端
+    const recentMessages = await prisma.chatMessage.findMany({
       where: { userId: user.id },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: limit,
     })
+    const messages = recentMessages.reverse()
 
     return NextResponse.json({
       messages: messages.map(m => ({
