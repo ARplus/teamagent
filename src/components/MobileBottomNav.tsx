@@ -34,7 +34,7 @@ export function MobileBottomNav() {
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-slate-700/60 bg-slate-900/95 backdrop-blur-sm pb-safe">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-slate-700/60 bg-slate-900/95 ">
       <div className="flex items-end justify-around px-4 pt-2 pb-3">
 
         {/* 任务 */}

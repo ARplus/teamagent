@@ -211,7 +211,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div style={{ minHeight: '100svh' }} className="bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
 
       {/* Header */}
       <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/80 sticky top-0 z-10">
