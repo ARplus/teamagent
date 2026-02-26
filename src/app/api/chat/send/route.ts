@@ -180,7 +180,6 @@ async function callLLM(
   history: { role: string; content: string }[]
 ): Promise<string> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY
-  const qwenKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY
 
   const messages = history.slice(-10).map(h => ({
     role: h.role === 'user' ? 'user' as const : 'assistant' as const,
@@ -212,33 +211,7 @@ async function callLLM(
     } catch {}
   }
 
-  // Fallback 千问
-  if (qwenKey) {
-    try {
-      const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${qwenKey}`,
-        },
-        body: JSON.stringify({
-          model: 'qwen-plus',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages,
-          ],
-          temperature: 0.7,
-          max_tokens: 800,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        return data.choices?.[0]?.message?.content || '换个方式说？'
-      }
-    } catch {}
-  }
-
-  return '目前 LLM 服务未配置，但我知道你在说什么。'
+  return '当前对话仅允许由你的专属 Agent 回复。请确保 Agent 在线后再试。'
 }
 
 // ============ 主处理 ============
@@ -287,7 +260,8 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    if (agent && agent.status === 'routed_via_openclaw') { // disabled
+    // 强制走专属 Agent 链路：禁止 fallback 到其它模型（如千问）
+    if (agent) {
       // 创建 pending 占位消息
       const agentMessage = await prisma.chatMessage.create({
         data: {
@@ -320,7 +294,7 @@ export async function POST(req: NextRequest) {
     // 6. 解析并执行 Action
     const actionMatch = reply.match(/@@ACTION@@([\s\S]*?)@@END@@/)
     if (actionMatch) {
-      const actionResult = await executeAction(actionMatch[1].trim(), user.id, agent?.id || null)
+      const actionResult = await executeAction(actionMatch[1].trim(), user.id, null)
       // 移除 action JSON，追加执行结果
       reply = reply.replace(/@@ACTION@@[\s\S]*?@@END@@/, '').trim() + actionResult
     }
@@ -331,7 +305,7 @@ export async function POST(req: NextRequest) {
         content: reply,
         role: 'agent',
         userId: user.id,
-        agentId: agent?.id || null,
+        agentId: null,
       },
     })
 
