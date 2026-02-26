@@ -418,11 +418,71 @@ async function main() {
           }
         }
 
+        // ── 跟踪 SSE 上次活跃时间（心跳/事件都算） ──
+        let lastSSEActivity = Date.now()
+        let sseConnected = false
+
+        // ── 补拉断连期间漏掉的聊天消息 ──
+        async function catchupUnreadChat(sinceISO) {
+          try {
+            const qs = sinceISO ? `?since=${encodeURIComponent(sinceISO)}` : ''
+            const resp = await client.request('GET', `/api/chat/unread${qs}`)
+            const missed = resp.missedMessages || []
+            const pending = resp.pendingReplies || []
+            if (missed.length > 0) {
+              console.log(`📬 [补拉] 发现 ${missed.length} 条断连期间漏掉的聊天消息`)
+              for (const m of missed) {
+                // 找到对应的 pending reply msgId
+                const matchingPending = pending.find(p => {
+                  const pTime = new Date(p.createdAt).getTime()
+                  const mTime = new Date(m.createdAt).getTime()
+                  return pTime >= mTime && pTime - mTime < 5000
+                })
+                if (matchingPending && !isDuplicate(matchingPending.msgId) && !inFlightChatMsgIds.has(matchingPending.msgId)) {
+                  console.log(`   💬 [补拉] 处理漏掉的消息: msgId=${matchingPending.msgId}`)
+                  await handleSSEEvent({
+                    type: 'chat:incoming',
+                    msgId: matchingPending.msgId,
+                    content: m.content,
+                    senderName: '用户',
+                    catchup: true
+                  })
+                }
+              }
+            } else if (pending.length > 0) {
+              // 有 pending 但没匹配到 missed，尝试直接处理
+              console.log(`📬 [补拉] 发现 ${pending.length} 条未回复的 pending 消息`)
+            }
+          } catch (e) {
+            console.error('📬 [补拉] chat/unread 请求失败:', e.message)
+          }
+        }
+
+        // ── 30s 轮询兜底：防 SSE 静默断连后消息永远丢失 ──
+        const CHAT_POLL_INTERVAL = 30000
+        let chatPollTimer = null
+        function startChatPoll() {
+          if (chatPollTimer) clearInterval(chatPollTimer)
+          chatPollTimer = setInterval(async () => {
+            // 如果 SSE 30s 内有活跃数据，跳过轮询（避免重复）
+            if (sseConnected && Date.now() - lastSSEActivity < 60000) return
+            if (!sseConnected) {
+              console.log('⚠️  [轮询兜底] SSE 不活跃，主动拉取未读消息...')
+            }
+            await catchupUnreadChat(new Date(Date.now() - 120000).toISOString())
+          }, CHAT_POLL_INTERVAL)
+        }
+
         // SSE 连接函数（含自动重连）
+        let lastDisconnectTime = null
         const connectSSE = () => {
           const { URL } = require('url')
           const baseUrl = client.hubUrl.replace(/\/$/, '')
           const sseUrl = new URL('/api/agent/subscribe', baseUrl)
+          // 断连补发：带上 since 参数
+          if (lastDisconnectTime) {
+            sseUrl.searchParams.set('since', lastDisconnectTime)
+          }
           const proto = sseUrl.protocol === 'https:' ? require('https') : require('http')
           const port = sseUrl.port ? parseInt(sseUrl.port) : (sseUrl.protocol === 'https:' ? 443 : 80)
 
@@ -442,9 +502,12 @@ async function main() {
             if (res.statusCode !== 200) {
               console.error(`❌ SSE 连接失败: HTTP ${res.statusCode}，5秒后重连`)
               res.resume()
+              sseConnected = false
               setTimeout(connectSSE, 5000)
               return
             }
+            sseConnected = true
+            lastSSEActivity = Date.now()
             console.log('✅ SSE 已连接，实时监听事件...\n')
 
             // 重连后补拉 pending steps（防断连期间丢失任务通知）
@@ -460,12 +523,15 @@ async function main() {
               }
             }).catch(() => {})
 
-            // TODO: 重连后补拉未读聊天消息（需 Hub 端提供 GET /api/chat/unread API）
-            // client.request('GET', '/api/chat/unread').then(msgs => { ... })
+            // 重连后补拉漏掉的聊天消息
+            if (lastDisconnectTime) {
+              catchupUnreadChat(lastDisconnectTime)
+            }
 
             let buf = ''
             res.setEncoding('utf8')
             res.on('data', (chunk) => {
+              lastSSEActivity = Date.now()
               buf += chunk
               const lines = buf.split('\n')
               buf = lines.pop() // 保留末尾不完整的行
@@ -479,15 +545,20 @@ async function main() {
               }
             })
             res.on('end', () => {
+              sseConnected = false
+              lastDisconnectTime = new Date().toISOString()
               console.log('\n🔌 SSE 连接断开，5秒后重连...')
               setTimeout(connectSSE, 5000)
             })
             res.on('error', (e) => {
+              sseConnected = false
+              lastDisconnectTime = new Date().toISOString()
               console.error('❌ SSE 流错误:', e.message, '，5秒后重连')
               setTimeout(connectSSE, 5000)
             })
           })
           req.on('error', (e) => {
+            sseConnected = false
             console.error('❌ SSE 请求错误:', e.message, '，5秒后重连')
             setTimeout(connectSSE, 5000)
           })
@@ -511,6 +582,9 @@ async function main() {
 
         // 建立 SSE 长连接
         connectSSE()
+
+        // 启动 30s 轮询兜底（SSE 断连时自动补拉）
+        startChatPoll()
         break
         
       default:

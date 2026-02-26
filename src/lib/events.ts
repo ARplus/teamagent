@@ -31,8 +31,8 @@ interface Subscriber {
 // 内存存储订阅者（生产环境可用 Redis）
 const subscribers = new Map<string, Subscriber>()
 
-// 心跳间隔（5分钟，减少刷屏）
-const HEARTBEAT_INTERVAL = 300000
+// 心跳间隔（30秒，保持 SSE 连接活跃，防 Nginx/CDN 超时断连）
+const HEARTBEAT_INTERVAL = 30000
 
 /**
  * 添加订阅者
@@ -107,6 +107,13 @@ export function sendToUser(userId: string, event: TeamAgentEvent) {
 
   if (sent > 0) {
     console.log(`[Events] 发送给用户 ${userId}: ${event.type} (${sent} 个连接)`)
+  } else {
+    // ⚠️ 关键诊断：0 个订阅者意味着 SSE 连接不存在或 userId 不匹配
+    console.warn(`[Events] ⚠️ 用户 ${userId} 无订阅者，${event.type} 事件已丢弃（总订阅者: ${subscribers.size}）`)
+    if (subscribers.size > 0) {
+      const allUserIds = [...new Set([...subscribers.values()].map(s => s.userId))]
+      console.warn(`[Events]   当前在线 userIds: ${allUserIds.join(', ')}`)
+    }
   }
 }
 
