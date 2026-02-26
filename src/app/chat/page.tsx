@@ -211,10 +211,10 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
+    <div className="h-[100dvh] overflow-hidden bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
 
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/80 sticky top-0 z-10">
+      <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/95 sticky top-0 z-20">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
 
           {/* 左：返回 */}
@@ -258,7 +258,7 @@ export default function ChatPage() {
       </header>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
 
           {messages.length === 0 && !loading && (
@@ -313,7 +313,7 @@ export default function ChatPage() {
       </main>
 
       {/* Input */}
-      <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/80">
+      <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/95 mb-16 md:mb-0">
         <div className="max-w-2xl mx-auto px-4 py-3">
           <div className="flex items-end gap-2">
             <div className="flex-1">

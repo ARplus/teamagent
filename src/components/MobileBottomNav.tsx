@@ -15,13 +15,23 @@ export function MobileBottomNav() {
   if (authPages.some(p => pathname === p || pathname.startsWith(p + '?'))) return null
 
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
-  const isChat = pathname === '/'
   const isRoot = pathname === '/'
 
   const searchParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('t') : null
   const rootTab: TabId = searchParam === 'tasks' ? 'tasks' : searchParam === 'profile' ? 'profile' : 'chat'
 
-  const activeTab: TabId = isTeam ? 'profile' : isChat ? 'chat' : isRoot ? rootTab : 'chat'
+  const isTasksRoute = pathname.startsWith('/tasks')
+  const isChatRoute = pathname.startsWith('/chat')
+
+  const activeTab: TabId = isTeam
+    ? 'profile'
+    : isTasksRoute
+      ? 'tasks'
+      : isChatRoute
+        ? 'chat'
+        : isRoot
+          ? rootTab
+          : 'chat'
 
   const handleRootTabClick = (tab: TabId) => {
     if (isRoot && tab !== 'profile') {
@@ -34,8 +44,8 @@ export function MobileBottomNav() {
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-slate-700/60 bg-slate-900/95 ">
-      <div className="flex items-end justify-around px-4 pt-2 pb-3">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-slate-900 shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
+      <div className="flex items-end justify-around px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 
         {/* 任务 */}
         <Link
