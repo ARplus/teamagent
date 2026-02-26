@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { MobileBottomNav } from './MobileBottomNav'
 
 export function MobileBottomNavMount() {
@@ -11,5 +11,9 @@ export function MobileBottomNavMount() {
   }, [])
 
   if (!mounted) return null
-  return <MobileBottomNav />
+  return (
+    <Suspense fallback={null}>
+      <MobileBottomNav />
+    </Suspense>
+  )
 }
