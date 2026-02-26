@@ -2659,8 +2659,8 @@ export default function HomePage() {
       const res = await fetch('/api/chat/history?limit=50')
       if (res.ok) {
         const data = await res.json()
-        // 过滤掉 __pending__ 消息
-        setChatMessages((data.messages || []).filter((m: ChatMessage) => m.content !== '__pending__'))
+        // __pending__ 消息由 history API 转换为 '...'，ChatBubble 会显示为 typing 动画
+        setChatMessages(data.messages || [])
       }
     } catch (e) {
       console.error('加载聊天历史失败:', e)

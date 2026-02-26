@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
+import { getNextStepsAfterCompletion, activateAndNotifySteps } from '@/lib/step-scheduling'
 
 // POST /api/steps/[id]/approve - 人类审核通过
 export async function POST(
@@ -97,29 +98,18 @@ export async function POST(
       data: { totalAgentTimeMs, totalHumanTimeMs, agentWorkRatio }
     })
 
-    // 检查是否有下一个步骤需要通知
-    const nextStep = await prisma.taskStep.findFirst({
-      where: {
-        taskId: step.taskId,
-        order: step.order + 1
-      }
+    // 检查下一批可启动的步骤（parallelGroup 感知）
+    // 如果当前步骤在并行组中，需要等组内全部完成才推进
+    const allTaskSteps = await prisma.taskStep.findMany({
+      where: { taskId: step.taskId },
+      orderBy: { order: 'asc' }
     })
-
-    // 如果有下一步且有负责人，更新其 Agent 状态为 pending
-    if (nextStep?.assigneeId) {
-      await prisma.taskStep.update({
-        where: { id: nextStep.id },
-        data: { agentStatus: 'pending' }
-      })
-
-      // 🔔 通知下一步的 Agent：轮到你了！
-      sendToUser(nextStep.assigneeId, {
-        type: 'step:ready',
-        taskId: step.taskId,
-        stepId: nextStep.id,
-        title: nextStep.title
-      })
-    }
+    const completedStepData = allTaskSteps.find(s => s.id === id)!
+    const nextSteps = getNextStepsAfterCompletion(
+      allTaskSteps as any[],
+      { ...completedStepData, status: 'done' } as any  // 刚更新为 done
+    )
+    await activateAndNotifySteps(step.taskId, nextSteps as any[])
 
     // 🔔 通知当前步骤负责人：已审核通过
     if (step.assigneeId) {
@@ -234,11 +224,11 @@ export async function POST(
     return NextResponse.json({
       message: '审核通过',
       step: updated,
-      nextStep: nextStep ? {
-        id: nextStep.id,
-        title: nextStep.title,
-        assigneeId: nextStep.assigneeId
-      } : null,
+      nextSteps: nextSteps.map(s => ({
+        id: s.id,
+        title: s.title,
+        assigneeId: s.assigneeId
+      })),
       taskCompleted: remainingSteps === 0,
       autoSummary: taskAutoSummary
     })

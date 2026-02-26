@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
+import { getStartableSteps } from '@/lib/step-scheduling'
 
 const QWEN_API_KEY = process.env.QWEN_API_KEY || 'sk-4a673b39b21f4e2aad6b9e38f487631f'
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
@@ -248,14 +249,4 @@ ${teamDesc || '（暂无子 Agent，步骤可分配给主 Agent 自己）'}
   }
 }
 
-function getStartableSteps(steps: any[]): any[] {
-  if (steps.length === 0) return []
-  const sorted = [...steps].sort((a, b) => a.order - b.order)
-  const startable: any[] = []
-  const seenGroups = new Set<string>()
-  for (const s of sorted) {
-    if (!s.parallelGroup) { startable.push(s); break }
-    else if (!seenGroups.has(s.parallelGroup)) { seenGroups.add(s.parallelGroup); startable.push(s) }
-  }
-  return startable.length === 0 ? sorted : startable
-}
+// getStartableSteps 已移至 @/lib/step-scheduling 共享模块

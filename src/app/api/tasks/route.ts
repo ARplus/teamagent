@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
+import { getStartableSteps } from '@/lib/step-scheduling'
 import { parseTaskWithAI } from '@/lib/ai-parse'
 
 // 统一认证
@@ -360,18 +361,10 @@ export async function POST(req: NextRequest) {
           if (involvedUserIds.size > 0) {
             const userIds = Array.from(involvedUserIds)
             sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
-            // 通知第一个可开始的步骤
-            const sorted = [...createdSteps].sort((a, b) => a.order - b.order)
-            const seenGroups = new Set<string>()
-            for (const s of sorted) {
-              const pg = (s as any).parallelGroup as string | null
-              if (!pg) {
-                if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
-                break
-              } else if (!seenGroups.has(pg)) {
-                seenGroups.add(pg)
-                if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
-              }
+            // 通知所有可以立即开始的步骤（并行组全部成员）
+            const startable = getStartableSteps(createdSteps as any[])
+            for (const s of startable) {
+              if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
             }
           }
           console.log(`[Task/Create] Team 自动拆解完成：${createdSteps.length} 步，taskId=${task.id}`)

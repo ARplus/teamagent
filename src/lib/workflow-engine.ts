@@ -10,6 +10,7 @@
 
 import { prisma } from './db'
 import { sendToUsers } from './events'
+import { getNextStepsAfterCompletion, activateAndNotifySteps } from './step-scheduling'
 
 const QWEN_API_KEY = process.env.QWEN_API_KEY
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
@@ -372,16 +373,18 @@ export async function processWorkflowAfterSubmit(
     }
   }
 
-  // 3. 通知下一步（如果有）
+  // 3. 通知下一批步骤（parallelGroup 感知）
   let notified = false
-  if (checkResult.nextStepReady && checkResult.nextStepId) {
-    const step = await prisma.taskStep.findUnique({
-      where: { id: completedStepId },
-      select: { taskId: true }
-    })
-    if (step) {
-      await notifyNextStep(step.taskId, checkResult.nextStepId)
-      notified = true
+  const completedStep = await prisma.taskStep.findUnique({
+    where: { id: completedStepId },
+    include: { task: { include: { steps: { orderBy: { order: 'asc' } } } } }
+  })
+  if (completedStep) {
+    const allSteps = completedStep.task.steps
+    const nextSteps = getNextStepsAfterCompletion(allSteps as any[], completedStep as any)
+    if (nextSteps.length > 0) {
+      const count = await activateAndNotifySteps(completedStep.taskId, nextSteps as any[])
+      notified = count > 0
     }
   }
 

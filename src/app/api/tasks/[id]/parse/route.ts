@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { parseTaskWithAI } from '@/lib/ai-parse'
 import { sendToUsers, sendToUser } from '@/lib/events'
+import { getStartableSteps } from '@/lib/step-scheduling'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -220,20 +221,10 @@ ${task.description}
       const userIds = Array.from(involvedUserIds)
       sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
 
-      // 通知所有可以立刻开始的步骤（第一顺序步骤 或 各并行组第一步）
-      const sorted = [...createdSteps].sort((a, b) => a.order - b.order)
-      const seenGroups = new Set<string>()
-      for (const s of sorted) {
-        const pg = (s as any).parallelGroup as string | null
-        if (!pg) {
-          // 顺序步骤：只通知第一个，然后停止
-          if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
-          break
-        } else if (!seenGroups.has(pg)) {
-          // 并行组：每组通知第一个
-          seenGroups.add(pg)
-          if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
-        }
+      // 通知所有可以立即开始的步骤（并行组全部成员）
+      const startable = getStartableSteps(createdSteps as any[])
+      for (const s of startable) {
+        if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
       }
     }
 

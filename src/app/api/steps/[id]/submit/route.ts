@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
 import { processWorkflowAfterSubmit } from '@/lib/workflow-engine'
+import { getStartableSteps } from '@/lib/step-scheduling'
 import { generateSummary } from '@/lib/ai-summary'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
 
@@ -304,31 +305,4 @@ export async function POST(
   }
 }
 
-// 计算可以立刻开始的步骤
-// 规则：无 parallelGroup 的第一步；或所有并行组里各取第一步
-function getStartableSteps(steps: any[]): any[] {
-  if (steps.length === 0) return []
-
-  // 先排序
-  const sorted = [...steps].sort((a, b) => a.order - b.order)
-
-  const startable: any[] = []
-  const seenGroups = new Set<string>()
-
-  for (const s of sorted) {
-    if (!s.parallelGroup) {
-      // 顺序步骤：只取第一个
-      startable.push(s)
-      break
-    } else if (!seenGroups.has(s.parallelGroup)) {
-      // 并行组：每组取第一个
-      seenGroups.add(s.parallelGroup)
-      startable.push(s)
-    }
-  }
-
-  // 如果全都是并行组（没有顺序步骤），全部都可以同时开始
-  if (startable.length === 0) return sorted
-
-  return startable
-}
+// getStartableSteps 已移至 @/lib/step-scheduling 共享模块

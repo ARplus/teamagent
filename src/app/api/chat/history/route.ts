@@ -29,15 +29,14 @@ export async function GET(req: NextRequest) {
     const messages = recentMessages.reverse()
 
     return NextResponse.json({
-      messages: messages
-        .filter(m => m.content !== '__pending__') // 过滤掉卡住的占位消息
-        .map(m => ({
-          id: m.id,
-          content: m.content,
-          role: m.role,
-          createdAt: m.createdAt.toISOString(),
-          metadata: m.metadata ? JSON.parse(m.metadata) : null,
-        })),
+      messages: messages.map(m => ({
+        id: m.id,
+        content: m.content === '__pending__' ? '...' : m.content,
+        role: m.role,
+        createdAt: m.createdAt.toISOString(),
+        metadata: m.metadata ? JSON.parse(m.metadata) : null,
+        pending: m.content === '__pending__', // 前端可据此展示 typing 动画
+      })),
     })
   } catch (error) {
     console.error('获取聊天历史失败:', error)

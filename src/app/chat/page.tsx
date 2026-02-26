@@ -9,6 +9,7 @@ interface Message {
   content: string
   role: 'user' | 'agent'
   createdAt: string
+  pending?: boolean
 }
 
 interface AgentInfo {
@@ -137,7 +138,7 @@ export default function ChatPage() {
           setMessages(prev => [
             ...prev.filter(m => m.id !== tempId),
             { ...userMsg, id: data.userMessageId },
-            { id: data.agentMessageId, content: '...', role: 'agent' as const, createdAt: new Date().toISOString() },
+            { id: data.agentMessageId, content: '...', role: 'agent' as const, createdAt: new Date().toISOString(), pending: true },
           ])
           latestMsgIdRef.current = data.agentMessageId
 
@@ -151,7 +152,7 @@ export default function ChatPage() {
                 const d = await r.json()
                 if (d.ready) {
                   setMessages(prev => prev.map(m =>
-                    m.id === data.agentMessageId ? { ...d.message, role: 'agent' as const } : m
+                    m.id === data.agentMessageId ? { ...d.message, role: 'agent' as const, pending: false } : m
                   ))
                   latestMsgIdRef.current = d.message.id
                   setLoading(false)
@@ -283,20 +284,32 @@ export default function ChatPage() {
 
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+              <div className={`max-w-[80%] rounded-2xl px-4 ${msg.pending ? 'py-3' : 'py-2.5'} ${
                 msg.role === 'user'
                   ? 'bg-orange-500 text-white rounded-br-md'
                   : 'bg-white/10 text-white/90 rounded-bl-md'
               }`}>
-                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/60' : 'text-white/40'}`}>
-                  {new Date(msg.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                </div>
+                {msg.pending ? (
+                  /* typing 动画气泡：保持在对应问题下方，不会因刷新错位 */
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/60' : 'text-white/40'}`}>
+                      {new Date(msg.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ))}
 
-          {typing && (
+          {/* 仅当没有 pending 消息时显示独立 typing 指示器（兼容 LLM fallback） */}
+          {typing && !messages.some(m => m.pending) && (
             <div className="flex justify-start">
               <div className="bg-white/10 rounded-2xl rounded-bl-md px-4 py-3">
                 <div className="flex gap-1">
