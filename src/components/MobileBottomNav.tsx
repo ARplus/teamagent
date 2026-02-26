@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { useEffect, useState } from 'react'
 
 type TabId = 'chat' | 'tasks' | 'profile'
 
@@ -16,12 +17,34 @@ export function MobileBottomNav() {
 
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
   const isRoot = pathname === '/'
-
-  const searchParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('t') : null
-  const rootTab: TabId = searchParam === 'tasks' ? 'tasks' : searchParam === 'profile' ? 'profile' : 'chat'
-
   const isTasksRoute = pathname.startsWith('/tasks')
   const isChatRoute = pathname.startsWith('/chat')
+
+  const getRootTabFromLocation = (): TabId => {
+    if (typeof window === 'undefined') return 'chat'
+    const t = new URLSearchParams(window.location.search).get('t')
+    return t === 'tasks' ? 'tasks' : t === 'profile' ? 'profile' : 'chat'
+  }
+
+  const [rootTab, setRootTab] = useState<TabId>(() => getRootTabFromLocation())
+
+  useEffect(() => {
+    setRootTab(getRootTabFromLocation())
+  }, [pathname])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab: TabId }>).detail?.tab
+      if (tab) setRootTab(tab)
+    }
+    const syncFromUrl = () => setRootTab(getRootTabFromLocation())
+    window.addEventListener('mobileTabChange', handler)
+    window.addEventListener('popstate', syncFromUrl)
+    return () => {
+      window.removeEventListener('mobileTabChange', handler)
+      window.removeEventListener('popstate', syncFromUrl)
+    }
+  }, [])
 
   const activeTab: TabId = isTeam
     ? 'profile'
@@ -35,6 +58,7 @@ export function MobileBottomNav() {
 
   const handleRootTabClick = (tab: TabId) => {
     if (isRoot && tab !== 'profile') {
+      setRootTab(tab)
       window.dispatchEvent(new CustomEvent('mobileTabChange', { detail: { tab } }))
       const url = tab === 'tasks' ? '/?t=tasks' : '/'
       window.history.pushState({}, '', url)

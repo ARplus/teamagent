@@ -2844,7 +2844,7 @@ export default function HomePage() {
           <>
 
             {/* Agent 信息卡 */}
-            <div className="px-4 pt-3 pb-2 flex-shrink-0">
+            <div className="px-4 pt-3 pb-2 flex-shrink-0 sticky top-0 z-20 bg-slate-900/95">
               <div className="flex items-center space-x-3 bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-400 to-rose-500 flex items-center justify-center text-lg shadow-lg shadow-orange-500/20 flex-shrink-0">
                   🦞

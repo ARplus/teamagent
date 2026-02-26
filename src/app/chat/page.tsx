@@ -214,7 +214,7 @@ export default function ChatPage() {
     <div className="h-[100dvh] overflow-hidden bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
 
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/95 sticky top-0 z-20">
+      <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/95 sticky top-0 z-30" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
 
           {/* 左：返回 */}
