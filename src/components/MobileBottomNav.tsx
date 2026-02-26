@@ -10,15 +10,16 @@ type TabId = 'chat' | 'tasks' | 'profile'
 export function MobileBottomNav() {
   const { status } = useSession()
   const pathname = usePathname()
+  const currentPath = pathname || ''
 
   if (status !== 'authenticated') return null
   const authPages = ['/login', '/register', '/landing', '/build-agent']
-  if (authPages.some(p => pathname === p || pathname.startsWith(p + '?'))) return null
+  if (authPages.some(p => currentPath === p || currentPath.startsWith(p + '?'))) return null
 
-  const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
-  const isRoot = pathname === '/'
-  const isTasksRoute = pathname.startsWith('/tasks')
-  const isChatRoute = pathname.startsWith('/chat')
+  const isTeam = currentPath.startsWith('/team') || currentPath.startsWith('/agents') || currentPath.startsWith('/me')
+  const isRoot = currentPath === '/'
+  const isTasksRoute = currentPath.startsWith('/tasks')
+  const isChatRoute = currentPath.startsWith('/chat')
 
   const getRootTabFromLocation = (): TabId => {
     if (typeof window === 'undefined') return 'chat'
@@ -30,7 +31,7 @@ export function MobileBottomNav() {
 
   useEffect(() => {
     setRootTab(getRootTabFromLocation())
-  }, [pathname])
+  }, [currentPath])
 
   useEffect(() => {
     const handler = (e: Event) => {
