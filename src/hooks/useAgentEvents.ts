@@ -15,6 +15,7 @@ export type TeamAgentEvent =
   | { type: 'approval:rejected'; taskId: string; stepId: string; reason?: string }
   | { type: 'workflow:changed'; taskId: string; change: string }
   | { type: 'chat:incoming'; msgId: string; content: string; senderName?: string }
+  | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
   | { type: 'ping' }
 
 interface UseAgentEventsOptions {

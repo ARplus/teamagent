@@ -43,6 +43,9 @@ model User {
   
   // 聊天
   chatMessages  ChatMessage[]
+
+  // 步骤评论
+  stepComments  StepComment[]
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -270,7 +273,10 @@ model TaskStep {
   
   // 提交历史
   submissions StepSubmission[]
-  
+
+  // 评论
+  comments    StepComment[]
+
   // 通知
   notifications Notification[]
 
@@ -329,6 +335,10 @@ model Attachment {
   // 所属提交记录（提交时的附件）
   submissionId String?
   submission   StepSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  // 所属评论（评论附件）
+  commentId   String?
+  comment     StepComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
   // 上传者
   uploaderId  String
@@ -413,6 +423,27 @@ model ChatMessage {
   
   // 元数据（语音输入、附带操作等）
   metadata    String?  // JSON: { voice: true, action: "create_task", ... }
-  
+
   @@index([userId, createdAt])
+}
+
+// 🆕 步骤评论 - 人类与 Agent 在步骤中的自由讨论
+model StepComment {
+  id          String   @id @default(cuid())
+  content     String   // 评论内容
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 所属步骤
+  stepId      String
+  step        TaskStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  // 评论者
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+
+  // 附件
+  attachments Attachment[]
+
+  @@index([stepId, createdAt])
 }

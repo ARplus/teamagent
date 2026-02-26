@@ -67,6 +67,11 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
           addToast('success', '✅ 审核通过', '步骤已完成')
           onTaskUpdate?.()
           break
+
+        case 'step:commented':
+          addToast('info', '💬 新评论', `${event.authorName} 发表了评论`)
+          onTaskUpdate?.()
+          break
       }
     }
   })

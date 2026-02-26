@@ -1455,6 +1455,15 @@ function StepCard({
   const [appealText, setAppealText] = useState('')
   const [appealSubmitting, setAppealSubmitting] = useState(false)
   const [resolveSubmitting, setResolveSubmitting] = useState(false)
+  // 评论相关状态
+  const [comments, setComments] = useState<Array<{
+    id: string; content: string; createdAt: string
+    author: { id: string; name: string | null; email: string; avatar: string | null }
+    attachments: { id: string; name: string; url: string; type: string | null; size: number | null }[]
+  }>>([])
+  const [commentText, setCommentText] = useState('')
+  const [commentSending, setCommentSending] = useState(false)
+  const [commentsLoaded, setCommentsLoaded] = useState(false)
 
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
@@ -1474,10 +1483,45 @@ function StepCard({
     }
   }
 
+  const loadComments = async () => {
+    try {
+      const res = await fetch(`/api/steps/${step.id}/comments`)
+      if (res.ok) {
+        const data = await res.json()
+        setComments(data.comments || [])
+        setCommentsLoaded(true)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const sendComment = async () => {
+    if (!commentText.trim() || commentSending) return
+    setCommentSending(true)
+    try {
+      const res = await fetch(`/api/steps/${step.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: commentText.trim() })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setComments(prev => [...prev, data.comment])
+        setCommentText('')
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setCommentSending(false)
+    }
+  }
+
   const handleExpand = () => {
     const next = !expanded
     setExpanded(next)
     if (next && history.length === 0) loadHistory()
+    if (next && !commentsLoaded) loadComments()
   }
 
   const saveAssignee = async (e: React.MouseEvent) => {
@@ -1823,6 +1867,74 @@ function StepCard({
               </div>
             </div>
           )}
+
+          {/* 💬 评论区 */}
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <div className="text-xs text-slate-500 mb-2 font-medium">💬 讨论 {comments.length > 0 ? `(${comments.length})` : ''}</div>
+
+            {/* 评论列表 */}
+            {comments.length > 0 && (
+              <div className="space-y-2 max-h-60 overflow-y-auto mb-3">
+                {comments.map(c => {
+                  const isMe = c.author.id === currentUserId
+                  return (
+                    <div key={c.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] ${isMe ? 'order-2' : ''}`}>
+                        <div className={`flex items-center gap-1.5 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${isMe ? 'bg-orange-500' : 'bg-indigo-500'}`}>
+                            {(c.author.name || c.author.email).charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-[10px] text-slate-400">{c.author.name || c.author.email.split('@')[0]}</span>
+                          <span className="text-[10px] text-slate-300">
+                            {new Date(c.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className={`px-3 py-2 rounded-xl text-sm ${
+                          isMe
+                            ? 'bg-orange-50 text-orange-900 rounded-tr-md'
+                            : 'bg-slate-50 text-slate-700 rounded-tl-md'
+                        }`}>
+                          <p className="whitespace-pre-wrap break-words">{c.content}</p>
+                          {c.attachments.length > 0 && (
+                            <div className="mt-1.5 space-y-1">
+                              {c.attachments.map(att => (
+                                <a key={att.id} href={att.url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                                  📎 {att.name}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 评论输入框 */}
+            <div className="flex items-end gap-2">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() }
+                }}
+                placeholder="说点什么..."
+                rows={1}
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 bg-white placeholder:text-slate-400"
+                style={{ minHeight: '36px', maxHeight: '80px' }}
+              />
+              <button
+                onClick={sendComment}
+                disabled={!commentText.trim() || commentSending}
+                className="w-8 h-8 bg-orange-500 hover:bg-orange-400 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-sm"
+              >
+                {commentSending ? '⏳' : '↑'}
+              </button>
+            </div>
+          </div>
 
           {isWaiting && canApprove && (
             <div className="mt-4 pt-4 border-t border-slate-200">

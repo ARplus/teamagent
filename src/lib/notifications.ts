@@ -10,6 +10,7 @@ export type NotificationType =
   | 'step_appealed'      // Agent 提出申诉
   | 'appeal_resolved'    // 申诉已裁定
   | 'task_completed'     // 任务完成
+  | 'step_commented'     // 步骤新评论
   | 'mention'            // @提及
 
 // 创建通知
@@ -111,6 +112,12 @@ export const notificationTemplates = {
     type: 'step_appealed' as NotificationType,
     title: 'Agent提出申诉',
     content: `${agentName} 对步骤「${stepTitle}」提出申诉: ${appealText.slice(0, 100)}`
+  }),
+
+  stepCommented: (stepTitle: string, authorName: string) => ({
+    type: 'step_commented' as NotificationType,
+    title: '💬 新评论',
+    content: `${authorName} 在步骤「${stepTitle}」中发表了评论`
   }),
 
   appealResolved: (stepTitle: string, decision: 'upheld' | 'dismissed') => ({

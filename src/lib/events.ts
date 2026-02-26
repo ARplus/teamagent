@@ -18,6 +18,7 @@ export type TeamAgentEvent =
   | { type: 'step:appealed'; taskId: string; stepId: string; title: string; appealText: string }
   | { type: 'appeal:resolved'; taskId: string; stepId: string; decision: 'upheld' | 'dismissed'; note?: string }
   | { type: 'chat:incoming'; msgId: string; content: string; agentId: string }
+  | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
   | { type: 'ping' }
 
 // 订阅者类型
