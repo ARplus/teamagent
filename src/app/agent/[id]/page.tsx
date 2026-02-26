@@ -101,7 +101,7 @@ const stepStatusMap: Record<string, { icon: string; label: string; color: string
 const gradients = [
   'from-orange-500 via-rose-500 to-pink-500',
   'from-violet-500 via-purple-500 to-indigo-500',
-  'from-emerald-500 via-teal-500 to-cyan-500',
+  'from-rose-500 via-pink-500 to-fuchsia-500',
   'from-blue-500 via-indigo-500 to-violet-500',
   'from-amber-500 via-orange-500 to-red-500',
 ]
@@ -291,27 +291,34 @@ export default function AgentProfileByIdPage() {
             <div className="absolute -top-16 -right-16 w-64 h-64 bg-white/10 rounded-full" />
             <div className="absolute -bottom-8 -left-8 w-48 h-48 bg-white/5 rounded-full" />
 
-            <div className="relative p-8">
-              <div className="flex items-start space-x-6">
+            <div className="relative p-6 sm:p-8">
+              {(() => {
+                const emojiMatch = agent.name.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u)
+                // Lobster 等无 emoji 前缀的 agent，用名称首字母兜底；已知主 Agent 用 🦞
+                const fallback = agent.name.toLowerCase().includes('lobster') ? '🦞' : agent.name.charAt(0)
+                const avatarIcon = agent.avatar?.trim() || (emojiMatch ? emojiMatch[0] : fallback)
+                const displayName = agent.name.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, '')
+                return (
+              <div className="flex flex-col items-center sm:flex-row sm:items-start sm:space-x-6">
                 {/* Avatar */}
-                <div className="flex-shrink-0">
-                  {agent.avatar ? (
+                <div className="flex-shrink-0 mb-4 sm:mb-0">
+                  {agent.avatar && agent.avatar.startsWith('http') ? (
                     <img
                       src={agent.avatar}
                       alt={agent.name}
-                      className="w-24 h-24 rounded-2xl object-cover shadow-2xl border-4 border-white/30"
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover shadow-2xl border-4 border-white/30"
                     />
                   ) : (
-                    <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-4xl font-bold text-white shadow-2xl border-4 border-white/30">
-                      {agent.name.charAt(0)}
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-5xl shadow-2xl border-4 border-white/30">
+                      {avatarIcon}
                     </div>
                   )}
                 </div>
 
                 {/* 主信息 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h1 className="text-3xl font-bold text-white">{agent.name}</h1>
+                <div className="flex-1 min-w-0 text-center sm:text-left">
+                  <div className="flex items-center justify-center sm:justify-start space-x-2 mb-2">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white">{displayName}</h1>
                     <span className="text-lg">{agentStatus.icon}</span>
                     <span className="text-sm text-white/80">{agentStatus.label}</span>
                   </div>
@@ -337,7 +344,7 @@ export default function AgentProfileByIdPage() {
 
                   {/* 能力标签 */}
                   {capabilities.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-2 mb-3 justify-center sm:justify-start">
                       {capabilities.map((cap, i) => (
                         <span key={i} className="bg-white/20 backdrop-blur text-white text-xs px-2.5 py-1 rounded-lg font-medium border border-white/20">
                           {cap}
@@ -348,7 +355,7 @@ export default function AgentProfileByIdPage() {
 
                   {/* 信誉分 */}
                   {agent.reputation !== null && agent.reputation !== undefined && (
-                    <div className="flex items-center space-x-2 mb-3">
+                    <div className="flex items-center justify-center sm:justify-start space-x-2 mb-3">
                       <div className="flex items-center space-x-0.5">
                         {[1, 2, 3, 4, 5].map(i => (
                           <span key={i} className={`text-lg ${i <= Math.round(agent.reputation ?? 0) ? 'text-amber-300' : 'text-white/30'}`}>
@@ -368,6 +375,8 @@ export default function AgentProfileByIdPage() {
                   )}
                 </div>
               </div>
+                )
+              })()}
             </div>
           </div>
 

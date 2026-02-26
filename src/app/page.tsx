@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { NotificationBell } from '@/components/NotificationBell'
+import { Navbar } from '@/components/Navbar'
 import LandingPage from '@/components/LandingPage'
 import { PairingModal } from '@/components/PairingModal'
 import { VoiceMicButton } from '@/components/VoiceMicButton'
@@ -2409,78 +2410,160 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
 
 // ============ Mobile Profile Tab ============
 
+interface MobileAgent {
+  id: string; name: string; personality: string | null; avatar: string | null
+  status: string; capabilities: string | null; isMainAgent: boolean
+  stats: { doneSteps: number; pendingSteps: number }
+}
+
+const mobileStatusDot: Record<string, string> = {
+  online: 'bg-emerald-400', working: 'bg-blue-400', waiting: 'bg-yellow-400', offline: 'bg-slate-500'
+}
+const mobileStatusLabel: Record<string, string> = {
+  online: '在线', working: '工作中', waiting: '待命', offline: '离线'
+}
+const mobileGradients = [
+  'from-orange-400 to-rose-500','from-blue-400 to-purple-500',
+  'from-green-400 to-teal-500','from-yellow-400 to-orange-500',
+  'from-pink-400 to-rose-500','from-indigo-400 to-blue-500',
+]
+
 function MobileProfileView({ userEmail, userName, onSignOut }: {
   userEmail: string; userName: string; onSignOut: () => void
 }) {
   const initials = (userName || userEmail || '?').charAt(0).toUpperCase()
+  const [agents, setAgents] = useState<MobileAgent[]>([])
+  const [mainAgent, setMainAgent] = useState<MobileAgent | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const menuItems = [
-    { href: '/team', icon: '🌊', label: '我的战队', desc: '查看 Agent 军团', highlight: true },
-    { href: '/agents', icon: '🤖', label: 'Agent 列表', desc: '管理所有 Agents' },
-    { href: '/landing', icon: '🌐', label: '官网首页', desc: '分享给朋友' },
-    { href: '/settings', icon: '⚙️', label: '设置', desc: '账号与偏好' },
-  ]
+  useEffect(() => {
+    fetch('/api/agents/team')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setMainAgent(d.mainAgent || null)
+          setAgents(d.subAgents || [])
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const allAgents = mainAgent ? [mainAgent, ...agents] : agents
+  const onlineCount = allAgents.filter(a => a.status !== 'offline').length
 
   return (
     <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-900 to-slate-800">
-      {/* 用户信息头部 */}
-      <div className="px-4 pt-8 pb-6">
-        <div className="flex items-center space-x-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-2xl font-bold text-white shadow-xl shadow-orange-500/30 flex-shrink-0">
+      {/* 司令官头部 */}
+      <div className="px-4 pt-6 pb-4">
+        <div className="flex items-center space-x-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-orange-500/30 flex-shrink-0">
             {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-white truncate">{userName || '用户'}</h2>
-            <p className="text-slate-400 text-sm truncate">{userEmail}</p>
-            <div className="flex items-center space-x-1.5 mt-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-emerald-400 text-xs">已登录</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-white truncate">{userName || '用户'}</h2>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-medium">👑 总司令</span>
             </div>
+            <p className="text-slate-500 text-xs truncate">{userEmail}</p>
           </div>
+          <a href="/settings" className="w-9 h-9 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center text-slate-400 active:bg-slate-700 flex-shrink-0">
+            <span className="text-sm">⚙️</span>
+          </a>
         </div>
       </div>
 
-      {/* 菜单列表 */}
-      <div className="px-4 space-y-2 pb-8">
-        {menuItems.map((item) => (
-          <a
-            key={item.href}
-            href={item.href}
-            className={`flex items-center justify-between rounded-2xl px-4 py-4 transition-colors ${
-              item.highlight
-                ? 'bg-gradient-to-r from-orange-500/20 to-rose-500/20 border border-orange-400/30'
-                : 'bg-slate-800/60 border border-slate-700/50'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${
-                item.highlight ? 'bg-orange-500/30' : 'bg-slate-700/60'
-              }`}>
-                {item.icon}
-              </div>
-              <div>
-                <div className={`text-sm font-semibold ${item.highlight ? 'text-orange-200' : 'text-white'}`}>
-                  {item.label}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
-              </div>
-            </div>
-            <span className={`text-lg ${item.highlight ? 'text-orange-400' : 'text-slate-600'}`}>›</span>
-          </a>
-        ))}
+      {/* 军团列表 */}
+      <div className="px-4 pb-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🌊</span>
+            <span className="text-white font-bold text-sm">我的军团</span>
+            <span className="text-slate-500 text-xs">{allAgents.length} 位 · {onlineCount} 在线</span>
+          </div>
+          <a href="/team" className="text-orange-400 text-xs font-medium active:text-orange-300">详情 ›</a>
+        </div>
 
-        {/* 退出登录 */}
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="text-2xl animate-bounce">🌊</div>
+            <p className="text-slate-500 text-xs mt-2">加载军团...</p>
+          </div>
+        ) : allAgents.length === 0 ? (
+          <div className="text-center py-8 bg-slate-800/40 rounded-2xl border border-slate-700/50">
+            <div className="text-3xl mb-2">🤖</div>
+            <p className="text-slate-400 text-sm">还没有 Agent 成员</p>
+            <a href="/build-agent" className="inline-block mt-3 px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-xs font-semibold">
+              配对第一位 Agent
+            </a>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {allAgents.map((agent) => {
+              const grad = mobileGradients[agent.name.charCodeAt(0) % mobileGradients.length]
+              const dot = mobileStatusDot[agent.status] || mobileStatusDot.offline
+              const label = mobileStatusLabel[agent.status] || '离线'
+              const caps = (() => { try { const p = JSON.parse(agent.capabilities || '[]'); return Array.isArray(p) ? p.slice(0, 2) : [] } catch { return [] } })()
+              const total = agent.stats.doneSteps + agent.stats.pendingSteps
+              const pct = total > 0 ? Math.round((agent.stats.doneSteps / total) * 100) : 0
+              // 提取 emoji 头像：优先用 avatar 字段，其次从 name 开头提取 emoji，主 Agent 默认 🦞
+              const emojiMatch = agent.name.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u)
+              const avatarIcon = agent.avatar?.trim() || (emojiMatch ? emojiMatch[0] : (agent.isMainAgent ? '🦞' : agent.name.charAt(0)))
+
+              return (
+                <a key={agent.id} href={`/agent/${agent.id}`}
+                  className={`flex items-center gap-3 rounded-2xl px-3.5 py-3 transition-colors ${
+                    agent.isMainAgent
+                      ? 'bg-gradient-to-r from-orange-500/20 to-amber-500/10 border border-orange-400/30 active:from-orange-500/30'
+                      : 'bg-slate-800/60 border border-slate-700/50 active:bg-slate-700/60'
+                  }`}>
+                  <div className="relative flex-shrink-0">
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${agent.isMainAgent ? 'from-orange-400 to-rose-500' : grad} flex items-center justify-center text-lg shadow-sm`}>
+                      {avatarIcon}
+                    </div>
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800 ${dot}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-white text-sm font-semibold truncate">{agent.name}</span>
+                      {agent.isMainAgent && <span className="text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300 font-medium flex-shrink-0">主</span>}
+                      <span className={`text-[10px] px-1 py-0.5 rounded font-medium flex-shrink-0 ${agent.status !== 'offline' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-500'}`}>{label}</span>
+                    </div>
+                    {caps.length > 0 && (
+                      <div className="flex gap-1 mt-0.5">
+                        {caps.map(c => <span key={c} className="text-[10px] text-slate-500">{c}</span>)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0 w-12 text-right">
+                    <div className="text-xs font-semibold text-emerald-400">{agent.stats.doneSteps}</div>
+                    <div className="w-full h-1 bg-slate-700 rounded-full mt-0.5 overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-orange-400 to-emerald-400 rounded-full" style={{ width: `${Math.max(pct, pct > 0 ? 10 : 0)}%` }} />
+                    </div>
+                  </div>
+                </a>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 底部快捷操作 + 退出 */}
+      <div className="px-4 pt-2 pb-8 space-y-2">
+        <div className="flex gap-2">
+          <a href="/team" className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-xl py-2.5 text-slate-300 active:bg-slate-700/60 text-xs font-medium">
+            <span>🌊</span><span>战队主页</span>
+          </a>
+          <a href="/landing" className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-xl py-2.5 text-slate-300 active:bg-slate-700/60 text-xs font-medium">
+            <span>🌐</span><span>官网首页</span>
+          </a>
+        </div>
         <button
           onClick={onSignOut}
-          className="w-full flex items-center space-x-3 bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-4 active:bg-red-500/20 transition-colors mt-4"
+          className="w-full flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl py-2.5 active:bg-red-500/20 transition-colors"
         >
-          <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-lg flex-shrink-0">
-            🚪
-          </div>
-          <div className="text-left">
-            <div className="text-sm font-semibold text-red-400">退出登录</div>
-            <div className="text-xs text-slate-600 mt-0.5">下次见 👋</div>
-          </div>
+          <span className="text-sm">🚪</span>
+          <span className="text-xs font-semibold text-red-400">退出登录</span>
         </button>
       </div>
     </div>
@@ -2917,7 +3000,7 @@ export default function HomePage() {
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
                   placeholder="和你的Agent说话..."
-                  className="flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 border border-slate-700/50"
+                  className="flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 border border-slate-700/50"
                 />
                 <button
                   onClick={handleChatSend}
@@ -2935,7 +3018,7 @@ export default function HomePage() {
         {activeTab === 'tasks' && (
           <>
             {/* Tasks Banner */}
-            <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
+            <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3 bg-gradient-to-br from-orange-500 to-rose-500 shadow-lg shadow-orange-500/20">
               {/* Title row */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2947,24 +3030,24 @@ export default function HomePage() {
                 </div>
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="text-xs px-3 py-1.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold"
+                  className="text-xs px-3 py-1.5 bg-white/90 text-slate-800 rounded-xl font-semibold hover:bg-white transition"
                 >
                   + 新建
                 </button>
               </div>
               {/* Stats row */}
               <div className="grid grid-cols-3 gap-2">
-                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2 text-center">
+                <div className="bg-white/20 backdrop-blur-sm border border-white/20 rounded-xl px-3 py-2 text-center">
                   <div className="text-white font-bold text-base leading-tight">{pendingTaskCount}</div>
-                  <div className="text-slate-500 text-xs mt-0.5">进行中</div>
+                  <div className="text-white/60 text-xs mt-0.5">进行中</div>
                 </div>
-                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2 text-center">
-                  <div className="text-emerald-400 font-bold text-base leading-tight">{doneTaskCount}</div>
-                  <div className="text-slate-500 text-xs mt-0.5">已完成</div>
+                <div className="bg-white/20 backdrop-blur-sm border border-white/20 rounded-xl px-3 py-2 text-center">
+                  <div className="text-white font-bold text-base leading-tight">{doneTaskCount}</div>
+                  <div className="text-white/60 text-xs mt-0.5">已完成</div>
                 </div>
-                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2 text-center">
-                  <div className="text-orange-300 font-bold text-base leading-tight">{totalStepsDone}<span className="text-slate-600 text-xs font-normal">/{totalStepsAll}</span></div>
-                  <div className="text-slate-500 text-xs mt-0.5">步骤完成</div>
+                <div className="bg-white/20 backdrop-blur-sm border border-white/20 rounded-xl px-3 py-2 text-center">
+                  <div className="text-white font-bold text-base leading-tight">{totalStepsDone}<span className="text-white/50 text-xs font-normal">/{totalStepsAll}</span></div>
+                  <div className="text-white/60 text-xs mt-0.5">步骤完成</div>
                 </div>
               </div>
             </div>
@@ -2982,7 +3065,7 @@ export default function HomePage() {
                   </button>
                 </div>
               ) : (
-                tasks.map(task => {
+                tasks.map((task, idx) => {
                   const stepsDone = task.steps?.filter(s => s.status === 'done').length || 0
                   const stepsTotal = task.steps?.length || 0
                   const hasWaiting = task.steps?.some(s => s.status === 'waiting_approval')
@@ -2993,10 +3076,16 @@ export default function HomePage() {
                     <div
                       key={task.id}
                       onClick={() => setSelectedId(task.id)}
-                      className="bg-slate-800/60 border border-slate-700/50 rounded-2xl px-4 py-3 active:bg-slate-700/60 transition-colors cursor-pointer"
+                      className={`rounded-2xl px-4 py-3 active:bg-slate-700/60 transition-colors cursor-pointer border ${
+                        idx % 2 === 0
+                          ? 'bg-slate-800/60 border-slate-700/50'
+                          : 'bg-orange-950/30 border-orange-900/25'
+                      }`}
                     >
                       <div className="flex items-start justify-between mb-1">
-                        <span className="font-semibold text-white text-sm flex-1 pr-2 leading-snug">{task.title}</span>
+                        <span className={`font-semibold text-sm flex-1 pr-2 leading-snug ${
+                          idx % 2 === 0 ? 'text-slate-100' : 'text-orange-100'
+                        }`}>{task.title}</span>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${st.bg} ${st.color}`}>{st.label}</span>
                           {hasWaiting && <span className="text-xs text-amber-400 font-medium">待审 ▶</span>}
@@ -3004,13 +3093,13 @@ export default function HomePage() {
                       </div>
                       {stepsTotal > 0 && (
                         <div className="flex items-center space-x-2 mt-2">
-                          <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
+                          <div className={`flex-1 h-1 rounded-full overflow-hidden ${idx % 2 === 0 ? 'bg-slate-700' : 'bg-orange-900/40'}`}>
                             <div className="h-full bg-gradient-to-r from-orange-400 to-emerald-400" style={{ width: `${progress}%` }} />
                           </div>
-                          <span className="text-xs text-slate-500 flex-shrink-0">{stepsDone}/{stepsTotal}</span>
+                          <span className={`text-xs flex-shrink-0 ${idx % 2 === 0 ? 'text-slate-500' : 'text-orange-300/60'}`}>{stepsDone}/{stepsTotal}</span>
                         </div>
                       )}
-                      <div className="text-xs text-slate-600 mt-1">{formatTime(task.updatedAt)}</div>
+                      <div className={`text-xs mt-1 ${idx % 2 === 0 ? 'text-slate-600' : 'text-orange-400/40'}`}>{formatTime(task.updatedAt)}</div>
                     </div>
                   )
                 })
@@ -3021,11 +3110,14 @@ export default function HomePage() {
 
         {/* ═══════════ 我 Tab ═══════════ */}
         {activeTab === 'profile' && (
+          <>
+          <Navbar />
           <MobileProfileView
             userEmail={session?.user?.email || ''}
             userName={session?.user?.name || ''}
             onSignOut={() => router.push('/api/auth/signout')}
           />
+          </>
         )}
 
         {/* 底部 spacer — 为全局固定 tab bar 留出空间 */}

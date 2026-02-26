@@ -59,6 +59,10 @@ function agentAvatar(name: string, avatar?: string | null): string {
   return name.charAt(0).toUpperCase()
 }
 
+function stripEmoji(name: string): string {
+  return name.replace(/^(\p{Emoji_Presentation}|\p{Extended_Pictographic})\s*/u, '')
+}
+
 function msToHours(ms: number) {
   const h = Math.round(ms / 3600000)
   return h > 0 ? `${h}小时` : `${Math.round(ms / 60000)}分钟`
@@ -79,34 +83,46 @@ function AgentRow({ agent }: { agent: AgentData }) {
   const total = agent.stats.doneSteps + agent.stats.pendingSteps
   const pct = total > 0 ? Math.round((agent.stats.doneSteps / total) * 100) : 0
   const isOnline = agent.status !== 'offline'
+  const displayName = stripEmoji(agent.name)
 
   return (
     <a href={`/agent/${agent.id}`}
-      className="flex items-center gap-4 px-5 py-4 hover:bg-gradient-to-r hover:from-orange-50/60 hover:to-transparent transition-all cursor-pointer group border-b border-slate-50 last:border-0">
-      {/* Avatar */}
+      className="flex items-center gap-3 md:gap-4 px-4 md:px-5 py-3.5 md:py-4 hover:bg-gradient-to-r md:hover:from-orange-50/60 hover:from-slate-700/60 hover:to-transparent transition-all cursor-pointer group border-b border-slate-700/50 md:border-slate-50 last:border-0">
+      {/* Avatar — subtle bg + border, let emoji pop */}
       <div className="relative flex-shrink-0">
-        <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${grad(agent.name)} flex items-center justify-center text-white font-bold text-xl shadow-sm`}>
+        <div className="w-11 h-11 rounded-2xl bg-slate-700/50 md:bg-slate-50 border border-slate-600/40 md:border-slate-200 flex items-center justify-center text-2xl">
           {agentAvatar(agent.name, agent.avatar)}
         </div>
-        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusDot[agent.status] || statusDot.offline}`} />
+        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-800 md:border-white ${statusDot[agent.status] || statusDot.offline}`} />
       </div>
 
-      {/* Name + personality */}
+      {/* Name + personality + mobile task count */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-          <span className="font-semibold text-slate-800 text-sm truncate max-w-[12rem]">{agent.name}</span>
+          <span className="font-semibold text-slate-100 md:text-slate-800 text-sm truncate max-w-[12rem]">{displayName}</span>
           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
-            isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
+            isOnline ? 'bg-emerald-900/50 text-emerald-400 md:bg-emerald-50 md:text-emerald-600' : 'bg-slate-700 text-slate-400 md:bg-slate-100 md:text-slate-400'
           }`}>
             {statusLabel[agent.status] || '离线'}
           </span>
         </div>
         {agent.personality && (
-          <p className="text-xs text-slate-400 truncate leading-relaxed">{agent.personality}</p>
+          <p className="text-xs text-slate-500 md:text-slate-400 truncate leading-relaxed">{agent.personality}</p>
         )}
+        {/* Mobile-only: compact task stats */}
+        <div className="flex md:hidden items-center gap-2 mt-1">
+          <span className="text-emerald-400 text-xs font-medium">{agent.stats.doneSteps}✓</span>
+          {agent.stats.pendingSteps > 0 && (
+            <span className="text-blue-400 text-xs font-medium">{agent.stats.pendingSteps}⏳</span>
+          )}
+          <div className="w-16 h-1 bg-slate-700 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full ${pct > 0 ? 'bg-gradient-to-r from-orange-400 to-rose-400' : 'bg-slate-600'}`}
+              style={{ width: `${Math.max(pct, pct > 0 ? 8 : 0)}%` }} />
+          </div>
+        </div>
       </div>
 
-      {/* Capability chips */}
+      {/* Capability chips — desktop only */}
       <div className="hidden md:flex items-center gap-1.5 flex-shrink-0">
         {caps.map((c, i) => (
           <span key={c} className={`text-xs px-2 py-0.5 rounded-full border font-medium ${capColors[i % capColors.length]}`}>
@@ -115,7 +131,7 @@ function AgentRow({ agent }: { agent: AgentData }) {
         ))}
       </div>
 
-      {/* Progress */}
+      {/* Progress — desktop only */}
       <div className="hidden lg:flex flex-col items-end gap-1.5 w-28 flex-shrink-0">
         <div className="flex items-center gap-2 text-xs w-full justify-end">
           <span className="text-emerald-600 font-semibold">{agent.stats.doneSteps} 完成</span>
@@ -129,8 +145,8 @@ function AgentRow({ agent }: { agent: AgentData }) {
         </div>
       </div>
 
-      {/* Reputation / arrow */}
-      <div className="flex items-center gap-1 w-10 justify-end flex-shrink-0">
+      {/* Reputation / arrow — desktop only */}
+      <div className="hidden md:flex items-center gap-1 w-10 justify-end flex-shrink-0">
         {agent.reputation && agent.reputation > 0 ? (
           <div className="flex items-center gap-0.5">
             <span className="text-yellow-400 text-xs">⭐</span>
@@ -153,7 +169,7 @@ function MainAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: st
   const pct = total > 0 ? Math.round((agent.stats.doneSteps / total) * 100) : 0
 
   return (
-    <div className="rounded-2xl overflow-hidden shadow-md shadow-orange-500/10 border border-orange-100">
+    <div className="rounded-2xl overflow-hidden shadow-md shadow-orange-500/10 border border-slate-700 md:border-orange-100">
       <div className="bg-gradient-to-br from-orange-500 to-rose-500 p-5">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs px-2.5 py-1 rounded-full bg-white/20 text-white font-medium border border-white/30">
@@ -165,11 +181,11 @@ function MainAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: st
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-2xl font-bold border border-white/30">
+          <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-3xl border border-white/30">
             {agentAvatar(agent.name, agent.avatar)}
           </div>
           <div>
-            <div className="text-white font-bold text-lg">{agent.name}</div>
+            <div className="text-white font-bold text-lg">{stripEmoji(agent.name)}</div>
             {agent.personality && <div className="text-white/70 text-xs mt-0.5 line-clamp-2">{agent.personality}</div>}
           </div>
         </div>
@@ -179,18 +195,18 @@ function MainAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: st
           </div>
         )}
       </div>
-      <div className="bg-white p-4">
+      <div className="bg-slate-800 md:bg-white p-4">
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <div className="text-center p-2.5 bg-green-50 rounded-xl">
-            <div className="text-xl font-bold text-green-600">{agent.stats.doneSteps}</div>
-            <div className="text-xs text-slate-400">已完成</div>
+          <div className="text-center p-2.5 bg-green-900/30 md:bg-green-50 rounded-xl">
+            <div className="text-xl font-bold text-green-400 md:text-green-600">{agent.stats.doneSteps}</div>
+            <div className="text-xs text-slate-500 md:text-slate-400">已完成</div>
           </div>
-          <div className="text-center p-2.5 bg-blue-50 rounded-xl">
-            <div className="text-xl font-bold text-blue-500">{agent.stats.pendingSteps}</div>
-            <div className="text-xs text-slate-400">进行中</div>
+          <div className="text-center p-2.5 bg-blue-900/30 md:bg-blue-50 rounded-xl">
+            <div className="text-xl font-bold text-blue-400 md:text-blue-500">{agent.stats.pendingSteps}</div>
+            <div className="text-xs text-slate-500 md:text-slate-400">进行中</div>
           </div>
         </div>
-        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-slate-700 md:bg-slate-100 rounded-full overflow-hidden">
           <div className="h-full bg-gradient-to-r from-orange-400 to-rose-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
         </div>
         {agent.reputation !== null && agent.reputation > 0 && (
@@ -492,8 +508,8 @@ export default function TeamPage() {
   }
 
   if (status === 'loading' || loading) return (
-    <div className="h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-center"><div className="text-5xl mb-3 animate-bounce">🌊</div><div className="text-slate-500 text-sm">加载战队...</div></div>
+    <div className="h-screen flex items-center justify-center bg-slate-900 md:bg-slate-50">
+      <div className="text-center"><div className="text-5xl mb-3 animate-bounce">🌊</div><div className="text-slate-400 md:text-slate-500 text-sm">加载战队...</div></div>
     </div>
   )
 
@@ -511,7 +527,7 @@ export default function TeamPage() {
   const displayName = nameValue || c?.name || c?.email || 'Commander'
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-16 md:pb-0">
+    <div className="min-h-screen bg-slate-900 md:bg-slate-50 pb-24 md:pb-0">
       <Navbar />
 
       {/* ── Hero Banner ── */}
@@ -576,7 +592,7 @@ export default function TeamPage() {
             {mainAgent
               ? <a href="/?t=chat" title="和主Agent对话"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>
               : (
-                <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6 text-center">
+                <div className="bg-slate-800 md:bg-white rounded-2xl border border-dashed border-slate-600 md:border-slate-200 p-6 text-center">
                   <div className="text-3xl mb-2">🤖</div>
                   <p className="text-slate-400 text-sm mb-3">还没有总指挥</p>
                   <button onClick={() => setShowPairing(true)}
@@ -591,7 +607,7 @@ export default function TeamPage() {
             {mainAgent && (
               <button
                 onClick={() => setShowBuildTeam(true)}
-                className="w-full py-3 rounded-2xl border-2 border-dashed border-blue-200 hover:border-blue-400 text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-all text-sm font-semibold flex items-center justify-center gap-2 group"
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-blue-800 md:border-blue-200 hover:border-blue-400 text-blue-400 md:text-blue-500 hover:text-blue-300 md:hover:text-blue-700 hover:bg-blue-900/30 md:hover:bg-blue-50 transition-all text-sm font-semibold flex items-center justify-center gap-2 group"
               >
                 <span className="text-lg group-hover:animate-bounce">🌊</span>
                 <span>AI 帮我组建成员军团</span>
@@ -603,10 +619,10 @@ export default function TeamPage() {
 
           {/* ── RIGHT: Sub-agent list ── */}
           <div className="flex-1 min-w-0">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="bg-slate-800 md:bg-white rounded-2xl shadow-sm border border-slate-700 md:border-slate-100 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700 md:border-slate-100">
                 <div>
-                  <h2 className="font-bold text-slate-800">🌊 战队成员</h2>
+                  <h2 className="font-bold text-white md:text-slate-800">🌊 战队成员</h2>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {subAgents.length} 位成员 · {subAgents.filter(a => a.status !== 'offline').length} 在线
                   </p>
@@ -619,31 +635,31 @@ export default function TeamPage() {
               </div>
 
               {/* Column labels */}
-              <div className="flex items-center gap-4 px-5 py-2.5 bg-slate-50/80 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="flex items-center gap-4 px-5 py-2.5 bg-slate-700/50 md:bg-slate-50/80 border-b border-slate-700 md:border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 <div className="w-11 flex-shrink-0" />
                 <div className="flex-1">成员 · 个性</div>
                 <div className="hidden md:block w-40">专属技能</div>
-                <div className="hidden lg:block w-28 text-right">任务进度</div>
+                <div className="w-28 text-right hidden md:block">任务进度</div>
                 <div className="hidden md:block w-10 text-right">信誉</div>
               </div>
 
               {subAgents.length === 0 ? (
                 <div className="py-16 text-center">
                   <div className="text-4xl mb-3">🌊</div>
-                  <p className="text-slate-400 text-sm">还没有其他战队成员</p>
+                  <p className="text-slate-400 md:text-slate-400 text-sm">还没有其他战队成员</p>
                   <button onClick={() => setShowPairing(true)}
                     className="mt-4 px-5 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold">
                     🔗 配对第一位 Agent
                   </button>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-700/50 md:divide-slate-50">
                   {subAgents.map(a => <AgentRow key={a.id} agent={a} />)}
                 </div>
               )}
 
-              <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100 text-center">
-                <p className="text-xs text-slate-400">截图分享你的数字军团 🌊 · TeamAgent</p>
+              <div className="px-5 py-3 bg-slate-700/30 md:bg-slate-50/50 border-t border-slate-700 md:border-slate-100 text-center">
+                <p className="text-xs text-slate-500 md:text-slate-400">截图分享你的数字军团 🌊 · TeamAgent</p>
               </div>
             </div>
           </div>
