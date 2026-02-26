@@ -2523,7 +2523,11 @@ export default function HomePage() {
 
   // ── 移动端 chat-first 状态 ──────────────────────────────────────
   const [isMobile, setIsMobile] = useState(false)
-  const [activeTab, setActiveTab] = useState<'chat' | 'tasks' | 'profile'>('chat')
+  const [activeTab, setActiveTab] = useState<'chat' | 'tasks' | 'profile'>(() => {
+    if (typeof window === 'undefined') return 'chat'
+    const t = new URLSearchParams(window.location.search).get('t')
+    return t === 'tasks' ? 'tasks' : t === 'profile' ? 'profile' : 'chat'
+  })
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
@@ -2541,22 +2545,30 @@ export default function HomePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // ── URL ?t= 参数 + custom event 同步 activeTab（配合全局底导航） ──
+  // ── URL ?t= 参数 + 底导航事件同步 activeTab（移动端） ─────────────
   useEffect(() => {
     if (!isMobile) return
-    // 初始读取 URL 参数（从其他页面跳过来时）
-    const t = new URLSearchParams(window.location.search).get('t')
-    if (t === 'tasks') setActiveTab('tasks')
-    else if (t === 'profile') setActiveTab('profile')
-    else setActiveTab('chat')
 
-    // 监听底导航的 custom event（在同一页面切换时）
-    const handler = (e: Event) => {
-      const tab = (e as CustomEvent<{ tab: 'chat' | 'tasks' | 'profile' }>).detail.tab
-      setActiveTab(tab)
+    const syncFromUrl = () => {
+      const t = new URLSearchParams(window.location.search).get('t')
+      if (t === 'tasks') setActiveTab('tasks')
+      else if (t === 'profile') setActiveTab('profile')
+      else setActiveTab('chat')
     }
+
+    syncFromUrl()
+
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab: 'chat' | 'tasks' | 'profile' }>).detail?.tab
+      if (tab) setActiveTab(tab)
+    }
+
     window.addEventListener('mobileTabChange', handler)
-    return () => window.removeEventListener('mobileTabChange', handler)
+    window.addEventListener('popstate', syncFromUrl)
+    return () => {
+      window.removeEventListener('mobileTabChange', handler)
+      window.removeEventListener('popstate', syncFromUrl)
+    }
   }, [isMobile])
 
   const loadChatHistory = useCallback(async () => {
@@ -2594,15 +2606,13 @@ export default function HomePage() {
     return () => clearInterval(timer)
   }, [session, isMobile, activeTab, loadChatHistory])
 
-  // 新消息时滚到底部（仅当用户接近底部，避免页面“晃荡”）
+  // 对话页始终自动滚动到底部，确保进入即看到最新消息
   useEffect(() => {
     if (!isMobile || activeTab !== 'chat') return
-    const container = chatEndRef.current?.parentElement
-    if (!container) return
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-    if (distanceFromBottom < 140) {
-      chatEndRef.current?.scrollIntoView({ behavior: 'auto' })
-    }
+    const id = setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    }, 0)
+    return () => clearTimeout(id)
   }, [chatMessages, isMobile, activeTab])
 
   const pollForReply = useCallback(async (msgId: string) => {
