@@ -75,21 +75,23 @@ export function sendToUser(userId: string, event: TeamAgentEvent) {
   const encoder = new TextEncoder()
   const data = `data: ${JSON.stringify(event)}\n\n`
 
-  const agentActionTypes = new Set(['chat:incoming', 'step:ready', 'step:assigned', 'approval:requested'])
-  const isAgentAction = agentActionTypes.has(event.type)
+  // step 类事件：每 agentId 只选最新连接（防多 tab 重复领取任务）
+  // chat:incoming：广播给所有连接（watch 进程自带去重，浏览器不处理会忽略）
+  const stepActionTypes = new Set(['step:ready', 'step:assigned', 'approval:requested'])
+  const isStepAction = stepActionTypes.has(event.type)
 
-  // 对 agent 操作类事件：每个 agentId 只选最新一条连接投递
   const toSend: Map<string, { subId: string; sub: Subscriber }> = new Map()
 
   subscribers.forEach((sub, id) => {
     if (sub.userId !== userId) return
-    if (isAgentAction) {
+    if (isStepAction) {
       // 保留每个 agentId 的最新连接（subscriberId 含时间戳，越大越新）
       const existing = toSend.get(sub.agentId)
       if (!existing || id > existing.subId) {
         toSend.set(sub.agentId, { subId: id, sub })
       }
     } else {
+      // chat:incoming + 其它事件：发给所有连接
       toSend.set(id, { subId: id, sub })
     }
   })
