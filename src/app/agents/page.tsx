@@ -54,15 +54,29 @@ function parseCapabilities(cap: string | null): string[] {
 
 const avatarColors = [
   'from-orange-400 to-rose-500',
-  'from-blue-400 to-purple-500',
-  'from-green-400 to-teal-500',
-  'from-yellow-400 to-orange-500',
-  'from-pink-400 to-rose-500',
+  'from-blue-400 to-indigo-500',
+  'from-violet-400 to-purple-500',
+  'from-amber-400 to-orange-500',
+  'from-rose-400 to-pink-500',
+  'from-cyan-400 to-blue-500',
+  'from-fuchsia-400 to-rose-500',
+  'from-teal-400 to-emerald-500',
+  'from-indigo-400 to-violet-500',
+  'from-pink-400 to-fuchsia-500',
 ]
 
 function getAvatarColor(name: string): string {
-  const idx = name.charCodeAt(0) % avatarColors.length
-  return avatarColors[idx]
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
+  return avatarColors[Math.abs(hash) % avatarColors.length]
+}
+
+function extractAvatar(name: string, avatar: string | null): string {
+  if (avatar?.trim()) return avatar.trim()
+  const m = name.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u)
+  if (m) return m[0]
+  if (name.toLowerCase().includes('lobster')) return '🦞'
+  return name.charAt(0).toUpperCase()
 }
 
 function formatJoinDate(dateStr: string): string {
@@ -130,7 +144,8 @@ function CommanderCard({ commander }: { commander: Commander }) {
 function MainAgentCard({ agent }: { agent: AgentData }) {
   const capabilities = parseCapabilities(agent.capabilities)
   const statusInfo = getStatusInfo(agent.status)
-  const initial = agent.name.charAt(0).toUpperCase()
+  const avatarIcon = extractAvatar(agent.name, agent.avatar)
+  const displayName = agent.name.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, '')
   const reputation = agent.reputation ?? 0
   const reputationStars = Math.round(reputation)
 
@@ -159,15 +174,15 @@ function MainAgentCard({ agent }: { agent: AgentData }) {
 
       {/* 头像 + 状态 */}
       <div className="relative flex items-center space-x-4 mb-5">
-        <div className="flex-shrink-0 w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-4xl font-bold text-white shadow-xl border-2 border-white/30">
+        <div className="flex-shrink-0 w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-5xl text-white shadow-xl border-2 border-white/30">
           {agent.avatar ? (
             <img src={agent.avatar} alt="" className="w-full h-full rounded-2xl object-cover" />
           ) : (
-            initial
+            avatarIcon
           )}
         </div>
         <div>
-          <h3 className="text-white text-2xl font-bold mb-1">{agent.name}</h3>
+          <h3 className="text-white text-2xl font-bold mb-1">{displayName}</h3>
           <div className="flex items-center space-x-2">
             <span className={`w-2.5 h-2.5 rounded-full ${statusInfo.dot} shadow-lg`} />
             <span className="text-white/80 text-sm font-medium">{statusInfo.label}</span>
@@ -222,65 +237,45 @@ function MainAgentCard({ agent }: { agent: AgentData }) {
 function SubAgentCard({ agent, onClick }: { agent: AgentData; onClick: () => void }) {
   const capabilities = parseCapabilities(agent.capabilities)
   const statusInfo = getStatusInfo(agent.status)
-  const initial = agent.name.charAt(0).toUpperCase()
   const avatarGrad = getAvatarColor(agent.name)
+  const avatarIcon = extractAvatar(agent.name, agent.avatar)
+  const displayName = agent.name.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, '')
 
   return (
     <div
       onClick={onClick}
-      className="group bg-white rounded-2xl shadow-sm border border-slate-100 p-4 cursor-pointer hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5 transition-all duration-200"
+      className="group bg-white rounded-2xl shadow-sm border border-slate-100 p-3 cursor-pointer hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5 transition-all duration-200"
     >
-      {/* 头像 + 名字 + 状态 */}
-      <div className="flex items-center space-x-3 mb-3">
-        <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-xl font-bold text-white shadow-md`}>
-          {agent.avatar ? (
-            <img src={agent.avatar} alt="" className="w-full h-full rounded-xl object-cover" />
-          ) : (
-            initial
-          )}
+      {/* 头像 + 状态点 */}
+      <div className="flex items-start justify-between mb-2">
+        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-lg shadow-sm`}>
+          {avatarIcon}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center space-x-2">
-            <h4 className="text-slate-900 font-bold text-sm truncate">{agent.name}</h4>
-            <span className={`flex-shrink-0 w-2 h-2 rounded-full ${statusInfo.dot}`} />
-          </div>
-          {agent.userName && (
-            <p className="text-slate-400 text-xs truncate mt-0.5">{agent.userName}</p>
-          )}
-        </div>
+        <span className={`w-2 h-2 rounded-full mt-1 ${statusInfo.dot}`} />
       </div>
 
-      {/* 能力标签（1-2个） */}
+      {/* 名字 */}
+      <h4 className="text-slate-900 font-bold text-xs truncate mb-1.5 leading-snug">{displayName}</h4>
+
+      {/* 能力标签（2个，更小） */}
       {capabilities.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div className="flex flex-wrap gap-0.5 mb-2">
           {capabilities.slice(0, 2).map((cap, i) => (
-            <span
-              key={i}
-              className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-lg font-medium"
-            >
+            <span key={i} className="bg-slate-50 text-slate-500 text-[10px] px-1.5 py-0.5 rounded font-medium truncate max-w-full">
               {cap}
             </span>
           ))}
           {capabilities.length > 2 && (
-            <span className="bg-slate-100 text-slate-400 text-xs px-2 py-0.5 rounded-lg">
-              +{capabilities.length - 2}
-            </span>
+            <span className="text-slate-300 text-[10px] px-1">+{capabilities.length - 2}</span>
           )}
         </div>
       )}
 
-      {/* 底部：完成步骤 */}
-      <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-        <div className="flex items-center space-x-1.5">
-          <span className="text-sm">✅</span>
-          <span className="text-slate-700 text-sm font-semibold">{agent.stats.doneSteps}</span>
-          <span className="text-slate-400 text-xs">步完成</span>
-        </div>
+      {/* 底部：只有图标+数字 */}
+      <div className="flex items-center gap-2 pt-1.5 border-t border-slate-50">
+        <span className="text-[11px] text-emerald-600 font-semibold">✅ {agent.stats.doneSteps}</span>
         {agent.stats.pendingSteps > 0 && (
-          <div className="flex items-center space-x-1">
-            <span className="text-xs">🔄</span>
-            <span className="text-slate-500 text-xs">{agent.stats.pendingSteps}</span>
-          </div>
+          <span className="text-[11px] text-blue-500">🔄 {agent.stats.pendingSteps}</span>
         )}
       </div>
     </div>

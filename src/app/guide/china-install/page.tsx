@@ -237,11 +237,10 @@ export default function ChinaInstallGuidePage() {
             <span className="font-semibold text-slate-800">TeamAgent</span>
           </div>
           <Link
-            href="https://github.com/ARplus/teamagent"
-            target="_blank"
-            className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
+            href="/guide/macos-install"
+            className="text-sm text-orange-500 hover:text-orange-600 transition-colors font-medium"
           >
-            GitHub
+            MacOS 版 →
           </Link>
         </div>
       </header>
@@ -253,6 +252,17 @@ export default function ChinaInstallGuidePage() {
           <div>
             <div className="font-bold text-lg">中国用户安装指南</div>
             <div className="text-sm text-red-100">Windows 版 · 覆盖国内常见坑 · 由 八爪🐙 根据实战经验整理</div>
+            <div className="flex gap-2 mt-3">
+              <span className="px-3 py-1 bg-white/25 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
+                🪟 Windows（当前）
+              </span>
+              <Link
+                href="/guide/macos-install"
+                className="px-3 py-1 bg-white/10 rounded-full text-sm hover:bg-white/20 transition-colors border border-white/10"
+              >
+                🍎 MacOS 版
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -307,8 +317,8 @@ function GuideContent() {
   return (
     <div className="space-y-8 text-slate-700 leading-relaxed">
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-        💡 <strong>提示：</strong>本指南针对 Windows 用户，如果你使用 Mac/Linux 请参考
-        <a href="https://github.com/ARplus/teamagent" className="text-orange-600 hover:underline ml-1" target="_blank" rel="noopener noreferrer">官方文档</a>
+        💡 <strong>提示：</strong>本指南针对 Windows 用户。如果你使用 Mac，请查看
+        <Link href="/guide/macos-install" className="text-orange-600 hover:underline ml-1 font-medium">🍎 MacOS 安装指南（含截图）</Link>
       </div>
 
       {/* Step 1 */}

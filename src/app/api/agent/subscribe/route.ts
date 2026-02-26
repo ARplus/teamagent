@@ -111,23 +111,8 @@ export async function GET(req: NextRequest) {
       })
       missedMessages.push({ agentMsgId: pm.id, content: userMsg?.content || '', createdAt: pm.createdAt })
     }
-  } else {
-    // 无 since：只补发当前已存在的 __pending__（启动时兜底）
-    const pendingAgentMsgs = await prisma.chatMessage.findMany({
-      where: { userId: auth.userId, role: 'agent', content: '__pending__' },
-      orderBy: { createdAt: 'asc' },
-      take: 10,
-      select: { id: true, createdAt: true }
-    })
-    for (const pm of pendingAgentMsgs) {
-      const userMsg = await prisma.chatMessage.findFirst({
-        where: { userId: auth.userId, role: 'user', createdAt: { lte: pm.createdAt } },
-        orderBy: { createdAt: 'desc' },
-        select: { content: true }
-      })
-      missedMessages.push({ agentMsgId: pm.id, content: userMsg?.content || '', createdAt: pm.createdAt })
-    }
   }
+  // 无 since 时不主动补发历史消息，避免每次连接都轰炸
 
   // 创建 SSE 流
   const stream = new ReadableStream({

@@ -40,6 +40,13 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+/* iOS Safari: 输入框 font-size < 16px 时会自动缩放页面，强制 16px 阻止 */
+@media screen and (max-width: 767px) {
+  input, textarea, select {
+    font-size: max(1rem, 16px);
+  }
+}
+
 /* 行数限制 */
 .line-clamp-2 {
   display: -webkit-box;
