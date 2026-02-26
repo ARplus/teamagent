@@ -52,7 +52,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Logo + Desktop Nav */}
         <div className="flex items-center space-x-4 sm:space-x-8 min-w-0">
-          <Link href="/?t=tasks" className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+          <Link href="/landing" className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
             <span className="text-xl sm:text-2xl">🤝</span>
             <h1 className="text-base sm:text-xl font-bold text-gray-900">TeamAgent</h1>
             <span className="text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white px-2 py-0.5 rounded-full hidden sm:inline">Beta</span>
@@ -61,7 +61,7 @@ export function Navbar() {
           {/* 桌面端导航链接 */}
           {session && (
             <div className="hidden md:flex items-center space-x-6">
-              <Link href="/?t=tasks" className="text-sm text-gray-600 hover:text-gray-900">
+              <Link href="/landing" className="text-sm text-gray-600 hover:text-gray-900">
                 📋 首页
               </Link>
               <Link href="/tasks/new" className="text-sm text-gray-600 hover:text-gray-900">
@@ -162,7 +162,7 @@ export function Navbar() {
         <div className="md:hidden mt-3 pt-3 border-t border-gray-100 space-y-1">
           {session ? (
             <>
-              <Link href="/?t=tasks" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+              <Link href="/landing" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
                 <span>📋</span><span>首页</span>
               </Link>
               <Link href="/agent" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
