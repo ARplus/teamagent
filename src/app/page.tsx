@@ -43,9 +43,10 @@ interface TaskStep {
   agentStatus: string | null
   result: string | null
   summary: string | null
-  assignee?: { 
+  assignee?: {
     id: string
     name: string | null
+    email?: string
     avatar: string | null
     agent?: Agent | null
   }
@@ -186,9 +187,89 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   )
 }
 
+// ============ Invite Partner Button ============
+
+function InvitePartnerButton() {
+  const [showInput, setShowInput] = useState(false)
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const handleInvite = async () => {
+    if (!email.trim()) return
+    setLoading(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/workspace/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMsg({ text: data.message || '邀请成功！', ok: true })
+        setEmail('')
+        setTimeout(() => { setShowInput(false); setMsg(null) }, 2000)
+      } else {
+        setMsg({ text: data.error || '邀请失败', ok: false })
+      }
+    } catch {
+      setMsg({ text: '网络错误', ok: false })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!showInput) {
+    return (
+      <button
+        onClick={() => setShowInput(true)}
+        className="w-full py-2 rounded-xl text-xs text-slate-500 hover:text-emerald-300 hover:bg-slate-800/40 flex items-center justify-center space-x-1.5 transition-colors"
+      >
+        <span>🤝</span>
+        <span>邀请协作伙伴</span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="w-full bg-slate-800/60 rounded-xl p-2.5 space-y-2 border border-slate-700/50">
+      <div className="flex items-center space-x-1.5">
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleInvite()}
+          placeholder="输入邮箱地址"
+          className="flex-1 px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+          autoFocus
+        />
+        <button
+          onClick={handleInvite}
+          disabled={loading || !email.trim()}
+          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded-lg disabled:opacity-50 transition-colors"
+        >
+          {loading ? '...' : '邀请'}
+        </button>
+        <button
+          onClick={() => { setShowInput(false); setMsg(null) }}
+          className="px-1.5 py-1.5 text-slate-500 hover:text-slate-300 text-xs"
+        >
+          ✕
+        </button>
+      </div>
+      {msg && (
+        <div className={`text-xs px-1 ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ============ Left Sidebar: Task List ============
 
-function TaskList({ 
+function TaskList({
   tasks, 
   selectedId, 
   onSelect,
@@ -328,6 +409,9 @@ function TaskList({
           <span>🌊</span>
           <span>我的战队</span>
         </a>
+
+        {/* 邀请协作伙伴 */}
+        <InvitePartnerButton />
 
         {/* 配对 Agent 按钮 */}
         <button
@@ -1093,13 +1177,33 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   const [newStepAssigneeId, setNewStepAssigneeId] = useState<string | null>(null)
   const [insertAfterOrder, setInsertAfterOrder] = useState<number | null>(null)
   const [addingStep, setAddingStep] = useState(false)
-  const [agentList, setAgentList] = useState<Array<{userId: string, name: string, capabilities: string[], email: string}>>([])
 
-  // 加载已注册 Agent 列表
+  // 协作网络成员类型
+  type TeamMember = {
+    type: 'human'
+    id: string
+    name: string
+    nickname?: string
+    email: string
+    avatar?: string
+    isSelf: boolean
+    role: string
+    agent: {
+      id: string
+      name: string
+      isMainAgent: boolean
+      capabilities: string[]
+      status: string
+      avatar?: string
+    } | null
+  }
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+
+  // 加载协作网络（替代原来的 /api/agents）
   useEffect(() => {
-    fetch('/api/agents')
-      .then(r => r.ok ? r.json() : { agents: [] })
-      .then(d => setAgentList(d.agents || []))
+    fetch('/api/workspace/team')
+      .then(r => r.ok ? r.json() : { members: [] })
+      .then(d => setTeamMembers(d.members || []))
       .catch(() => {})
   }, [])
 
@@ -1144,7 +1248,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
           participants: participants.length > 0 ? participants : undefined,
           scheduledAt: newStepScheduledAt || undefined,
           requiresApproval: newStepRequiresApproval,
-          assigneeId: newStepAssigneeId || undefined,
+          assigneeId: newStepAssigneeId?.startsWith('human:') ? newStepAssigneeId.slice(6) : (newStepAssigneeId || undefined),
           insertAfterOrder: insertAfterOrder ?? undefined,
         })
       })
@@ -1182,11 +1286,16 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
     else alert('打回失败')
   }
 
-  const handleAssign = async (stepId: string, userId: string | null) => {
+  const handleAssign = async (stepId: string, rawValue: string | null) => {
+    // 解析选择值：human:xxx = 纯人类步骤，其他 = Agent 所属用户
+    let assigneeId = rawValue
+    if (rawValue?.startsWith('human:')) {
+      assigneeId = rawValue.slice(6) // 去掉 human: 前缀
+    }
     const res = await fetch(`/api/steps/${stepId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assigneeId: userId })
+      body: JSON.stringify({ assigneeId })
     })
     if (res.ok) onRefresh()
     else alert('分配失败')
@@ -1281,19 +1390,26 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
           <VoiceMicButton onResult={(t) => setNewStepDescription(prev => prev ? prev + ' ' + t : t)} append size="sm" className="absolute bottom-2 right-2" />
           </div>
 
-          {/* 分配给 Agent */}
-          {newStepType === 'task' && agentList.length > 0 && (
+          {/* 分配给协作伙伴或 Agent */}
+          {newStepType === 'task' && teamMembers.length > 0 && (
             <div className="mb-2">
               <select
                 value={newStepAssigneeId || ''}
                 onChange={(e) => setNewStepAssigneeId(e.target.value || null)}
                 className="w-full px-3 py-2 border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 bg-white text-slate-700"
               >
-                <option value="">👤 不分配 Agent（人工执行）</option>
-                {agentList.map(a => (
-                  <option key={a.userId} value={a.userId}>
-                    🤖 {a.name}{a.capabilities?.length > 0 ? ` · ${a.capabilities.slice(0,2).join(', ')}` : ''}
-                  </option>
+                <option value="">— 不分配（稍后指派）</option>
+                {teamMembers.map(m => (
+                  <optgroup key={m.id} label={`👤 ${m.name || m.email}${m.isSelf ? ' (我)' : ''}`}>
+                    {m.agent && (
+                      <option key={m.agent.id} value={m.id}>
+                        🤖 {m.agent.name}{m.agent.capabilities?.length > 0 ? ` · ${m.agent.capabilities.slice(0, 2).join(', ')}` : ''}
+                      </option>
+                    )}
+                    <option key={`human-${m.id}`} value={`human:${m.id}`}>
+                      👤 指派给{m.isSelf ? '自己' : m.name || m.email}（人工执行）
+                    </option>
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -1399,7 +1515,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                   canApprove={(step as any).viewerCanApprove ?? (canApprove || currentUserId === step.assignee?.id)}
                   onApprove={handleApprove}
                   onReject={handleReject}
-                  agents={agentList}
+                  agents={teamMembers}
                   onAssign={handleAssign}
                   currentUserId={currentUserId}
                   onRefresh={onRefresh}
@@ -1431,12 +1547,31 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   )
 }
 
+type TeamMemberProp = {
+  type: 'human'
+  id: string
+  name: string
+  nickname?: string
+  email: string
+  avatar?: string
+  isSelf: boolean
+  role: string
+  agent: {
+    id: string
+    name: string
+    isMainAgent: boolean
+    capabilities: string[]
+    status: string
+    avatar?: string
+  } | null
+}
+
 function StepCard({
   step, index, isActive, canApprove, onApprove, onReject, agents, onAssign, currentUserId, onRefresh, taskCreatorName
 }: {
   step: TaskStep; index: number; isActive: boolean; canApprove: boolean
   onApprove: (id: string) => Promise<void>; onReject: (id: string, reason: string) => Promise<void>
-  agents?: Array<{userId: string; name: string; capabilities: string[]; email: string}>
+  agents?: TeamMemberProp[]
   onAssign?: (stepId: string, userId: string | null) => Promise<void>
   currentUserId?: string
   onRefresh?: () => void
@@ -1468,7 +1603,10 @@ function StepCard({
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
-  const agentName = step.assignee?.agent?.name || parseJSON(step.assigneeNames)[0] || '未分配'
+  const hasAgent = !!step.assignee?.agent
+  const assigneeName = hasAgent
+    ? step.assignee!.agent!.name
+    : (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
   const participantList = parseJSON(step.participants)
 
   const loadHistory = async () => {
@@ -1634,12 +1772,17 @@ function StepCard({
                   <select
                     value={assigneeSelect}
                     onChange={e => setAssigneeSelect(e.target.value)}
-                    className="text-xs border border-blue-300 rounded px-1 py-0.5 bg-white max-w-[140px]"
+                    className="text-xs border border-blue-300 rounded px-1 py-0.5 bg-white max-w-[180px]"
                     autoFocus
                   >
                     <option value="">— 不分配 —</option>
-                    {(agents || []).map(a => (
-                      <option key={a.userId} value={a.userId}>{a.name}</option>
+                    {(agents || []).map(m => (
+                      <optgroup key={m.id} label={`👤 ${m.name || m.email}${m.isSelf ? ' (我)' : ''}`}>
+                        {m.agent && (
+                          <option key={m.agent.id} value={m.id}>🤖 {m.agent.name}</option>
+                        )}
+                        <option key={`h-${m.id}`} value={`human:${m.id}`}>👤 {m.isSelf ? '自己' : m.name || m.email}</option>
+                      </optgroup>
                     ))}
                   </select>
                   <button
@@ -1658,7 +1801,7 @@ function StepCard({
                 </span>
               ) : (
                 <span className="flex items-center space-x-1">
-                  <span>🤖 {agentName}</span>
+                  <span>{hasAgent ? '🤖' : '👤'} {assigneeName}</span>
                   {agents && agents.length > 0 && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}

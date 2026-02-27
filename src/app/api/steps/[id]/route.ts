@@ -90,14 +90,26 @@ export async function PATCH(
     if (data.agentStatus !== undefined) updateData.agentStatus = data.agentStatus
     if (data.result !== undefined) updateData.result = data.result
     if (data.order !== undefined) updateData.order = data.order
-    // 分配 Agent：null 表示取消分配，string 表示分配给指定用户
-    if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId || null
+    // 分配步骤：null 表示取消分配，string 表示分配给指定用户（人类或 Agent 所属用户）
+    if (data.assigneeId !== undefined) {
+      const newAssigneeId = data.assigneeId || null
+      // 验证 assignee 是任务工作区的成员
+      if (newAssigneeId) {
+        const isMember = await prisma.workspaceMember.findFirst({
+          where: { workspaceId: step.task.workspaceId, userId: newAssigneeId }
+        })
+        if (!isMember) {
+          return NextResponse.json({ error: '该用户不在任务工作区中，请先邀请 TA 成为协作伙伴' }, { status: 403 })
+        }
+      }
+      updateData.assigneeId = newAssigneeId
+    }
 
     const updated = await prisma.taskStep.update({
       where: { id },
       data: updateData,
       include: {
-        assignee: { select: { id: true, name: true, avatar: true } },
+        assignee: { select: { id: true, name: true, email: true, avatar: true, agent: { select: { id: true, name: true, status: true } } } },
         attachments: true
       }
     })

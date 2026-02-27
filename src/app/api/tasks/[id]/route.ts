@@ -42,13 +42,14 @@ export async function GET(
         workspace: { select: { id: true, name: true } },
         steps: {
           include: {
-            assignee: { 
-              select: { 
-                id: true, 
-                name: true, 
+            assignee: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
                 avatar: true,
                 agent: { select: { id: true, name: true, avatar: true, status: true, userId: true } }
-              } 
+              }
             },
             attachments: { select: { id: true, name: true, url: true, type: true } }
           },
