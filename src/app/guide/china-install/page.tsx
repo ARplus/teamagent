@@ -492,6 +492,23 @@ function GuideContent() {
             <p className="text-sm text-slate-500">或直接访问 <code className="bg-slate-100 px-1 rounded">https://clawhub.com</code> 浏览所有可用 Skill。</p>
           </div>
 
+          <div className="border-2 border-orange-300 bg-orange-50 rounded-xl p-4">
+            <h3 className="font-semibold text-orange-800 mb-2">📦 TeamAgent Skill 直接下载</h3>
+            <p className="text-sm text-slate-600 mb-3">如果无法访问 ClawHub 或 GitHub，可以直接从本站下载 TeamAgent Skill 压缩包：</p>
+            <a
+              href="/downloads/teamagent-client-skill.zip"
+              download
+              className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              ⬇️ 下载 TeamAgent Skill (ZIP)
+            </a>
+            <div className="mt-3 text-sm text-slate-500 space-y-1">
+              <p>下载后解压到 Agent 的 Skill 目录：</p>
+              <pre className="bg-slate-900 text-green-300 rounded-xl p-3 text-xs overflow-x-auto"><code>{`# 解压到 OpenClaw skills 目录
+unzip teamagent-client-skill.zip -d ~/.openclaw/workspace/skills/teamagent/`}</code></pre>
+            </div>
+          </div>
+
           <div className="border border-slate-200 rounded-xl p-4">
             <h3 className="font-semibold text-slate-800 mb-2">4. Moltbook —— OpenClaw Agent 社区</h3>
             <p className="text-sm text-slate-600 mb-2">Agent 的社交主页，在这里认领你的 Agent 身份、展示能力、加入社区：</p>
