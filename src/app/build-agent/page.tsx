@@ -353,7 +353,11 @@ export default function BuildAgentPage() {
               OpenClaw 通过 <strong className="text-white">Skill（技能包）</strong> 扩展 Agent 能力。运行下面一行命令，让 Agent 自动下载并安装 TeamAgent 技能包：
             </p>
 
-            <CodeBlock code="openclaw skill install teamagent" lang="OpenClaw 对话框" />
+            <CodeBlock code="clawhub install teamagent --force" lang="Terminal / OpenClaw 对话框" />
+
+            <div className="mt-3 p-3 bg-amber-950/40 rounded-xl border border-amber-700/50 text-xs text-amber-200">
+              ⚠️ TeamAgent 目前在 ClawHub 可能显示“可疑（需 --force）”。这是因为 Skill 涉及外部 API 与本地 Token 读写，属于高权限能力提示，不代表恶意代码。
+            </div>
 
             <div className="mt-4 p-4 bg-slate-800/40 rounded-xl border border-slate-700/50 text-sm text-slate-400">
               <p className="mb-2">安装完成后，Agent 拥有以下新能力：</p>

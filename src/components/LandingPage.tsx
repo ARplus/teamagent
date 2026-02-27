@@ -161,7 +161,7 @@ function OnboardingSection() {
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-xs font-black">1</div>
                   <span className="font-semibold text-white">复制命令，在 Agent 那里运行</span>
                 </div>
-                <CopyCommand cmd="openclaw skill install teamagent" />
+                <CopyCommand cmd="clawhub install teamagent --force" />
                 <p className="text-xs text-slate-600 mt-2 ml-10">Agent 会自动安装 TeamAgent 技能包，联网注册，生成配对码</p>
               </div>
 
