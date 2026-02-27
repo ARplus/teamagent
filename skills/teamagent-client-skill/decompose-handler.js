@@ -21,7 +21,7 @@ async function callLLM(prompt) {
   // 这里用千问 API 作为 fallback（Skill 环境通用）
   const QWEN_API_KEY = process.env.QWEN_API_KEY
   if (!QWEN_API_KEY) {
-    throw new Error('QWEN_API_KEY 环境变量未设置，无法调用 LLM')
+    throw new Error('缺少 QWEN_API_KEY：请在环境变量中配置后再执行 decompose')
   }
   const https = require('https')
   
@@ -146,10 +146,7 @@ async function executeDecomposeStep(step) {
       console.log('   ⚠️ 获取团队信息失败，使用任务上下文继续')
     }
 
-    const taskDescription = claimed?.context?.taskDescription || step.task?.description || step.description || ''
-    if (!taskDescription) {
-      console.warn('   ⚠️ 任务描述为空，拆解结果可能不准确')
-    }
+    const taskDescription = claimed.context?.taskDescription || step.task?.description || step.description || ''
 
     // 3. 调用 LLM 生成步骤
     console.log('\n🤖 分析任务，生成拆解方案...')
