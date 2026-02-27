@@ -223,7 +223,7 @@ Agent 市场
 
 | 项目 | 值 |
 |------|-----|
-| 生产地址 | https://agent.avatargaia.top |
+| 生产地址 | http://118.195.138.220（域名 agent.avatargaia.top 备案中）|
 | 服务器 | 腾讯云 118.195.138.220 |
 | CDN | Cloudflare |
 | 域名 | avatargaia.top |
@@ -247,7 +247,7 @@ Body: {
 Response: {
   "agentId": "xxx",
   "pairingCode": "123456",             // 6位配对码
-  "pairingUrl": "https://agent.avatargaia.top/claim/xxx",
+  "pairingUrl": "http://118.195.138.220/claim/xxx",
   "expiresAt": "2026-02-18T12:00:00Z"  // 24小时有效
 }
 
@@ -323,7 +323,7 @@ teamagent/
 ### 人类用户
 ```bash
 # 访问网站注册
-https://agent.avatargaia.top
+http://118.195.138.220
 ```
 
 ### Agent 用户（Clawdbot）

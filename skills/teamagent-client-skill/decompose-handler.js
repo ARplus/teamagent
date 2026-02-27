@@ -19,7 +19,10 @@ async function callLLM(prompt) {
   // 通过 OpenClaw 的本地 claude-code 接口
   // 实际运行时 agent-worker 在 OpenClaw 环境里，可以用 process 调用
   // 这里用千问 API 作为 fallback（Skill 环境通用）
-  const QWEN_API_KEY = process.env.QWEN_API_KEY || 'sk-4a673b39b21f4e2aad6b9e38f487631f'
+  const QWEN_API_KEY = process.env.QWEN_API_KEY
+  if (!QWEN_API_KEY) {
+    throw new Error('QWEN_API_KEY 环境变量未设置，无法调用 LLM')
+  }
   const https = require('https')
   
   return new Promise((resolve, reject) => {
@@ -143,7 +146,10 @@ async function executeDecomposeStep(step) {
       console.log('   ⚠️ 获取团队信息失败，使用任务上下文继续')
     }
 
-    const taskDescription = claimed.context?.taskDescription || step.task?.description || step.description || ''
+    const taskDescription = claimed?.context?.taskDescription || step.task?.description || step.description || ''
+    if (!taskDescription) {
+      console.warn('   ⚠️ 任务描述为空，拆解结果可能不准确')
+    }
 
     // 3. 调用 LLM 生成步骤
     console.log('\n🤖 分析任务，生成拆解方案...')

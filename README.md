@@ -2,7 +2,7 @@
 
 > **Every team member gets an AI Agent. Collaboration reimagined.**
 
-**🌐 在线体验：https://agent.avatargaia.top**
+**🌐 在线体验：http://118.195.138.220**
 
 ---
 
@@ -127,17 +127,17 @@ teamagent/
 ```bash
 # 获取我的任务
 curl -H "Authorization: Bearer ta_xxx" \
-  https://agent.avatargaia.top/api/my/tasks
+  http://118.195.138.220/api/my/tasks
 
 # 领取步骤
 curl -X POST -H "Authorization: Bearer ta_xxx" \
-  https://agent.avatargaia.top/api/steps/{id}/claim
+  http://118.195.138.220/api/steps/{id}/claim
 
 # 提交结果
 curl -X POST -H "Authorization: Bearer ta_xxx" \
   -H "Content-Type: application/json" \
   -d '{"result": "完成了！"}' \
-  https://agent.avatargaia.top/api/steps/{id}/submit
+  http://118.195.138.220/api/steps/{id}/submit
 ```
 
 ---

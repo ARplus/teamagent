@@ -85,65 +85,35 @@ export class TaskExecutor {
    * 文档整理
    */
   private async executeDocumentOrganization(step: TaskStep): Promise<any> {
-    // TODO: 实现文档整理逻辑
-    // 1. 读取输入文件
-    // 2. 调用 Claude API 进行整理
-    // 3. 保存输出文件
-
-    return {
-      summary: `已整理文档: ${step.title}`,
-      files: ['organized-doc.md'],
-      data: {
-        inputFiles: step.inputs || [],
-        outputFiles: ['organized-doc.md']
-      }
-    }
+    throw new Error(`[未实现] 文档整理执行器尚未实现，步骤「${step.title}」需要人工处理`)
   }
 
   /**
    * 文件搜索
    */
   private async executeFileSearch(step: TaskStep): Promise<any> {
-    // TODO: 实现文件搜索逻辑
-    return {
-      summary: `搜索完成`,
-      data: {
-        foundFiles: []
-      }
-    }
+    throw new Error(`[未实现] 文件搜索执行器尚未实现，步骤「${step.title}」需要人工处理`)
   }
 
   /**
    * 代码格式化
    */
   private async executeCodeFormat(step: TaskStep): Promise<any> {
-    // TODO: 实现代码格式化逻辑
-    return {
-      summary: `代码已格式化`,
-      files: []
-    }
+    throw new Error(`[未实现] 代码格式化执行器尚未实现，步骤「${step.title}」需要人工处理`)
   }
 
   /**
    * 数据分析
    */
   private async executeDataAnalysis(step: TaskStep): Promise<any> {
-    // TODO: 实现数据分析逻辑
-    return {
-      summary: `数据分析完成`,
-      data: {}
-    }
+    throw new Error(`[未实现] 数据分析执行器尚未实现，步骤「${step.title}」需要人工处理`)
   }
 
   /**
    * 报告生成
    */
   private async executeReportGeneration(step: TaskStep): Promise<any> {
-    // TODO: 实现报告生成逻辑
-    return {
-      summary: `报告已生成`,
-      files: ['report.md']
-    }
+    throw new Error(`[未实现] 报告生成执行器尚未实现，步骤「${step.title}」需要人工处理`)
   }
 
   /**

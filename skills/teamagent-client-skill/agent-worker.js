@@ -64,11 +64,26 @@ async function checkPendingSteps() {
 }
 
 // ================================================================
-// 🔀 执行 decompose 步骤（主 Agent 专用）
+// 🔀 执行 decompose 步骤（主 Agent 专用，含互斥锁）
 // ================================================================
+let decomposeInProgress = false
+
 async function executeDecomposeStep(step) {
+  if (decomposeInProgress) {
+    console.log(`⏳ decompose 正在执行中，跳过: ${step.title}`)
+    return null
+  }
+  decomposeInProgress = true
+  try {
+    return await _executeDecomposeStep(step)
+  } finally {
+    decomposeInProgress = false
+  }
+}
+
+async function _executeDecomposeStep(step) {
   console.log(`\n🔀 执行 decompose 步骤: ${step.title}`)
-  console.log(`   任务: ${step.task.title}`)
+  console.log(`   任务: ${step.task?.title || '未知'}`)
   console.log('   🤖 分析任务 + 团队能力，生成拆解方案...')
   
   const result = await client.request('POST', `/api/steps/${step.id}/execute-decompose`, {})

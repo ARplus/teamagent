@@ -35,7 +35,7 @@ function hashToken(token: string): string {
  *   "success": true,
  *   "agent": { ... },
  *   "pairingCode": "123456",
- *   "pairingUrl": "https://agent.avatargaia.top/claim/xxx",
+ *   "pairingUrl": "http://118.195.138.220/claim/xxx",
  *   "expiresAt": "2026-02-19T12:00:00Z"
  * }
  */

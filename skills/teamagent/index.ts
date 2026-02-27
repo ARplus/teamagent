@@ -34,7 +34,7 @@ function saveConfig(config: Partial<SkillConfig>) {
   const dir = path.dirname(CONFIG_PATH)
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
   const existing = loadSavedConfig()
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, ...config }, null, 2))
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, ...config }, null, 2), { mode: 0o600 })
 }
 
 /**
@@ -43,7 +43,7 @@ function saveConfig(config: Partial<SkillConfig>) {
 function loadConfig(): SkillConfig {
   const saved = loadSavedConfig()
   return {
-    apiUrl: process.env.TEAMAGENT_API_URL || saved.apiUrl || 'https://agent.avatargaia.top',
+    apiUrl: process.env.TEAMAGENT_API_URL || saved.apiUrl || 'http://118.195.138.220',
     apiToken: process.env.TEAMAGENT_API_TOKEN || saved.apiToken || '',
     userId: process.env.TEAMAGENT_USER_ID || saved.userId || '',
     autoExecute: process.env.TEAMAGENT_AUTO_EXECUTE === 'true' || saved.autoExecute || false,

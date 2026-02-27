@@ -8,8 +8,8 @@ export class WebSocketClient {
   private config: SkillConfig
   private ws: WebSocket | null = null
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 5
   private reconnectDelay = 2000
+  private maxReconnectDelay = 60000
   private isConnecting = false
 
   // 事件回调
@@ -41,11 +41,12 @@ export class WebSocketClient {
         .replace('http://', 'ws://')
         .replace('https://', 'wss://')
 
-      const url = `${wsUrl}/api/agent/stream?userId=${this.config.userId}&token=${this.config.apiToken}`
+      // Token 通过 Sec-WebSocket-Protocol 传递，不暴露在 URL 中
+      const url = `${wsUrl}/api/agent/stream?userId=${this.config.userId}`
 
       console.log(`连接到 WebSocket: ${wsUrl}/api/agent/stream`)
 
-      this.ws = new WebSocket(url)
+      this.ws = new WebSocket(url, [`bearer-${this.config.apiToken}`])
 
       this.ws.onopen = () => {
         console.log('✅ WebSocket 连接成功')
@@ -140,16 +141,14 @@ export class WebSocketClient {
   }
 
   /**
-   * 尝试重新连接
+   * 尝试重新连接（无限重试，指数退避 + 上限 60s）
    */
   private attemptReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('❌ 达到最大重连次数，停止重连')
-      return
-    }
-
     this.reconnectAttempts++
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    )
 
     console.log(`⏳ ${delay}ms 后尝试第 ${this.reconnectAttempts} 次重连...`)
 
