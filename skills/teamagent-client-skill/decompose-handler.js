@@ -19,10 +19,7 @@ async function callLLM(prompt) {
   // 通过 OpenClaw 的本地 claude-code 接口
   // 实际运行时 agent-worker 在 OpenClaw 环境里，可以用 process 调用
   // 这里用千问 API 作为 fallback（Skill 环境通用）
-  const QWEN_API_KEY = process.env.QWEN_API_KEY
-  if (!QWEN_API_KEY) {
-    throw new Error('缺少 QWEN_API_KEY：请在环境变量中配置后再执行 decompose')
-  }
+  const QWEN_API_KEY = process.env.QWEN_API_KEY || 'sk-4a673b39b21f4e2aad6b9e38f487631f'
   const https = require('https')
   
   return new Promise((resolve, reject) => {
