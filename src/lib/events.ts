@@ -20,6 +20,7 @@ export type TeamAgentEvent =
   | { type: 'chat:incoming'; msgId: string; content: string; agentId: string }
   | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
   | { type: 'task:evaluated'; taskId: string; title: string; count: number }
+  | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorName: string; content: string }
   | { type: 'ping' }
 
 // 订阅者类型

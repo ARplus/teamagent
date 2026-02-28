@@ -38,6 +38,13 @@ export default function ChatPage() {
   const latestMsgIdRef = useRef<string | null>(null)
   const isFirstLoad = useRef(true)
 
+  // B13: 新建任务状态
+  const [showNewTask, setShowNewTask] = useState(false)
+  const [newTaskTitle, setNewTaskTitle] = useState('')
+  const [newTaskDesc, setNewTaskDesc] = useState('')
+  const [newTaskMode, setNewTaskMode] = useState<'solo' | 'team'>('solo')
+  const [creatingTask, setCreatingTask] = useState(false)
+
   // 认证检查
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -203,6 +210,42 @@ export default function ChatPage() {
     }
   }
 
+  // B13: 在对话页快速新建任务
+  const createTask = async () => {
+    if (!newTaskTitle.trim() || creatingTask) return
+    setCreatingTask(true)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTaskTitle.trim(),
+          description: newTaskDesc.trim() || null,
+          mode: newTaskMode,
+        })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setShowNewTask(false)
+        setNewTaskTitle('')
+        setNewTaskDesc('')
+        setNewTaskMode('solo')
+        // 自动发一条消息通知 Agent
+        const notify = `📋 我刚创建了任务「${data.title}」${newTaskMode === 'team' ? '（团队模式）' : ''}，请帮我拆解步骤吧！`
+        sendMessage(notify)
+        // 刷新统计
+        fetch('/api/tasks/stats').then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => {})
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.error || '创建任务失败')
+      }
+    } catch {
+      alert('网络错误，请重试')
+    } finally {
+      setCreatingTask(false)
+    }
+  }
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -325,10 +368,97 @@ export default function ChatPage() {
         </div>
       </main>
 
+      {/* B13: 新建任务弹窗 */}
+      {showNewTask && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => !creatingTask && setShowNewTask(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative w-full max-w-md mx-4 mb-20 sm:mb-0 bg-slate-800 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 标题栏 */}
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+              <h3 className="text-white font-medium">📋 快速新建任务</h3>
+              <button onClick={() => setShowNewTask(false)} className="text-white/40 hover:text-white text-lg">✕</button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              {/* 标题 */}
+              <input
+                value={newTaskTitle}
+                onChange={e => setNewTaskTitle(e.target.value)}
+                placeholder="任务标题..."
+                autoFocus
+                className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); createTask() } }}
+              />
+              {/* 描述 */}
+              <textarea
+                value={newTaskDesc}
+                onChange={e => setNewTaskDesc(e.target.value)}
+                placeholder="任务描述（可选）..."
+                rows={3}
+                className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+              />
+              {/* 模式选择 */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setNewTaskMode('solo')}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+                    newTaskMode === 'solo'
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/15'
+                  }`}
+                >
+                  🤖 Solo 模式
+                </button>
+                <button
+                  onClick={() => setNewTaskMode('team')}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+                    newTaskMode === 'team'
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/15'
+                  }`}
+                >
+                  🤝 Team 模式
+                </button>
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-5 py-3 border-t border-white/10 flex justify-end gap-2">
+              <button
+                onClick={() => setShowNewTask(false)}
+                disabled={creatingTask}
+                className="px-4 py-2 text-white/60 hover:text-white text-sm rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={createTask}
+                disabled={!newTaskTitle.trim() || creatingTask}
+                className="px-5 py-2 bg-orange-500 hover:bg-orange-400 disabled:bg-white/20 disabled:text-white/40 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                {creatingTask ? '⏳ 创建中...' : '✅ 创建任务'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/95 mb-16 md:mb-0">
         <div className="max-w-2xl mx-auto px-4 py-3">
           <div className="flex items-end gap-2">
+            {/* B13: 新建任务按钮 */}
+            <button
+              onClick={() => setShowNewTask(true)}
+              disabled={!agent}
+              title="快速新建任务"
+              className="w-12 h-12 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-lg"
+            >
+              📋
+            </button>
             <div className="flex-1">
               <textarea
                 ref={inputRef}

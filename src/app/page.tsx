@@ -1871,6 +1871,11 @@ function StepCard({
   const [commentText, setCommentText] = useState('')
   const [commentSending, setCommentSending] = useState(false)
   const [commentsLoaded, setCommentsLoaded] = useState(false)
+  // F02: @mention 自动补全状态
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null) // null = 隐藏
+  const [mentionIdx, setMentionIdx] = useState(0)
+  const commentRef = useRef<HTMLTextAreaElement>(null)
+  const mentionStartPos = useRef<number>(0)
 
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
@@ -1994,6 +1999,108 @@ function StepCard({
       }
     } finally {
       setHumanCompleting(false)
+    }
+  }
+
+  // F02: @mention 候选人列表（从 agents prop 构建）
+  const mentionCandidates = (agents || []).flatMap(m => {
+    const items: { userId: string; displayName: string; icon: string }[] = []
+    // 人类成员
+    items.push({
+      userId: m.id,
+      displayName: m.nickname || m.name,
+      icon: '👤'
+    })
+    // Agent 成员
+    if (m.agent) {
+      items.push({
+        userId: m.id, // Agent 的 userId 就是 member 的 id
+        displayName: m.agent.name,
+        icon: '🤖'
+      })
+    }
+    return items
+  })
+  // 去重（Agent 和人类可能指向同一 userId）
+  const mentionMap = new Map<string, { userId: string; displayName: string; icon: string }>()
+  for (const c of mentionCandidates) {
+    if (!mentionMap.has(`${c.userId}-${c.displayName}`)) {
+      mentionMap.set(`${c.userId}-${c.displayName}`, c)
+    }
+  }
+  const allMentionItems = Array.from(mentionMap.values())
+
+  const filteredMentions = mentionQuery !== null
+    ? allMentionItems.filter(c =>
+        c.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+      ).slice(0, 6)
+    : []
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setCommentText(val)
+
+    // 检测 @ 触发
+    const pos = e.target.selectionStart || 0
+    const textBeforeCursor = val.substring(0, pos)
+    const atMatch = textBeforeCursor.match(/@(\S*)$/)
+
+    if (atMatch) {
+      mentionStartPos.current = pos - atMatch[0].length
+      setMentionQuery(atMatch[1])
+      setMentionIdx(0)
+    } else {
+      setMentionQuery(null)
+    }
+  }
+
+  const insertMention = (candidate: { userId: string; displayName: string }) => {
+    const before = commentText.substring(0, mentionStartPos.current)
+    const after = commentText.substring(
+      mentionStartPos.current + (mentionQuery?.length || 0) + 1 // +1 for @
+    )
+    // 插入格式: @[显示名](userId) 后面加空格
+    const mention = `@[${candidate.displayName}](${candidate.userId}) `
+    setCommentText(before + mention + after)
+    setMentionQuery(null)
+    // 恢复焦点
+    setTimeout(() => {
+      const ta = commentRef.current
+      if (ta) {
+        ta.focus()
+        const newPos = before.length + mention.length
+        ta.setSelectionRange(newPos, newPos)
+      }
+    }, 0)
+  }
+
+  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIdx(i => Math.min(i + 1, filteredMentions.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIdx(i => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(filteredMentions[mentionIdx])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionQuery(null)
+        return
+      }
+    }
+    // 默认: Enter 发送评论
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendComment()
     }
   }
 
@@ -2456,7 +2563,14 @@ function StepCard({
                             ? 'bg-orange-50 text-orange-900 rounded-tr-md'
                             : 'bg-slate-50 text-slate-700 rounded-tl-md'
                         }`}>
-                          <p className="whitespace-pre-wrap break-words">{c.content}</p>
+                          <p className="whitespace-pre-wrap break-words">{
+                            /* F02: 渲染 @mention 为高亮标签 */
+                            c.content.split(/(@\[[^\]]+\]\([^)]+\))/).map((part, pi) => {
+                              const m = part.match(/^@\[([^\]]+)\]\(([^)]+)\)$/)
+                              if (m) return <span key={pi} className="text-orange-600 font-medium bg-orange-100/60 rounded px-0.5">@{m[1]}</span>
+                              return <span key={pi}>{part}</span>
+                            })
+                          }</p>
                           {c.attachments.length > 0 && (
                             <div className="mt-1.5 space-y-1">
                               {c.attachments.map(att => (
@@ -2475,26 +2589,44 @@ function StepCard({
               </div>
             )}
 
-            {/* 评论输入框 */}
-            <div className="flex items-end gap-2">
-              <textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() }
-                }}
-                placeholder="说点什么..."
-                rows={1}
-                className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 bg-white placeholder:text-slate-400"
-                style={{ minHeight: '36px', maxHeight: '80px' }}
-              />
-              <button
-                onClick={sendComment}
-                disabled={!commentText.trim() || commentSending}
-                className="w-8 h-8 bg-orange-500 hover:bg-orange-400 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-sm"
-              >
-                {commentSending ? '⏳' : '↑'}
-              </button>
+            {/* 评论输入框 + F02 @mention */}
+            <div className="relative">
+              {/* F02: @mention 下拉列表 */}
+              {mentionQuery !== null && filteredMentions.length > 0 && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-20">
+                  {filteredMentions.map((c, i) => (
+                    <button
+                      key={`${c.userId}-${c.displayName}`}
+                      onClick={() => insertMention(c)}
+                      className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-orange-50 transition-colors ${
+                        i === mentionIdx ? 'bg-orange-50 text-orange-700' : 'text-slate-700'
+                      }`}
+                    >
+                      <span>{c.icon}</span>
+                      <span className="font-medium">{c.displayName}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={commentRef}
+                  value={commentText}
+                  onChange={handleCommentChange}
+                  onKeyDown={handleCommentKeyDown}
+                  placeholder="说点什么... 输入 @ 提及成员"
+                  rows={1}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 bg-white placeholder:text-slate-400"
+                  style={{ minHeight: '36px', maxHeight: '80px' }}
+                />
+                <button
+                  onClick={sendComment}
+                  disabled={!commentText.trim() || commentSending}
+                  className="w-8 h-8 bg-orange-500 hover:bg-orange-400 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-sm"
+                >
+                  {commentSending ? '⏳' : '↑'}
+                </button>
+              </div>
             </div>
           </div>
 

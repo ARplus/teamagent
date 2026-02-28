@@ -154,6 +154,17 @@ export async function POST(
       }
     })
 
+    // F02: 解析 @mentions — 格式: @[显示名](userId)
+    const mentionRegex = /@\[([^\]]+)\]\(([a-zA-Z0-9_-]+)\)/g
+    const mentionedUserIds = new Set<string>()
+    let match
+    while ((match = mentionRegex.exec(content)) !== null) {
+      const mentionedId = match[2]
+      if (mentionedId !== userId) { // 不通知自己
+        mentionedUserIds.add(mentionedId)
+      }
+    }
+
     // 通知相关人员（排除自己）
     const notifyUserIds = new Set<string>()
 
@@ -167,7 +178,7 @@ export async function POST(
       notifyUserIds.add(step.assigneeId)
     }
 
-    // 发送 SSE + 站内通知
+    // 发送 SSE + 站内通知（评论通知）
     for (const targetUserId of notifyUserIds) {
       sendToUser(targetUserId, {
         type: 'step:commented',
@@ -181,6 +192,40 @@ export async function POST(
       await createNotification({
         userId: targetUserId,
         ...template,
+        taskId: step.taskId,
+        stepId: id
+      })
+    }
+
+    // F02: 给被 @mention 的人发送专门的提及通知
+    for (const mentionedId of mentionedUserIds) {
+      if (!notifyUserIds.has(mentionedId)) {
+        // 这些人没有收到评论通知，单独发 mention 通知
+        sendToUser(mentionedId, {
+          type: 'step:mentioned',
+          taskId: step.taskId,
+          stepId: id,
+          commentId: comment.id,
+          authorName: userName,
+          content: content.trim().substring(0, 100)
+        })
+      } else {
+        // 已经收到评论通知的，额外发一条 mention SSE（让前端高亮）
+        sendToUser(mentionedId, {
+          type: 'step:mentioned',
+          taskId: step.taskId,
+          stepId: id,
+          commentId: comment.id,
+          authorName: userName,
+          content: content.trim().substring(0, 100)
+        })
+      }
+
+      // 创建 mention 站内通知
+      const mentionTemplate = notificationTemplates.mentioned(step.title, userName)
+      await createNotification({
+        userId: mentionedId,
+        ...mentionTemplate,
         taskId: step.taskId,
         stepId: id
       })

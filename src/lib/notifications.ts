@@ -126,5 +126,11 @@ export const notificationTemplates = {
     content: decision === 'upheld'
       ? `步骤「${stepTitle}」的申诉已被维持，步骤重新进入待审批状态`
       : `步骤「${stepTitle}」的申诉已被驳回，需重新完成`
+  }),
+
+  mentioned: (stepTitle: string, authorName: string) => ({
+    type: 'mention' as NotificationType,
+    title: '📣 有人 @提到了你',
+    content: `${authorName} 在步骤「${stepTitle}」的评论中提到了你`
   })
 }
