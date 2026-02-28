@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
-import { parseTaskWithAI } from '@/lib/ai-parse'
+import { parseTaskWithAI, TeamMemberContext } from '@/lib/ai-parse'
 import { sendToUsers, sendToUser } from '@/lib/events'
 import { getStartableSteps } from '@/lib/step-scheduling'
 
@@ -128,20 +128,10 @@ ${task.description}
     }
 
     // ============================================================
-    // 👥 Team 模式：千问 API 拆解
+    // 👥 Team 模式：Claude API 拆解（千问降级）
     // ============================================================
-    console.log('[Parse/Team] 开始千问 AI 拆解任务:', task.title)
-    const parseResult = await parseTaskWithAI(task.description)
 
-    if (!parseResult.success || !parseResult.steps) {
-      return NextResponse.json({
-        error: parseResult.error || '无法解析任务'
-      }, { status: 400 })
-    }
-
-    console.log('[Parse/Team] AI 拆解结果:', parseResult.steps.length, '个步骤')
-
-    // 获取工作区成员（含 Agent 能力）
+    // 先获取工作区成员（注入 AI 上下文 + 后续匹配）
     const workspaceMembers = await prisma.workspaceMember.findMany({
       where: { workspaceId: task.workspaceId },
       include: {
@@ -153,6 +143,36 @@ ${task.description}
         }
       }
     })
+
+    // B04: 构建团队上下文注入 AI
+    const teamMembers = workspaceMembers.map(m => {
+      const agent = m.user.agent as any
+      let caps: string[] = []
+      if (agent?.capabilities) {
+        try { caps = JSON.parse(agent.capabilities) } catch { caps = [] }
+      }
+      return {
+        name: m.user.nickname || m.user.name || '未知',
+        isAgent: !!agent,
+        agentName: agent?.name,
+        capabilities: caps,
+        role: m.role,
+      }
+    })
+
+    console.log(`[B04] 开始 AI 拆解任务: ${task.title}（团队 ${teamMembers.length} 人）`)
+    const parseResult = await parseTaskWithAI(task.description, teamMembers)
+
+    if (!parseResult.success || !parseResult.steps) {
+      console.error(`[B04] AI 拆解失败 [engine=${parseResult.engine}]:`, parseResult.error)
+      return NextResponse.json({
+        error: parseResult.error || '无法解析任务',
+        engine: parseResult.engine || 'unknown',
+        detail: `拆解引擎: ${parseResult.engine || '无'}，错误: ${parseResult.error}`
+      }, { status: 400 })
+    }
+
+    console.log(`[B04] AI 拆解成功 [engine=${parseResult.engine}]:`, parseResult.steps.length, '个步骤')
 
     // 能力匹配
     function matchByCapabilities(stepTitle: string, stepDesc: string): string | null {
@@ -228,10 +248,12 @@ ${task.description}
       }
     }
 
+    const engineLabel = parseResult.engine === 'claude' ? 'Claude' : '千问'
     return NextResponse.json({
-      message: `🤖 AI 成功拆解为 ${createdSteps.length} 个步骤，已通知 ${involvedUserIds.size} 个相关 Agent`,
+      message: `🤖 ${engineLabel} 成功拆解为 ${createdSteps.length} 个步骤，已通知 ${involvedUserIds.size} 个相关 Agent`,
       steps: createdSteps,
-      mode: 'qwen',
+      mode: 'team',
+      engine: parseResult.engine,
       involvedAgents: involvedUserIds.size
     })
 

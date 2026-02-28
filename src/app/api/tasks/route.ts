@@ -301,14 +301,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 🆕 Team 模式：任务创建后自动触发千问拆解，无需手动点「AI拆解」
+    // 🆕 Team 模式：任务创建后自动触发 AI 拆解（Claude → 千问降级）
     // fire-and-forget，不阻塞任务创建响应
     if (task.mode === 'team' && task.description && prebuiltSteps.length === 0) {
       ;(async () => {
         try {
-          const parseResult = await parseTaskWithAI(task.description!)
-          if (!parseResult.success || !parseResult.steps) return
-
+          // B04: 先获取工作区成员，注入 AI 上下文实现智能分配
           const workspaceMembers = await prisma.workspaceMember.findMany({
             where: { workspaceId: finalWorkspaceId },
             include: {
@@ -320,6 +318,29 @@ export async function POST(req: NextRequest) {
               }
             }
           })
+
+          const teamMembers = workspaceMembers.map(m => {
+            const agent = m.user.agent as any
+            let caps: string[] = []
+            if (agent?.capabilities) {
+              try { caps = JSON.parse(agent.capabilities) } catch { caps = [] }
+            }
+            return {
+              name: m.user.nickname || m.user.name || '未知',
+              isAgent: !!agent,
+              agentName: agent?.name,
+              capabilities: caps,
+              role: m.role,
+            }
+          })
+
+          console.log(`[Task/Create] B04 自动拆解：团队 ${teamMembers.length} 人，引擎优先 Claude`)
+          const parseResult = await parseTaskWithAI(task.description!, teamMembers)
+          if (!parseResult.success || !parseResult.steps) {
+            console.warn(`[Task/Create] 自动拆解失败 [engine=${parseResult.engine}]:`, parseResult.error)
+            return
+          }
+          console.log(`[Task/Create] 拆解成功 [engine=${parseResult.engine}]: ${parseResult.steps.length} 步`)
 
           function matchByCapabilities(title: string, desc: string): string | null {
             const haystack = `${title} ${desc}`.toLowerCase()
@@ -394,7 +415,15 @@ export async function POST(req: NextRequest) {
               if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
             }
           }
-          console.log(`[Task/Create] Team 自动拆解完成：${createdSteps.length} 步，taskId=${task.id}`)
+          // 🔔 通知任务创建者：拆解完成，前端自动刷新步骤列表
+          sendToUser(auth.userId, {
+            type: 'task:parsed',
+            taskId: task.id,
+            stepCount: createdSteps.length,
+            engine: parseResult.engine || 'unknown',
+          })
+
+          console.log(`[Task/Create] Team 自动拆解完成：${createdSteps.length} 步，taskId=${task.id}，已通知创建者刷新`)
         } catch (e: any) {
           console.warn('[Task/Create] Team 自动拆解失败:', e?.message)
         }

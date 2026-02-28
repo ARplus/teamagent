@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -1647,6 +1648,7 @@ function SummaryCard({ task, onRefresh }: { task: Task; onRefresh: () => void })
 
 function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: Task; onRefresh: () => void; canApprove: boolean; currentUserId?: string }) {
   const [parsing, setParsing] = useState(false)
+  const [autoParsing, setAutoParsing] = useState(false)
   const [showAddStep, setShowAddStep] = useState(false)
   const [newStepTitle, setNewStepTitle] = useState('')
   const [newStepType, setNewStepType] = useState<'task' | 'meeting'>('task')
@@ -1704,7 +1706,8 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
         // Solo 模式无主 Agent → 提示绑定
         alert(`⚡ ${data.message}`)
       } else {
-        alert(data.error || '拆解失败')
+        const detail = data.detail || data.error || '拆解失败'
+        alert(`❌ ${detail}`)
       }
     } finally {
       setParsing(false)
@@ -1801,6 +1804,55 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   const currentIndex = steps.findIndex(s => s.status !== 'done')
   const progress = steps.length > 0 ? Math.round((steps.filter(s => s.status === 'done').length / steps.length) * 100) : 0
 
+  // B04: 自动检测后台 AI 拆解状态 —— team模式+有描述+0步骤+创建时间<120s → 认为正在后台拆解
+  useEffect(() => {
+    if (task.mode === 'team' && task.description && steps.length === 0) {
+      const ageMs = Date.now() - new Date(task.createdAt).getTime()
+      if (ageMs < 120_000) {
+        setAutoParsing(true)
+        // 超时 120s 后自动取消（防止永远卡在 loading）
+        const timer = setTimeout(() => setAutoParsing(false), Math.max(120_000 - ageMs, 5000))
+        return () => clearTimeout(timer)
+      }
+    }
+    // steps 已有 → 拆解完成，清除 autoParsing
+    if (steps.length > 0) setAutoParsing(false)
+  }, [task.mode, task.description, task.createdAt, steps.length])
+
+  // B04: autoParsing 期间每 5 秒轮询检查步骤是否已生成（SSE 后备方案）
+  useEffect(() => {
+    if (!autoParsing) return
+    const poll = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/tasks/${task.id}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.steps?.length > 0) {
+          console.log('[B04] 轮询检测到步骤已生成，刷新')
+          setAutoParsing(false)
+          onRefresh()
+        }
+      } catch {}
+    }, 5000)
+    return () => clearInterval(poll)
+  }, [autoParsing, task.id, onRefresh])
+
+  // B04: 监听 task:parsed 事件 → 立即刷新
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.taskId === task.id) {
+        setAutoParsing(false)
+        onRefresh()
+      }
+    }
+    window.addEventListener('teamagent:task-parsed', handler)
+    return () => window.removeEventListener('teamagent:task-parsed', handler)
+  }, [task.id, onRefresh])
+
+  // 合并两种 parsing 状态
+  const isParsing = parsing || autoParsing
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full flex flex-col">
       {/* Header */}
@@ -1821,14 +1873,19 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
           )}
         </div>
         <div className="flex items-center space-x-2">
-          {task.description && steps.length === 0 && (
-            <button
-              onClick={parseTask}
-              disabled={parsing}
-              className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-4 py-2 rounded-xl hover:from-orange-400 hover:to-rose-400 disabled:opacity-50 shadow-md shadow-orange-500/20 font-medium"
-            >
-              {parsing ? '🤖 拆解中...' : task.mode === 'solo' ? '🤖 主Agent拆解' : '🤖 AI 拆解'}
-            </button>
+          {task.description && (steps.length === 0 || isParsing) && (
+            isParsing ? (
+              <span className="text-xs text-orange-500 font-medium px-4 py-2 bg-orange-50 rounded-xl animate-pulse">
+                🤖 AI 正在分配任务…
+              </span>
+            ) : (
+              <button
+                onClick={parseTask}
+                className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-4 py-2 rounded-xl hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20 font-medium"
+              >
+                {task.mode === 'solo' ? '🤖 主Agent拆解' : '🤖 AI 拆解'}
+              </button>
+            )
           )}
           <button
             onClick={() => { setInsertAfterOrder(null); setShowAddStep(true) }}
@@ -2034,9 +2091,30 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-slate-400">
-            <div className="text-5xl mb-3">📝</div>
-            <div className="text-sm font-medium">暂无步骤</div>
-            <div className="text-xs mt-1">点击"AI 拆解"或"添加步骤"开始</div>
+            {isParsing ? (
+              <div className="flex flex-col items-center">
+                {/* 动态圆环动画 */}
+                <div className="relative w-20 h-20 mb-4">
+                  <div className="absolute inset-0 rounded-full border-4 border-orange-100" />
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-orange-500 animate-spin" />
+                  <div className="absolute inset-2 rounded-full border-4 border-transparent border-b-rose-400 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                  <div className="absolute inset-0 flex items-center justify-center text-2xl">🤖</div>
+                </div>
+                <div className="text-sm font-semibold text-orange-600 mb-1">AI 正在分析任务并分配步骤</div>
+                <div className="text-xs text-slate-400 mb-3">正在为每位成员智能匹配最合适的任务…</div>
+                <div className="flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-5xl mb-3">📝</div>
+                <div className="text-sm font-medium">暂无步骤</div>
+                <div className="text-xs mt-1">点击&quot;AI 拆解&quot;或&quot;添加步骤&quot;开始</div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -2085,6 +2163,8 @@ function StepCard({
   // B08: 多选状态
   const [multiSelected, setMultiSelected] = useState<Map<string, 'agent' | 'human'>>(new Map())
   const [completionMode, setCompletionMode] = useState<'all' | 'any'>((step.completionMode as 'all' | 'any') || 'all')
+  const assignDropdownRef = useRef<HTMLDivElement>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; openUp: boolean }>({ top: 0, left: 0, openUp: false })
   const [humanCompleting, setHumanCompleting] = useState(false)
   // 申诉相关状态
   const [showAppealForm, setShowAppealForm] = useState(false)
@@ -2217,18 +2297,51 @@ function StepCard({
     }
   }
 
-  // B08: 多选切换
+  // B08: 多选切换 — 同一真实用户只保留一种身份（agent / human 互斥）
   const toggleMultiSelect = (userId: string, type: 'agent' | 'human') => {
     setMultiSelected(prev => {
       const next = new Map(prev)
       if (next.has(userId)) {
         next.delete(userId)
       } else {
+        // 提取真实 userId（去掉 human: 前缀）
+        const realId = userId.startsWith('human:') ? userId.slice(6) : userId
+        // 互斥：如果选了 agent，删除同一用户的 human 条目，反之亦然
+        const counterpart = type === 'agent' ? `human:${realId}` : realId
+        next.delete(counterpart)
         next.set(userId, type)
       }
       return next
     })
   }
+
+  // 点击外部关闭分配弹窗（自动保存）— Portal 版本需同时排除触发按钮
+  useEffect(() => {
+    if (!editingAssignee) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // 忽略点击触发按钮（由 onClick toggle 处理）
+      if (target.closest('[data-assign-trigger]')) return
+      if (assignDropdownRef.current && !assignDropdownRef.current.contains(target)) {
+        // 有选中 → 自动保存；无选中 → 直接关闭
+        if (multiSelected.size > 0 && onAssign && !savingAssignee) {
+          const assigneeIds = Array.from(multiSelected.entries()).map(([key, assigneeType]) => ({
+            userId: key.startsWith('human:') ? key.slice(6) : key,
+            assigneeType
+          }))
+          setSavingAssignee(true)
+          onAssign(step.id, null, { assigneeIds, completionMode })
+            .then(() => { setEditingAssignee(false) })
+            .finally(() => { setSavingAssignee(false) })
+        } else {
+          setEditingAssignee(false)
+          setMultiSelected(new Map())
+        }
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [editingAssignee, multiSelected, savingAssignee, onAssign, step.id, completionMode])
 
   // B08: 人类手动完成
   const handleHumanComplete = async () => {
@@ -2400,7 +2513,7 @@ function StepCard({
   const isRejected = step.status === 'pending' && step.rejectedAt
 
   return (
-    <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
+    <div className={`rounded-2xl border-2 transition-all ${
       isMeeting
         ? step.status === 'done' ? 'border-blue-200 bg-blue-50/30'
           : isWaiting ? 'border-blue-300 bg-blue-50/50 shadow-md shadow-blue-100'
@@ -2447,11 +2560,79 @@ function StepCard({
                     </span>
                   )}
                 </>
-              ) : editingAssignee ? (
-                /* B08: 多选 checkbox 面板 */
-                <div className="relative" onClick={e => e.stopPropagation()}>
-                  <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-blue-200 rounded-xl shadow-xl p-3 min-w-[220px] max-h-[260px] overflow-y-auto">
-                    <div className="text-xs text-slate-500 font-medium mb-2">选择负责人（可多选）</div>
+              ) : (
+                <>
+                <span className="flex items-center space-x-1 flex-wrap">
+                  {hasMultiAssignees ? (
+                    <>
+                      {multiAssignees.slice(0, 3).map(a => (
+                        <span key={a.userId} className="inline-flex items-center gap-0.5 text-xs">
+                          {a.user?.agent ? '🤖' : '👤'}
+                          <span>{a.user?.agent?.name || a.user?.name || '?'}</span>
+                        </span>
+                      ))}
+                      {multiAssignees.length > 3 && <span className="text-xs text-slate-400">+{multiAssignees.length - 3}</span>}
+                      {step.completionMode === 'any' && <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">任一</span>}
+                    </>
+                  ) : (
+                    <span>{hasAgent ? '🤖' : '👤'} {assigneeName}</span>
+                  )}
+                  {agents && agents.length > 0 && (
+                    <button
+                      data-assign-trigger
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        // 点击时如果已打开 → 关闭（toggle 行为）
+                        if (editingAssignee) {
+                          setEditingAssignee(false)
+                          setMultiSelected(new Map())
+                          return
+                        }
+                        // 计算按钮位置，Portal 浮层将基于此定位
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        const spaceBelow = window.innerHeight - rect.bottom
+                        const openUp = spaceBelow < 300 && rect.top > spaceBelow
+                        setDropdownPos({
+                          top: openUp ? rect.top : rect.bottom + 4,
+                          left: Math.max(8, Math.min(rect.left, window.innerWidth - 240)),
+                          openUp
+                        })
+                        // B08: 初始化多选状态（从现有 assignees 读取）
+                        const initial = new Map<string, 'agent' | 'human'>()
+                        if (multiAssignees.length > 0) {
+                          for (const a of multiAssignees) {
+                            if (a.assigneeType === 'human') initial.set(`human:${a.userId}`, 'human')
+                            else initial.set(a.userId, 'agent')
+                          }
+                        } else if (step.assignee?.id) {
+                          initial.set(hasAgent ? step.assignee.id : `human:${step.assignee.id}`, hasAgent ? 'agent' : 'human')
+                        }
+                        setMultiSelected(initial)
+                        setEditingAssignee(true)
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-xs border ml-1 ${editingAssignee ? 'bg-blue-100 text-blue-600 border-blue-300' : 'bg-blue-50 text-blue-500 hover:bg-blue-100 border-blue-200'}`}
+                    >
+                      {editingAssignee ? '选择中…' : '分配'}
+                    </button>
+                  )}
+                </span>
+                {/* B08: 多选 checkbox 面板 — Portal 渲染避免 overflow 裁剪 */}
+                {editingAssignee && typeof document !== 'undefined' && createPortal(
+                  <div
+                    ref={assignDropdownRef}
+                    onClick={e => e.stopPropagation()}
+                    className="fixed z-[9999] bg-white border border-blue-200 rounded-xl shadow-2xl min-w-[220px] flex flex-col"
+                    style={{
+                      ...(dropdownPos.openUp
+                        ? { bottom: `${window.innerHeight - dropdownPos.top + 4}px`, left: `${dropdownPos.left}px` }
+                        : { top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }),
+                      maxHeight: '50vh'
+                    }}
+                  >
+                    <div className="px-3 pt-3 pb-1">
+                      <div className="text-xs text-slate-500 font-medium mb-1">选择负责人（可多选）</div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-3" style={{ maxHeight: '160px' }}>
                     {(agents || []).map(m => (
                       <div key={m.id} className="mb-2">
                         <div className="text-xs text-slate-400 mb-1">👤 {m.name || m.email}{m.isSelf ? ' (我)' : ''}</div>
@@ -2478,8 +2659,10 @@ function StepCard({
                         </label>
                       </div>
                     ))}
+                    </div>
+                    <div className="px-3 pb-3 border-t border-slate-100">
                     {multiSelected.size > 1 && (
-                      <div className="border-t border-slate-100 pt-2 mt-2">
+                      <div className="pt-2 pb-1">
                         <div className="text-xs text-slate-500 mb-1">完成模式</div>
                         <div className="flex gap-2">
                           <button
@@ -2493,7 +2676,7 @@ function StepCard({
                         </div>
                       </div>
                     )}
-                    <div className="flex gap-2 mt-3 pt-2 border-t border-slate-100">
+                    <div className="flex gap-2 pt-2">
                       <button
                         onClick={saveAssignee}
                         disabled={savingAssignee || multiSelected.size === 0}
@@ -2508,47 +2691,11 @@ function StepCard({
                         取消
                       </button>
                     </div>
-                  </div>
-                </div>
-              ) : (
-                <span className="flex items-center space-x-1 flex-wrap">
-                  {hasMultiAssignees ? (
-                    <>
-                      {multiAssignees.slice(0, 3).map(a => (
-                        <span key={a.userId} className="inline-flex items-center gap-0.5 text-xs">
-                          {a.user?.agent ? '🤖' : '👤'}
-                          <span>{a.user?.agent?.name || a.user?.name || '?'}</span>
-                        </span>
-                      ))}
-                      {multiAssignees.length > 3 && <span className="text-xs text-slate-400">+{multiAssignees.length - 3}</span>}
-                      {step.completionMode === 'any' && <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">任一</span>}
-                    </>
-                  ) : (
-                    <span>{hasAgent ? '🤖' : '👤'} {assigneeName}</span>
-                  )}
-                  {agents && agents.length > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        // B08: 初始化多选状态（从现有 assignees 读取）
-                        const initial = new Map<string, 'agent' | 'human'>()
-                        if (multiAssignees.length > 0) {
-                          for (const a of multiAssignees) {
-                            if (a.assigneeType === 'human') initial.set(`human:${a.userId}`, 'human')
-                            else initial.set(a.userId, 'agent')
-                          }
-                        } else if (step.assignee?.id) {
-                          initial.set(hasAgent ? step.assignee.id : `human:${step.assignee.id}`, hasAgent ? 'agent' : 'human')
-                        }
-                        setMultiSelected(initial)
-                        setEditingAssignee(true)
-                      }}
-                      className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200 ml-1"
-                    >
-                      分配
-                    </button>
-                  )}
-                </span>
+                    </div>
+                  </div>,
+                  document.body
+                )}
+                </>
               )}
               <span className={`px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
               {!isMeeting && step.requiresApproval === false && (
@@ -3906,6 +4053,21 @@ export default function HomePage() {
     else setSelectedTask(null)
   }, [selectedId, fetchTaskDetail])
 
+  // B04: 监听后台 AI 拆解完成事件，自动刷新任务列表和详情
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      console.log('[B04] AI 拆解完成事件', detail?.taskId)
+      fetchTasks() // 刷新左侧列表（步骤数变化 + 清除"AI分配中"标记）
+      if (detail?.taskId && detail.taskId === selectedId) {
+        console.log('[B04] 当前任务拆解完成，刷新步骤详情')
+        fetchTaskDetail(detail.taskId)
+      }
+    }
+    window.addEventListener('teamagent:task-parsed', handler)
+    return () => window.removeEventListener('teamagent:task-parsed', handler)
+  }, [selectedId, fetchTaskDetail])
+
   useEffect(() => {
     const hash = window.location.hash.slice(1)
     if (hash && tasks.some(t => t.id === hash)) setSelectedId(hash)
@@ -4161,6 +4323,9 @@ export default function HomePage() {
                   const hasWaiting = task.steps?.some(s => s.status === 'waiting_approval')
                   const st = statusConfig[task.status] || statusConfig.todo
                   const progress = stepsTotal > 0 ? Math.round((stepsDone / stepsTotal) * 100) : 0
+                  // B04: 卡片上检测自动拆解中
+                  const isAutoParsingCard = task.mode === 'team' && !!task.description && stepsTotal === 0
+                    && (Date.now() - new Date(task.createdAt).getTime()) < 120_000
 
                   return (
                     <div
@@ -4181,14 +4346,18 @@ export default function HomePage() {
                           {hasWaiting && <span className="text-xs text-amber-400 font-medium">待审 ▶</span>}
                         </div>
                       </div>
-                      {stepsTotal > 0 && (
+                      {isAutoParsingCard ? (
+                        <div className="flex items-center space-x-1.5 mt-2 animate-pulse">
+                          <span className="text-xs text-orange-400 font-medium">🤖 AI 任务分配中…</span>
+                        </div>
+                      ) : stepsTotal > 0 ? (
                         <div className="flex items-center space-x-2 mt-2">
                           <div className={`flex-1 h-1 rounded-full overflow-hidden ${idx % 2 === 0 ? 'bg-slate-700' : 'bg-orange-900/40'}`}>
                             <div className="h-full bg-gradient-to-r from-orange-400 to-emerald-400" style={{ width: `${progress}%` }} />
                           </div>
                           <span className={`text-xs flex-shrink-0 ${idx % 2 === 0 ? 'text-slate-500' : 'text-orange-300/60'}`}>{stepsDone}/{stepsTotal}</span>
                         </div>
-                      )}
+                      ) : null}
                       <div className={`text-xs mt-1 ${idx % 2 === 0 ? 'text-slate-600' : 'text-orange-400/40'}`}>{formatTime(task.updatedAt)}</div>
                     </div>
                   )

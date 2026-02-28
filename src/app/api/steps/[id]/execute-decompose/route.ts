@@ -5,6 +5,7 @@ import { sendToUser, sendToUsers } from '@/lib/events'
 import { getStartableSteps } from '@/lib/step-scheduling'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+const ANTHROPIC_API_URL = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages'
 const QWEN_API_KEY = process.env.QWEN_API_KEY || 'sk-4a673b39b21f4e2aad6b9e38f487631f'
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 
@@ -15,7 +16,7 @@ async function callDecomposeLLM(systemPrompt: string, userMessage: string): Prom
   // 优先 Claude
   if (ANTHROPIC_API_KEY) {
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch(ANTHROPIC_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -23,7 +24,7 @@ async function callDecomposeLLM(systemPrompt: string, userMessage: string): Prom
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-5',
           max_tokens: 4096,
           system: systemPrompt,
           messages: [{ role: 'user', content: userMessage }],

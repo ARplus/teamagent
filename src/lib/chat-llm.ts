@@ -188,7 +188,8 @@ export async function callLLM(
   // 优先 Claude
   if (anthropicKey) {
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const apiUrl = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages'
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -196,7 +197,7 @@ export async function callLLM(
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-5',
           max_tokens: 1024,
           system: systemPrompt,
           messages,

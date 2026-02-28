@@ -16,6 +16,8 @@ export type TeamAgentEvent =
   | { type: 'workflow:changed'; taskId: string; change: string }
   | { type: 'chat:incoming'; msgId: string; content: string; senderName?: string }
   | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
+  // B04: AI 后台拆解完成
+  | { type: 'task:parsed'; taskId: string; stepCount: number; engine: string }
   // F06: Agent 主动呼叫
   | { type: 'agent:calling'; callId: string; priority: 'urgent' | 'normal' | 'low'; title: string; content: string; agentName: string; taskId?: string; stepId?: string }
   | { type: 'agent:call-responded'; callId: string; action: string; message?: string; respondedBy: string }

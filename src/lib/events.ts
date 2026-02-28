@@ -24,6 +24,8 @@ export type TeamAgentEvent =
   // F06: Agent 主动呼叫
   | { type: 'agent:calling'; callId: string; priority: 'urgent' | 'normal' | 'low'; title: string; content: string; agentName: string; taskId?: string; stepId?: string }
   | { type: 'agent:call-responded'; callId: string; action: string; message?: string; respondedBy: string }
+  // B04: AI 后台拆解完成
+  | { type: 'task:parsed'; taskId: string; stepCount: number; engine: string }
   | { type: 'ping' }
 
 // 订阅者类型

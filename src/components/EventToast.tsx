@@ -79,6 +79,14 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
           onTaskUpdate?.()
           break
 
+        // B04: AI 后台拆解完成，自动刷新步骤列表
+        case 'task:parsed':
+          addToast('success', '🤖 AI 拆解完成', `已生成 ${event.stepCount || ''} 个步骤`)
+          onTaskUpdate?.()
+          // 广播自定义事件，让 page.tsx 自动刷新当前任务
+          window.dispatchEvent(new CustomEvent('teamagent:task-parsed', { detail: { taskId: event.taskId } }))
+          break
+
         // F06: Agent 主动呼叫
         case 'agent:calling':
           if (event.priority === 'urgent') {
