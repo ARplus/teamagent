@@ -77,6 +77,9 @@ export async function GET(req: NextRequest) {
                 status: true,
                 avatar: true,
                 personality: true,
+                parentAgentId: true,
+                parentAgent: { select: { id: true, name: true, user: { select: { id: true, name: true } } } },
+                childAgents: { select: { id: true, name: true, status: true, capabilities: true, userId: true, user: { select: { id: true, name: true } } } },
               }
             }
           }
@@ -107,6 +110,13 @@ export async function GET(req: NextRequest) {
           status: agent.status,
           avatar: agent.avatar,
           personality: agent.personality,
+          parentAgentId: agent.parentAgentId,
+          parentAgent: agent.parentAgent ? { id: agent.parentAgent.id, name: agent.parentAgent.name, ownerName: agent.parentAgent.user?.name } : null,
+          childAgents: (agent.childAgents || []).map((c: any) => ({
+            id: c.id, name: c.name, status: c.status,
+            capabilities: c.capabilities ? JSON.parse(c.capabilities) : [],
+            ownerName: c.user?.name,
+          })),
         } : null
       }
     })

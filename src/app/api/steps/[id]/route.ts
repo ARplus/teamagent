@@ -90,6 +90,7 @@ export async function PATCH(
     if (data.agentStatus !== undefined) updateData.agentStatus = data.agentStatus
     if (data.result !== undefined) updateData.result = data.result
     if (data.order !== undefined) updateData.order = data.order
+    if (data.parallelGroup !== undefined) updateData.parallelGroup = data.parallelGroup || null
     // 分配步骤：null 表示取消分配，string 表示分配给指定用户（人类或 Agent 所属用户）
     if (data.assigneeId !== undefined) {
       const newAssigneeId = data.assigneeId || null

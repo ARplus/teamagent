@@ -18,6 +18,8 @@ interface Agent {
   name: string
   avatar: string | null
   status: string
+  isMainAgent?: boolean
+  parentAgent?: { id: string; name: string; user?: { id: string; name: string | null } } | null
 }
 
 interface Submission {
@@ -401,13 +403,13 @@ function TaskList({
           <span>查看官网首页</span>
         </a>
 
-        {/* 我的战队 */}
+        {/* 我的工作区 */}
         <a
-          href="/team"
+          href="/workspace"
           className="w-full py-2 rounded-xl text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/40 flex items-center justify-center space-x-1.5 transition-colors"
         >
-          <span>🌊</span>
-          <span>我的战队</span>
+          <span>🏠</span>
+          <span>我的工作区</span>
         </a>
 
         {/* 邀请协作伙伴 */}
@@ -828,80 +830,149 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
 }
 
 function TeamCard({ task }: { task: Task }) {
-  // 收集 Agent 信息
-  const agentMap = new Map<string, { 
+  // 收集每个 assignee 的步骤统计 + Agent 元数据
+  const memberMap = new Map<string, {
+    userId: string
     agentName: string
     humanName: string
-    status: string
+    isMainAgent: boolean
+    parentAgentName?: string
+    parentOwnerName?: string
+    agentStatus?: string  // agent.status (online/working/offline)
+    stepStatus: string
     done: number
     total: number
-    agentStatus?: string
   }>()
-  
+
   for (const step of task.steps || []) {
-    if (step.assignee) {
-      const key = step.assignee.id
-      const agent = step.assignee.agent
-      const existing = agentMap.get(key)
-      
-      if (existing) {
-        existing.total++
-        if (step.status === 'done') existing.done++
-        if (step.status === 'in_progress' || step.status === 'waiting_approval') {
-          existing.status = step.status
-          existing.agentStatus = step.agentStatus || undefined
-        }
-      } else {
-        agentMap.set(key, {
-          agentName: agent?.name || '未绑定',
-          humanName: step.assignee.name || '未知',
-          status: step.status,
-          done: step.status === 'done' ? 1 : 0,
-          total: 1,
-          agentStatus: step.agentStatus || undefined
-        })
+    if (!step.assignee) continue
+    const key = step.assignee.id
+    const agent = step.assignee.agent
+    const existing = memberMap.get(key)
+
+    if (existing) {
+      existing.total++
+      if (step.status === 'done') existing.done++
+      if (step.status === 'in_progress' || step.status === 'waiting_approval') {
+        existing.stepStatus = step.status
       }
+    } else {
+      memberMap.set(key, {
+        userId: step.assignee.id,
+        agentName: agent?.name || '未绑定',
+        humanName: step.assignee.name || '未知',
+        isMainAgent: agent?.isMainAgent ?? false,
+        parentAgentName: agent?.parentAgent?.name,
+        parentOwnerName: agent?.parentAgent?.user?.name || undefined,
+        agentStatus: agent?.status || undefined,
+        stepStatus: step.status,
+        done: step.status === 'done' ? 1 : 0,
+        total: 1,
+      })
     }
   }
 
-  const team = Array.from(agentMap.values())
+  const allMembers = Array.from(memberMap.values())
+
+  // 按归属链分组：主Agent 在前，其子Agent 缩进显示
+  // 1. 找出所有主Agent
+  const mainAgents = allMembers.filter(m => m.isMainAgent)
+  // 2. 找出所有子Agent（有 parentAgent）
+  const subAgents = allMembers.filter(m => !m.isMainAgent && m.parentAgentName)
+  // 3. 无归属的（纯人类步骤或未绑定）
+  const others = allMembers.filter(m => !m.isMainAgent && !m.parentAgentName)
+
+  // 归属链状态点
+  function StatusDot({ status }: { status?: string }) {
+    const st = status ? agentStatusConfig[status] : null
+    if (!st) return null
+    return (
+      <div className="flex items-center space-x-1">
+        <div className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+        <span className="text-xs text-slate-400">{st.label}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
       <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center space-x-2">
-        <span>🤖</span>
-        <span>Agent 团队</span>
+        <span>👥</span>
+        <span>任务 Team</span>
       </h3>
-      {team.length > 0 ? (
-        <div className="space-y-3">
-          {team.map((m, i) => {
-            const agentSt = m.agentStatus ? agentStatusConfig[m.agentStatus] : null
+      {allMembers.length > 0 ? (
+        <div className="space-y-2">
+          {/* 主 Agent 组 */}
+          {mainAgents.map((m, i) => {
+            const children = subAgents.filter(s => s.parentAgentName === m.agentName)
             return (
-              <div key={i} className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-orange-50/50 rounded-xl">
-                <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-orange-500/20">
-                    {m.agentName.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">{m.agentName}</div>
-                    <div className="text-xs text-slate-500">👤 {m.humanName}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</div>
-                  {agentSt && (
-                    <div className="flex items-center justify-end space-x-1 mt-0.5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${agentSt.dot}`} />
-                      <span className="text-xs text-slate-400">{agentSt.label}</span>
+              <div key={`main-${i}`}>
+                {/* 主 Agent 行 */}
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-orange-50/50 rounded-xl">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-orange-500/20">
+                      {m.agentName.charAt(0)}
                     </div>
-                  )}
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800 flex items-center space-x-1.5">
+                        <span>{m.agentName}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">main</span>
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center space-x-1">
+                        <span>→ 👤 {m.humanName}</span>
+                        <StatusDot status={m.agentStatus} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</div>
                 </div>
+                {/* 子 Agent 行（缩进） */}
+                {children.map((c, j) => (
+                  <div key={`sub-${i}-${j}`} className="flex items-center justify-between p-2.5 pl-12 ml-4 border-l-2 border-slate-200">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white text-xs font-bold">
+                        {c.agentName.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
+                          <span>⚙️ {c.agentName}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <StatusDot status={c.agentStatus} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500 font-medium">{c.done}/{c.total}</div>
+                  </div>
+                ))}
               </div>
             )
           })}
+          {/* 无归属成员（纯人类步骤等） */}
+          {others.map((m, i) => (
+            <div key={`other-${i}`} className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-xl">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-blue-500/20">
+                  {(m.humanName || m.agentName).charAt(0)}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">{m.agentName !== '未绑定' ? m.agentName : m.humanName}</div>
+                  {m.agentName !== '未绑定' ? (
+                    <div className="text-xs text-slate-500 flex items-center space-x-1">
+                      <span>→ 👤 {m.humanName}</span>
+                      <StatusDot status={m.agentStatus} />
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500">👤 纯人类步骤</div>
+                  )}
+                </div>
+              </div>
+              <div className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</div>
+            </div>
+          ))}
         </div>
       ) : (
-        <div className="text-sm text-slate-400 text-center py-4">暂无 Agent</div>
+        <div className="text-sm text-slate-400 text-center py-4">暂无成员</div>
       )}
     </div>
   )
@@ -2736,7 +2807,7 @@ function MobileProfileView({ userEmail, userName, onSignOut }: {
             <span className="text-white font-bold text-sm">我的军团</span>
             <span className="text-slate-500 text-xs">{allAgents.length} 位 · {onlineCount} 在线</span>
           </div>
-          <a href="/team" className="text-orange-400 text-xs font-medium active:text-orange-300">详情 ›</a>
+          <a href="/workspace" className="text-orange-400 text-xs font-medium active:text-orange-300">详情 ›</a>
         </div>
 
         {loading ? (
@@ -2806,8 +2877,8 @@ function MobileProfileView({ userEmail, userName, onSignOut }: {
       {/* 底部快捷操作 + 退出 */}
       <div className="px-4 pt-2 pb-8 space-y-2">
         <div className="flex gap-2">
-          <a href="/team" className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-xl py-2.5 text-slate-300 active:bg-slate-700/60 text-xs font-medium">
-            <span>🌊</span><span>战队主页</span>
+          <a href="/workspace" className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-xl py-2.5 text-slate-300 active:bg-slate-700/60 text-xs font-medium">
+            <span>🏠</span><span>我的工作区</span>
           </a>
           <a href="/landing" className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-xl py-2.5 text-slate-300 active:bg-slate-700/60 text-xs font-medium">
             <span>🌐</span><span>官网首页</span>
@@ -3175,7 +3246,7 @@ export default function HomePage() {
           <TaskDetail
             task={selectedTask}
             onRefresh={handleRefresh}
-            canApprove={(selectedTask as any).viewerIsCreator ?? (session?.user?.id === selectedTask.creator?.id)}
+            canApprove={(selectedTask as any).viewerIsCreator ?? (session?.user?.id === selectedTask.creator?.id || selectedTask.steps?.some((s: any) => s.assignee?.id === session?.user?.id))}
             onDelete={handleDelete}
             myAgent={myAgent}
             currentUserId={session?.user?.id || ''}
@@ -3434,7 +3505,7 @@ export default function HomePage() {
             <TaskDetail
               task={selectedTask}
               onRefresh={handleRefresh}
-              canApprove={(selectedTask as any).viewerIsCreator ?? (session?.user?.id === selectedTask.creator?.id)}
+              canApprove={(selectedTask as any).viewerIsCreator ?? (session?.user?.id === selectedTask.creator?.id || selectedTask.steps?.some((s: any) => s.assignee?.id === session?.user?.id))}
               onDelete={handleDelete}
               myAgent={myAgent}
               currentUserId={session?.user?.id || ''}

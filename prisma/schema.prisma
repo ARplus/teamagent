@@ -78,7 +78,12 @@ model Agent {
 
   // 🆕 Claim 后临时存原始 Token，Agent 轮询取走即删
   pendingApiToken String?
-  
+
+  // 归属链：子Agent → 主Agent（B06）
+  parentAgentId   String?
+  parentAgent     Agent?   @relation("AgentHierarchy", fields: [parentAgentId], references: [id])
+  childAgents     Agent[]  @relation("AgentHierarchy")
+
   @@index([pairingCode])
   @@index([clawdbotId])
 }

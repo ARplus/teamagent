@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // 创建 Agent
+    // 创建 Agent（记录归属链：子Agent → 调用方主Agent）
     const agent = await tx.agent.create({
       data: {
         name,
@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
         personality: personality || null,
         isMainAgent: false,
         claimedAt: new Date(),
+        parentAgentId: callerAgent.id,
       }
     })
 

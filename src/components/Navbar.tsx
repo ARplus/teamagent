@@ -67,9 +67,9 @@ export function Navbar() {
               <Link href="/tasks/new" className="text-sm text-gray-600 hover:text-gray-900">
                 ➕ 创建任务
               </Link>
-              <Link href="/agent" className="text-sm text-gray-600 hover:text-orange-600 flex items-center space-x-1">
-                <span>🤖</span>
-                <span>我的 Agent</span>
+              <Link href="/workspace" className="text-sm text-gray-600 hover:text-orange-600 flex items-center space-x-1">
+                <span>🏠</span>
+                <span>我的工作区</span>
               </Link>
               <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
                 ⚙️ 设置
@@ -165,8 +165,8 @@ export function Navbar() {
               <Link href="/landing" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
                 <span>📋</span><span>首页</span>
               </Link>
-              <Link href="/agent" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
-                <span>🤖</span><span>我的 Agent</span>
+              <Link href="/workspace" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                <span>🏠</span><span>我的工作区</span>
               </Link>
               <button
                 onClick={() => { setShowPairingModal(true); setMobileMenuOpen(false) }}

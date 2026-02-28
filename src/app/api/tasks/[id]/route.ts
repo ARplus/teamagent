@@ -48,7 +48,10 @@ export async function GET(
                 name: true,
                 email: true,
                 avatar: true,
-                agent: { select: { id: true, name: true, avatar: true, status: true, userId: true } }
+                agent: { select: {
+                  id: true, name: true, avatar: true, status: true, userId: true, isMainAgent: true,
+                  parentAgent: { select: { id: true, name: true, user: { select: { id: true, name: true } } } }
+                } }
               }
             },
             attachments: { select: { id: true, name: true, url: true, type: true } }

@@ -34,7 +34,7 @@ export function MobileBottomNav() {
 
   const isChatRoute = pathname.startsWith('/chat')
   const isRoot = pathname === '/'
-  const isTeam = pathname.startsWith('/team') || pathname.startsWith('/agents') || pathname.startsWith('/me')
+  const isTeam = pathname.startsWith('/team') || pathname.startsWith('/workspace') || pathname.startsWith('/agents') || pathname.startsWith('/me')
 
   const t = searchParams.get('t')
   const rootTab: TabId = t === 'tasks' ? 'tasks' : t === 'profile' ? 'profile' : 'chat'
@@ -70,11 +70,11 @@ export function MobileBottomNav() {
         </Link>
 
         <Link
-          href="/team"
+          href="/workspace"
           className={`flex flex-col items-center gap-0.5 px-4 py-1 ${activeTab === 'profile' ? 'text-orange-400' : 'text-slate-500'}`}
         >
-          <span className="text-xl leading-none">👤</span>
-          <span className="text-xs font-medium">我</span>
+          <span className="text-xl leading-none">🏠</span>
+          <span className="text-xs font-medium">工作区</span>
         </Link>
       </div>
     </nav>
