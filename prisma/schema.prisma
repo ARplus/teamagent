@@ -46,6 +46,9 @@ model User {
 
   // 步骤评论
   stepComments  StepComment[]
+
+  // B08: 多人指派
+  stepAssignments StepAssignee[]
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -221,8 +224,12 @@ model TaskStep {
 
   // 责任人（支持多人显示）
   assigneeNames String?  // JSON: ["小敏", "段段"] 用于显示
-  assigneeId    String?  // 主责任人用户ID
+  assigneeId    String?  // 主责任人用户ID（向后兼容）
   assignee      User?    @relation(fields: [assigneeId], references: [id])
+
+  // B08: 多人指派
+  assignees      StepAssignee[]
+  completionMode String  @default("all")  // "all" = 全部完成 | "any" = 任一完成
   
   // 会议专用字段
   scheduledAt  DateTime?  // 会议时间
@@ -430,6 +437,34 @@ model ChatMessage {
   metadata    String?  // JSON: { voice: true, action: "create_task", ... }
 
   @@index([userId, createdAt])
+}
+
+// B08: 步骤多人指派 - 一个步骤可分配给多人（人类+Agent混合）
+model StepAssignee {
+  id            String   @id @default(cuid())
+
+  // 所属步骤
+  stepId        String
+  step          TaskStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  // 被指派的用户
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+
+  // 角色区分
+  assigneeType  String   @default("agent")   // "agent" | "human"
+  isPrimary     Boolean  @default(false)      // 主负责人（向后兼容 assigneeId）
+
+  // 每人完成状态
+  status        String   @default("pending")  // pending | submitted | done
+  submittedAt   DateTime?
+  result        String?  // 该成员的提交结果
+
+  createdAt     DateTime @default(now())
+
+  @@unique([stepId, userId])  // 同一步骤不重复分配同一人
+  @@index([userId, status])   // 我的待办查询
+  @@index([stepId])
 }
 
 // 🆕 步骤评论 - 人类与 Agent 在步骤中的自由讨论

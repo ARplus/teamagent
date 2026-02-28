@@ -49,6 +49,8 @@ export async function GET(req: NextRequest) {
       OR: [
         { creatorId: auth.userId },
         { steps: { some: { assigneeId: auth.userId } } },
+        // B08: 多人指派 — 通过 StepAssignee 被分配的任务也可见
+        { steps: { some: { assignees: { some: { userId: auth.userId } } } } },
         {
           workspace: {
             members: { some: { userId: auth.userId, role: { in: ['owner', 'admin'] } } }
@@ -76,7 +78,16 @@ export async function GET(req: NextRequest) {
             status: true,
             stepType: true,
             assigneeId: true,
-            assignee: { select: { id: true, name: true, avatar: true } }
+            assignee: { select: { id: true, name: true, avatar: true } },
+            // B08: 多人指派信息 + B11: 任务类型 Icon 需要 assigneeType
+            assignees: {
+              select: {
+                userId: true,
+                assigneeType: true,
+                status: true,
+                user: { select: { id: true, name: true, avatar: true } }
+              }
+            }
           },
           orderBy: { order: 'asc' }
         }
@@ -191,6 +202,12 @@ export async function POST(req: NextRequest) {
             agentStatus: s.assigneeId ? 'pending' : null,
           }
         })
+        // B08: 同步创建 StepAssignee 记录
+        if (s.assigneeId) {
+          await prisma.stepAssignee.create({
+            data: { stepId: createdStep.id, userId: s.assigneeId, isPrimary: true, assigneeType: 'agent' }
+          }).catch(() => {})
+        }
         prebuiltSteps.push(createdStep)
       }
 
@@ -262,6 +279,10 @@ export async function POST(req: NextRequest) {
               agentStatus: 'pending',
             }
           })
+          // B08: 同步 StepAssignee
+          await prisma.stepAssignee.create({
+            data: { stepId: decomposeStep.id, userId: mainAgentUserId, isPrimary: true, assigneeType: 'agent' }
+          }).catch(() => {})
 
           sendToUser(mainAgentUserId, {
             type: 'step:ready',
@@ -352,6 +373,12 @@ export async function POST(req: NextRequest) {
               },
               include: { assignee: { select: { id: true, name: true } } }
             })
+            // B08: 同步创建 StepAssignee 记录
+            if (assigneeId) {
+              await prisma.stepAssignee.create({
+                data: { stepId: created.id, userId: assigneeId, isPrimary: true, assigneeType: 'agent' }
+              }).catch(() => {})
+            }
             createdSteps.push(created)
           }
 

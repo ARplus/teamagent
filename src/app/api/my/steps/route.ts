@@ -32,9 +32,12 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') // pending, in_progress, waiting_approval, done
     const taskId = searchParams.get('taskId')
 
-    // 构建查询条件
+    // 构建查询条件 — B08: 同时查 assigneeId 和 StepAssignee
     const where: any = {
-      assigneeId: userId
+      OR: [
+        { assigneeId: userId },
+        { assignees: { some: { userId } } }
+      ]
     }
     if (status) {
       where.status = status

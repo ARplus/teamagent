@@ -18,6 +18,8 @@ interface StepLike {
   status: string
   assigneeId: string | null
   title: string
+  // B08: 可选多人指派
+  assignees?: { userId: string }[]
 }
 
 /**
@@ -90,6 +92,7 @@ export function getNextStepsAfterCompletion<T extends StepLike>(
 
 /**
  * 激活并通知一批步骤（设置 agentStatus + 发送 step:ready SSE）
+ * B08: 同时通知所有 StepAssignee 用户
  */
 export async function activateAndNotifySteps(
   taskId: string,
@@ -97,17 +100,35 @@ export async function activateAndNotifySteps(
 ): Promise<number> {
   let notified = 0
   for (const s of steps) {
-    if (s.assigneeId) {
+    // 收集所有需要通知的用户（assigneeId + StepAssignee 中的所有人）
+    const userIds = new Set<string>()
+    if (s.assigneeId) userIds.add(s.assigneeId)
+
+    // B08: 查询 StepAssignee 表获取所有被分配者
+    if (!s.assignees) {
+      // 运行时未附带 assignees 数据，从 DB 查
+      const stepAssignees = await prisma.stepAssignee.findMany({
+        where: { stepId: s.id },
+        select: { userId: true }
+      })
+      for (const sa of stepAssignees) userIds.add(sa.userId)
+    } else {
+      for (const sa of s.assignees) userIds.add(sa.userId)
+    }
+
+    if (userIds.size > 0) {
       await prisma.taskStep.update({
         where: { id: s.id },
         data: { agentStatus: 'pending' }
       })
-      sendToUser(s.assigneeId, {
-        type: 'step:ready',
-        taskId,
-        stepId: s.id,
-        title: s.title
-      })
+      for (const uid of userIds) {
+        sendToUser(uid, {
+          type: 'step:ready',
+          taskId,
+          stepId: s.id,
+          title: s.title
+        })
+      }
       notified++
     }
   }

@@ -36,8 +36,9 @@ export async function POST(
       return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
     }
 
-    // 检查权限（任务创建者或步骤负责人可以审核）
-    if (step.task.creatorId !== user.id && step.assigneeId !== user.id) {
+    // B08: 权限检查 — 任务创建者 or 步骤负责人 or StepAssignee 成员
+    const isAssignee = await prisma.stepAssignee.findFirst({ where: { stepId: id, userId: user.id } })
+    if (step.task.creatorId !== user.id && step.assigneeId !== user.id && !isAssignee) {
       return NextResponse.json({ error: '无权审核此步骤' }, { status: 403 })
     }
 
@@ -80,6 +81,12 @@ export async function POST(
         approvedBy: user.id,
         humanDurationMs
       }
+    })
+
+    // B08: 批量更新所有 StepAssignee 为 done
+    await prisma.stepAssignee.updateMany({
+      where: { stepId: id },
+      data: { status: 'done' }
     })
 
     // 更新任务的总时间统计

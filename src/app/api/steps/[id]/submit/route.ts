@@ -60,7 +60,13 @@ export async function POST(
     })
 
     if (!step) return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
-    if (step.assigneeId !== tokenAuth.user.id) return NextResponse.json({ error: '你不是此步骤的负责人' }, { status: 403 })
+    // B08: 权限检查 — assigneeId 或 StepAssignee 表中有记录
+    const stepAssigneeRecord = await prisma.stepAssignee.findUnique({
+      where: { stepId_userId: { stepId: id, userId: tokenAuth.user.id } }
+    }).catch(() => null)
+    if (step.assigneeId !== tokenAuth.user.id && !stepAssigneeRecord) {
+      return NextResponse.json({ error: '你不是此步骤的负责人' }, { status: 403 })
+    }
     if (step.status !== 'in_progress') return NextResponse.json({ error: '步骤未在进行中' }, { status: 400 })
 
     const now = new Date()
@@ -212,6 +218,60 @@ export async function POST(
     }
 
     const resultText = result || '任务已完成，等待审核'
+
+    // B08: 更新该用户的 StepAssignee 状态
+    if (stepAssigneeRecord) {
+      await prisma.stepAssignee.update({
+        where: { id: stepAssigneeRecord.id },
+        data: { status: 'submitted', submittedAt: now, result: resultText }
+      })
+    }
+
+    // B08: 检查多人完成模式
+    const allAssignees = await prisma.stepAssignee.findMany({ where: { stepId: id } })
+    const isMultiAssignee = allAssignees.length > 1
+    let isStepComplete = true // 默认单人模式直接完成
+
+    if (isMultiAssignee) {
+      if (step.completionMode === 'any') {
+        isStepComplete = true // 任一提交即完成
+      } else {
+        // "all" 模式：检查是否所有人都已提交
+        const allSubmitted = allAssignees.every(a =>
+          a.status === 'submitted' || a.userId === tokenAuth.user.id
+        )
+        isStepComplete = allSubmitted
+      }
+    }
+
+    // 多人模式下未全部完成 → 记录部分提交，不改变步骤状态
+    if (isMultiAssignee && !isStepComplete) {
+      const sub = await prisma.stepSubmission.create({
+        data: {
+          stepId: id,
+          submitterId: tokenAuth.user.id,
+          result: resultText,
+          summary: finalSummary || null,
+          durationMs: agentDurationMs
+        }
+      })
+      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+        await prisma.attachment.createMany({
+          data: attachments.map((att: { name: string; url: string; type?: string }) => ({
+            name: att.name, url: att.url, type: att.type || 'file',
+            submissionId: sub.id, uploaderId: tokenAuth.user.id
+          }))
+        })
+      }
+      const done = allAssignees.filter(a => a.status === 'submitted' || a.userId === tokenAuth.user.id).length
+      console.log(`[Submit] 多人步骤 ${id} 部分提交: ${done}/${allAssignees.length}`)
+      return NextResponse.json({
+        message: `已提交你的部分（${done}/${allAssignees.length}），等待其他成员完成`,
+        partial: true,
+        progress: { done, total: allAssignees.length }
+      })
+    }
+
     const [submission, updated] = await prisma.$transaction(async (tx) => {
       const sub = await tx.stepSubmission.create({
         data: {
@@ -239,6 +299,14 @@ export async function POST(
           agentDurationMs
         }
       })
+
+      // B08: 步骤完成时，更新所有 assignee 状态
+      if (allAssignees.length > 0) {
+        await tx.stepAssignee.updateMany({
+          where: { stepId: id },
+          data: { status: autoApprove ? 'done' : 'submitted' }
+        })
+      }
 
       if (attachments && Array.isArray(attachments) && attachments.length > 0) {
         await tx.attachment.createMany({

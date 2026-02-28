@@ -25,17 +25,38 @@ export async function POST(
       return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
     }
 
-    // 检查是否可以领取：
-    // 1. 已分配给自己 → 可以领取
-    // 2. 未分配 (null) → 任何人可以领取
-    // 3. 分配给别人 → 不可以领取
-    if (step.assigneeId !== null && step.assigneeId !== tokenAuth.user.id) {
-      return NextResponse.json({ error: '此步骤已分配给其他人' }, { status: 403 })
+    // B08: 多人指派权限检查
+    const stepAssignees = await prisma.stepAssignee.findMany({ where: { stepId: id } })
+    if (stepAssignees.length > 0) {
+      // 有 StepAssignee 记录 → 只有被指派的人可以领取
+      const isAssigned = stepAssignees.some(a => a.userId === tokenAuth.user.id)
+      if (!isAssigned) {
+        return NextResponse.json({ error: '此步骤已分配给其他人' }, { status: 403 })
+      }
+    } else {
+      // 旧逻辑：没有 StepAssignee 记录
+      if (step.assigneeId !== null && step.assigneeId !== tokenAuth.user.id) {
+        return NextResponse.json({ error: '此步骤已分配给其他人' }, { status: 403 })
+      }
     }
 
     // 检查状态
     if (step.status !== 'pending') {
       return NextResponse.json({ error: '步骤已被领取或已完成' }, { status: 400 })
+    }
+
+    // B08: 更新 StepAssignee 状态
+    const myAssignee = stepAssignees.find(a => a.userId === tokenAuth.user.id)
+    if (myAssignee) {
+      await prisma.stepAssignee.update({
+        where: { id: myAssignee.id },
+        data: { status: 'in_progress' }
+      })
+    } else {
+      // 无记录时创建（旧数据兼容 / 自由领取）
+      await prisma.stepAssignee.create({
+        data: { stepId: id, userId: tokenAuth.user.id, isPrimary: true, assigneeType: 'agent' }
+      }).catch(() => {}) // unique constraint 冲突忽略
     }
 
     // 更新步骤状态（同时设置 assigneeId）

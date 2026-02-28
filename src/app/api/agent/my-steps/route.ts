@@ -28,9 +28,13 @@ export async function GET(req: NextRequest) {
           ? 'pending'
           : { in: ['pending', 'in_progress'] } // 默认返回两种
 
+    // B08: 同时查 assigneeId 和 StepAssignee
     const steps = await prisma.taskStep.findMany({
       where: {
-        assigneeId: tokenAuth.user.id,
+        OR: [
+          { assigneeId: tokenAuth.user.id },
+          { assignees: { some: { userId: tokenAuth.user.id } } }
+        ],
         status: whereStatus as any
       },
       include: {

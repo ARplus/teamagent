@@ -54,6 +54,15 @@ export async function GET(
                 } }
               }
             },
+            // B08: 多人指派
+            assignees: {
+              include: {
+                user: { select: {
+                  id: true, name: true, email: true, avatar: true,
+                  agent: { select: { id: true, name: true, status: true } }
+                } }
+              }
+            },
             attachments: { select: { id: true, name: true, url: true, type: true } }
           },
           orderBy: { order: 'asc' }
@@ -90,10 +99,13 @@ export async function GET(
       ...s,
       approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null,
       // 服务端算好，前端直接用
-      // 规则：任务创建者 OR 步骤 assignee（步骤的 assigneeId 存的是 User ID）
+      // 规则：任务创建者 OR 步骤 assignee OR StepAssignee 成员
       // 当 viewerUserId 为 null（session 未能获取）时返回 null，让前端 fallback 接管
       viewerCanApprove: viewerUserId != null
-        ? (isTaskCreator || s.assigneeId === viewerUserId)
+        ? (isTaskCreator
+           || s.assigneeId === viewerUserId
+           // B08: 多人指派中的成员也有审批权限
+           || ((s as any).assignees?.some((a: any) => a.user?.id === viewerUserId) ?? false))
         : null,
     }))
 

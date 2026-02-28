@@ -295,6 +295,17 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
           agentStatus: assigneeId ? 'pending' : null,
         }
       })
+      // B08: 同步创建 StepAssignee 记录
+      if (assigneeId) {
+        await prisma.stepAssignee.create({
+          data: {
+            stepId: created.id,
+            userId: assigneeId,
+            isPrimary: true,
+            assigneeType: s.assigneeType || 'agent'
+          }
+        }).catch(() => {})
+      }
       createdSteps.push(created)
     }
 

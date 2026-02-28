@@ -36,6 +36,21 @@ interface Submission {
   attachments: { id: string; name: string; url: string }[]
 }
 
+// B08: 多人指派成员信息
+interface StepAssigneeInfo {
+  userId: string
+  assigneeType: 'agent' | 'human'
+  isPrimary?: boolean
+  status: string
+  user: {
+    id: string
+    name: string | null
+    email?: string
+    avatar: string | null
+    agent?: { id: string; name: string; status: string } | null
+  }
+}
+
 interface TaskStep {
   id: string
   title: string
@@ -53,6 +68,9 @@ interface TaskStep {
     agent?: Agent | null
   }
   assigneeNames?: string
+  // B08: 多人指派
+  assignees?: StepAssigneeInfo[]
+  completionMode?: string  // "all" | "any"
   inputs?: string
   outputs?: string
   skills?: string
@@ -107,6 +125,30 @@ interface ChatMessage {
 }
 
 // ============ Utils ============
+
+// B11: 任务类型 Icon（🤖/👤/🤝）
+function getTaskTypeIcon(task: Task): { icon: string; label: string } {
+  const steps = task.steps || []
+  if (steps.length === 0) return { icon: '📋', label: '待拆解' }
+
+  let hasAgent = false, hasHuman = false
+  for (const step of steps) {
+    const assigneeList = (step as any).assignees?.length
+      ? (step as any).assignees
+      : step.assignee
+        ? [{ assigneeType: step.assignee.agent ? 'agent' : 'human' }]
+        : null
+    if (!assigneeList) { hasHuman = true; continue }
+    for (const a of assigneeList) {
+      if (a.assigneeType === 'agent') hasAgent = true
+      else hasHuman = true
+    }
+  }
+
+  if (hasAgent && hasHuman) return { icon: '🤝', label: '人机协作' }
+  if (hasAgent) return { icon: '🤖', label: '纯Agent' }
+  return { icon: '👤', label: '纯人类' }
+}
 
 function formatDuration(ms: number | null | undefined): string {
   if (!ms) return '-'
@@ -464,6 +506,8 @@ function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; sele
   const stepsTotal = task.steps?.length || 0
   const stepsDone = task.steps?.filter(s => s.status === 'done').length || 0
   const hasWaiting = task.steps?.some(s => s.status === 'waiting_approval')
+  // B11: 任务类型 Icon
+  const taskType = getTaskTypeIcon(task)
 
   // 角色标签
   const isCreator = task.creator?.id === currentUserId
@@ -489,6 +533,7 @@ function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; sele
             <span className={`text-xs px-1.5 py-0.5 rounded-md shrink-0 ${roleLabel.color}`}>
               {roleLabel.icon} {roleLabel.text}
             </span>
+            <span title={taskType.label} className="shrink-0">{taskType.icon}</span>
             <span className={`font-medium truncate ${selected ? 'text-white' : 'text-slate-200'}`}>
               {task.title}
             </span>
@@ -1357,16 +1402,31 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
     else alert('打回失败')
   }
 
-  const handleAssign = async (stepId: string, rawValue: string | null) => {
-    // 解析选择值：human:xxx = 纯人类步骤，其他 = Agent 所属用户
-    let assigneeId = rawValue
-    if (rawValue?.startsWith('human:')) {
-      assigneeId = rawValue.slice(6) // 去掉 human: 前缀
+  // B08: 支持多人分配 + 旧单人分配兼容
+  const handleAssign = async (
+    stepId: string,
+    rawValue: string | null,
+    multiAssign?: { assigneeIds: { userId: string; assigneeType: string }[]; completionMode?: string }
+  ) => {
+    let body: any
+    if (multiAssign) {
+      // 多人指派路径
+      body = {
+        assigneeIds: multiAssign.assigneeIds,
+        completionMode: multiAssign.completionMode || 'all'
+      }
+    } else {
+      // 旧单人路径
+      let assigneeId = rawValue
+      if (rawValue?.startsWith('human:')) {
+        assigneeId = rawValue.slice(6)
+      }
+      body = { assigneeId }
     }
     const res = await fetch(`/api/steps/${stepId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assigneeId })
+      body: JSON.stringify(body)
     })
     if (res.ok) onRefresh()
     else alert('分配失败')
@@ -1382,8 +1442,9 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <h3 className="text-sm font-semibold text-slate-700 flex items-center space-x-2 flex-shrink-0 whitespace-nowrap">
-            <span>📋</span>
+            <span>{getTaskTypeIcon(task).icon}</span>
             <span>工作流程</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-normal">{getTaskTypeIcon(task).label}</span>
           </h3>
           {steps.length > 0 && (
             <div className="flex items-center space-x-2">
@@ -1643,7 +1704,7 @@ function StepCard({
   step: TaskStep; index: number; isActive: boolean; canApprove: boolean
   onApprove: (id: string) => Promise<void>; onReject: (id: string, reason: string) => Promise<void>
   agents?: TeamMemberProp[]
-  onAssign?: (stepId: string, userId: string | null) => Promise<void>
+  onAssign?: (stepId: string, userId: string | null, multiAssign?: { assigneeIds: { userId: string; assigneeType: string }[]; completionMode?: string }) => Promise<void>
   currentUserId?: string
   onRefresh?: () => void
   taskCreatorName?: string
@@ -1656,6 +1717,10 @@ function StepCard({
   const [editingAssignee, setEditingAssignee] = useState(false)
   const [assigneeSelect, setAssigneeSelect] = useState<string>(step.assignee?.id || '')
   const [savingAssignee, setSavingAssignee] = useState(false)
+  // B08: 多选状态
+  const [multiSelected, setMultiSelected] = useState<Map<string, 'agent' | 'human'>>(new Map())
+  const [completionMode, setCompletionMode] = useState<'all' | 'any'>((step.completionMode as 'all' | 'any') || 'all')
+  const [humanCompleting, setHumanCompleting] = useState(false)
   // 申诉相关状态
   const [showAppealForm, setShowAppealForm] = useState(false)
   const [appealText, setAppealText] = useState('')
@@ -1675,9 +1740,18 @@ function StepCard({
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
   const hasAgent = !!step.assignee?.agent
-  const assigneeName = hasAgent
-    ? step.assignee!.agent!.name
-    : (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
+  // B08: 多人指派显示
+  const multiAssignees = step.assignees || []
+  const hasMultiAssignees = multiAssignees.length > 1
+  const assigneeName = hasMultiAssignees
+    ? multiAssignees.map(a => a.user?.agent ? `🤖${a.user.agent.name}` : `👤${a.user?.name || '?'}`).join(' ')
+    : hasAgent
+      ? step.assignee!.agent!.name
+      : (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
+  // B08: 是否纯人类步骤（无 agent 的 assignee）
+  const isHumanStep = multiAssignees.length > 0
+    ? multiAssignees.every(a => a.assigneeType === 'human')
+    : !hasAgent && !!step.assignee
   const participantList = parseJSON(step.participants)
 
   const loadHistory = async () => {
@@ -1738,10 +1812,52 @@ function StepCard({
     if (!onAssign) return
     setSavingAssignee(true)
     try {
-      await onAssign(step.id, assigneeSelect || null)
+      if (multiSelected.size > 0) {
+        // B08: 多人指派 — 将 human:xxx 格式转为实际 userId
+        const assigneeIds = Array.from(multiSelected.entries()).map(([key, assigneeType]) => ({
+          userId: key.startsWith('human:') ? key.slice(6) : key,
+          assigneeType
+        }))
+        await onAssign(step.id, null, { assigneeIds, completionMode })
+      } else {
+        // 旧单人路径
+        await onAssign(step.id, assigneeSelect || null)
+      }
       setEditingAssignee(false)
     } finally {
       setSavingAssignee(false)
+    }
+  }
+
+  // B08: 多选切换
+  const toggleMultiSelect = (userId: string, type: 'agent' | 'human') => {
+    setMultiSelected(prev => {
+      const next = new Map(prev)
+      if (next.has(userId)) {
+        next.delete(userId)
+      } else {
+        next.set(userId, type)
+      }
+      return next
+    })
+  }
+
+  // B08: 人类手动完成
+  const handleHumanComplete = async () => {
+    setHumanCompleting(true)
+    try {
+      const res = await fetch(`/api/steps/${step.id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result: '✅ 人工确认完成', summary: '手动完成' })
+      })
+      if (res.ok) onRefresh?.()
+      else {
+        const data = await res.json()
+        alert(data.error || '提交失败')
+      }
+    } finally {
+      setHumanCompleting(false)
     }
   }
 
@@ -1786,7 +1902,11 @@ function StepCard({
     }
   }
 
-  const isStepAssignee = currentUserId && step.assignee?.id === currentUserId
+  // B08: 扩展 isStepAssignee 包含多人指派
+  const isStepAssignee = currentUserId && (
+    step.assignee?.id === currentUserId ||
+    multiAssignees.some(a => a.userId === currentUserId)
+  )
   const isRejected = step.status === 'pending' && step.rejectedAt
 
   return (
@@ -1838,44 +1958,101 @@ function StepCard({
                   )}
                 </>
               ) : editingAssignee ? (
-                /* 内联分配下拉 */
-                <span className="flex items-center space-x-1" onClick={e => e.stopPropagation()}>
-                  <select
-                    value={assigneeSelect}
-                    onChange={e => setAssigneeSelect(e.target.value)}
-                    className="text-xs border border-blue-300 rounded px-1 py-0.5 bg-white max-w-[180px]"
-                    autoFocus
-                  >
-                    <option value="">— 不分配 —</option>
+                /* B08: 多选 checkbox 面板 */
+                <div className="relative" onClick={e => e.stopPropagation()}>
+                  <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-blue-200 rounded-xl shadow-xl p-3 min-w-[220px] max-h-[260px] overflow-y-auto">
+                    <div className="text-xs text-slate-500 font-medium mb-2">选择负责人（可多选）</div>
                     {(agents || []).map(m => (
-                      <optgroup key={m.id} label={`👤 ${m.name || m.email}${m.isSelf ? ' (我)' : ''}`}>
+                      <div key={m.id} className="mb-2">
+                        <div className="text-xs text-slate-400 mb-1">👤 {m.name || m.email}{m.isSelf ? ' (我)' : ''}</div>
                         {m.agent && (
-                          <option key={m.agent.id} value={m.id}>🤖 {m.agent.name}</option>
+                          <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={multiSelected.has(m.id)}
+                              onChange={() => toggleMultiSelect(m.id, 'agent')}
+                              className="rounded border-slate-300 text-blue-500 focus:ring-blue-400"
+                            />
+                            <span className="text-xs">🤖 {m.agent.name}</span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${m.agent.status === 'online' ? 'bg-emerald-400' : 'bg-slate-300'}`} />
+                          </label>
                         )}
-                        <option key={`h-${m.id}`} value={`human:${m.id}`}>👤 {m.isSelf ? '自己' : m.name || m.email}</option>
-                      </optgroup>
+                        <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={multiSelected.has(`human:${m.id}`)}
+                            onChange={() => toggleMultiSelect(`human:${m.id}`, 'human')}
+                            className="rounded border-slate-300 text-blue-500 focus:ring-blue-400"
+                          />
+                          <span className="text-xs">👤 {m.isSelf ? '自己' : m.name || m.email}</span>
+                        </label>
+                      </div>
                     ))}
-                  </select>
-                  <button
-                    onClick={saveAssignee}
-                    disabled={savingAssignee}
-                    className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-                  >
-                    {savingAssignee ? '...' : '✓'}
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingAssignee(false) }}
-                    className="text-xs px-1.5 py-0.5 text-slate-500 hover:text-slate-700"
-                  >
-                    ✕
-                  </button>
-                </span>
+                    {multiSelected.size > 1 && (
+                      <div className="border-t border-slate-100 pt-2 mt-2">
+                        <div className="text-xs text-slate-500 mb-1">完成模式</div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setCompletionMode('all')}
+                            className={`text-xs px-2 py-1 rounded-lg border ${completionMode === 'all' ? 'bg-blue-50 border-blue-300 text-blue-600' : 'border-slate-200 text-slate-500'}`}
+                          >全部完成</button>
+                          <button
+                            onClick={() => setCompletionMode('any')}
+                            className={`text-xs px-2 py-1 rounded-lg border ${completionMode === 'any' ? 'bg-blue-50 border-blue-300 text-blue-600' : 'border-slate-200 text-slate-500'}`}
+                          >任一完成</button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-3 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={saveAssignee}
+                        disabled={savingAssignee || multiSelected.size === 0}
+                        className="flex-1 text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        {savingAssignee ? '...' : `确认 (${multiSelected.size})`}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingAssignee(false); setMultiSelected(new Map()) }}
+                        className="text-xs px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <span className="flex items-center space-x-1">
-                  <span>{hasAgent ? '🤖' : '👤'} {assigneeName}</span>
+                <span className="flex items-center space-x-1 flex-wrap">
+                  {hasMultiAssignees ? (
+                    <>
+                      {multiAssignees.slice(0, 3).map(a => (
+                        <span key={a.userId} className="inline-flex items-center gap-0.5 text-xs">
+                          {a.user?.agent ? '🤖' : '👤'}
+                          <span>{a.user?.agent?.name || a.user?.name || '?'}</span>
+                        </span>
+                      ))}
+                      {multiAssignees.length > 3 && <span className="text-xs text-slate-400">+{multiAssignees.length - 3}</span>}
+                      {step.completionMode === 'any' && <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">任一</span>}
+                    </>
+                  ) : (
+                    <span>{hasAgent ? '🤖' : '👤'} {assigneeName}</span>
+                  )}
                   {agents && agents.length > 0 && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setAssigneeSelect(step.assignee?.id || ''); setEditingAssignee(true) }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        // B08: 初始化多选状态（从现有 assignees 读取）
+                        const initial = new Map<string, 'agent' | 'human'>()
+                        if (multiAssignees.length > 0) {
+                          for (const a of multiAssignees) {
+                            if (a.assigneeType === 'human') initial.set(`human:${a.userId}`, 'human')
+                            else initial.set(a.userId, 'agent')
+                          }
+                        } else if (step.assignee?.id) {
+                          initial.set(hasAgent ? step.assignee.id : `human:${step.assignee.id}`, hasAgent ? 'agent' : 'human')
+                        }
+                        setMultiSelected(initial)
+                        setEditingAssignee(true)
+                      }}
                       className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200 ml-1"
                     >
                       分配
@@ -1940,6 +2117,41 @@ function StepCard({
           {step.description && (
             <div className="text-sm text-slate-600 mt-4 p-3 bg-slate-50 rounded-xl prose prose-sm max-w-none prose-slate">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{step.description}</ReactMarkdown>
+            </div>
+          )}
+
+          {/* B08: 多人提交进度 */}
+          {hasMultiAssignees && step.status !== 'pending' && (
+            <div className="mt-4 p-3 bg-slate-50 rounded-xl">
+              <div className="text-xs text-slate-500 font-medium mb-2">
+                📊 提交进度 ({multiAssignees.filter(a => a.status === 'submitted' || a.status === 'done').length}/{multiAssignees.length})
+                {step.completionMode === 'any' && <span className="ml-1 text-blue-500">(任一完成即可)</span>}
+              </div>
+              <div className="space-y-1">
+                {multiAssignees.map(a => (
+                  <div key={a.userId} className="flex items-center gap-2 text-xs">
+                    <span className={`w-4 text-center ${a.status === 'submitted' || a.status === 'done' ? 'text-emerald-500' : 'text-slate-400'}`}>
+                      {a.status === 'submitted' || a.status === 'done' ? '✅' : '⏳'}
+                    </span>
+                    <span>{a.user?.agent ? '🤖' : '👤'}</span>
+                    <span className="text-slate-700">{a.user?.agent?.name || a.user?.name || '?'}</span>
+                    <span className="text-slate-400">— {a.status === 'done' ? '已完成' : a.status === 'submitted' ? '已提交' : a.status === 'in_progress' ? '进行中' : '待提交'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* B08: 纯人类步骤 - 手动完成按钮 */}
+          {isHumanStep && isStepAssignee && step.status === 'in_progress' && (
+            <div className="mt-4">
+              <button
+                onClick={handleHumanComplete}
+                disabled={humanCompleting}
+                className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl text-sm font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 shadow-lg shadow-emerald-500/20"
+              >
+                {humanCompleting ? '⏳ 提交中...' : '✅ 手动完成'}
+              </button>
             </div>
           )}
 

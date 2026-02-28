@@ -31,12 +31,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    
+
     const step = await prisma.taskStep.findUnique({
       where: { id },
       include: {
         task: { select: { id: true, title: true } },
         assignee: { select: { id: true, name: true, avatar: true } },
+        assignees: {
+          include: {
+            user: { select: { id: true, name: true, email: true, avatar: true, agent: { select: { id: true, name: true, status: true } } } }
+          }
+        },
         attachments: true
       }
     })
@@ -91,10 +96,61 @@ export async function PATCH(
     if (data.result !== undefined) updateData.result = data.result
     if (data.order !== undefined) updateData.order = data.order
     if (data.parallelGroup !== undefined) updateData.parallelGroup = data.parallelGroup || null
-    // 分配步骤：null 表示取消分配，string 表示分配给指定用户（人类或 Agent 所属用户）
-    if (data.assigneeId !== undefined) {
+    // B08: 多人指派路径
+    if (data.assigneeIds && Array.isArray(data.assigneeIds) && data.assigneeIds.length > 0) {
+      // 验证所有 assignee 是工作区成员
+      for (const a of data.assigneeIds) {
+        const isMember = await prisma.workspaceMember.findFirst({
+          where: { workspaceId: step.task.workspaceId, userId: a.userId }
+        })
+        if (!isMember) {
+          return NextResponse.json({ error: `用户 ${a.userId} 不在工作区中` }, { status: 403 })
+        }
+      }
+
+      // 获取所有被指派者的显示名
+      const userIds = data.assigneeIds.map((a: any) => a.userId)
+      const users = await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true, email: true, agent: { select: { name: true } } }
+      })
+      const nameMap = new Map(users.map(u => [u.id, u.agent?.name || u.name || u.email]))
+
+      // 事务：删旧 → 创建新 → 更新步骤
+      await prisma.$transaction(async (tx) => {
+        await tx.stepAssignee.deleteMany({ where: { stepId: id } })
+        await tx.stepAssignee.createMany({
+          data: data.assigneeIds.map((a: any, i: number) => ({
+            stepId: id,
+            userId: a.userId,
+            assigneeType: a.assigneeType || 'agent',
+            isPrimary: i === 0,
+          }))
+        })
+        const names = data.assigneeIds.map((a: any) => nameMap.get(a.userId) || '未知')
+        await tx.taskStep.update({
+          where: { id },
+          data: {
+            assigneeId: data.assigneeIds[0].userId,
+            assigneeNames: JSON.stringify(names),
+            completionMode: data.completionMode || 'all',
+          }
+        })
+      })
+    }
+    // B08: 清空所有指派
+    else if (data.assigneeIds && Array.isArray(data.assigneeIds) && data.assigneeIds.length === 0) {
+      await prisma.$transaction(async (tx) => {
+        await tx.stepAssignee.deleteMany({ where: { stepId: id } })
+        await tx.taskStep.update({
+          where: { id },
+          data: { assigneeId: null, assigneeNames: null }
+        })
+      })
+    }
+    // 旧路径：单人分配（向后兼容）
+    else if (data.assigneeId !== undefined) {
       const newAssigneeId = data.assigneeId || null
-      // 验证 assignee 是任务工作区的成员
       if (newAssigneeId) {
         const isMember = await prisma.workspaceMember.findFirst({
           where: { workspaceId: step.task.workspaceId, userId: newAssigneeId }
@@ -104,6 +160,26 @@ export async function PATCH(
         }
       }
       updateData.assigneeId = newAssigneeId
+      // 同步 StepAssignee 表
+      if (newAssigneeId) {
+        const user = await prisma.user.findUnique({
+          where: { id: newAssigneeId },
+          select: { agent: { select: { id: true } } }
+        })
+        await prisma.stepAssignee.deleteMany({ where: { stepId: id } })
+        await prisma.stepAssignee.create({
+          data: {
+            stepId: id, userId: newAssigneeId,
+            assigneeType: user?.agent ? 'agent' : 'human',
+            isPrimary: true,
+          }
+        })
+      } else {
+        await prisma.stepAssignee.deleteMany({ where: { stepId: id } })
+      }
+    }
+    if (data.completionMode !== undefined) {
+      updateData.completionMode = data.completionMode
     }
 
     const updated = await prisma.taskStep.update({
@@ -111,6 +187,11 @@ export async function PATCH(
       data: updateData,
       include: {
         assignee: { select: { id: true, name: true, email: true, avatar: true, agent: { select: { id: true, name: true, status: true } } } },
+        assignees: {
+          include: {
+            user: { select: { id: true, name: true, email: true, avatar: true, agent: { select: { id: true, name: true, status: true } } } }
+          }
+        },
         attachments: true
       }
     })

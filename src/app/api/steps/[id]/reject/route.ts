@@ -36,8 +36,9 @@ export async function POST(
       return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
     }
 
-    // 检查权限
-    if (step.task.creatorId !== user.id && step.assigneeId !== user.id) {
+    // B08: 权限检查 — 任务创建者 or 步骤负责人 or StepAssignee 成员
+    const isAssignee = await prisma.stepAssignee.findFirst({ where: { stepId: id, userId: user.id } })
+    if (step.task.creatorId !== user.id && step.assigneeId !== user.id && !isAssignee) {
       return NextResponse.json({ error: '无权审核此步骤' }, { status: 403 })
     }
 
@@ -81,6 +82,12 @@ export async function POST(
         agentDurationMs: null,
         humanDurationMs: null
       }
+    })
+
+    // B08: 打回时重置所有 StepAssignee 状态
+    await prisma.stepAssignee.updateMany({
+      where: { stepId: id },
+      data: { status: 'pending', submittedAt: null, result: null }
     })
 
     // 🔔 通知步骤负责人：被打回了
