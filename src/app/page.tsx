@@ -33,7 +33,7 @@ interface Submission {
   reviewedAt: string | null
   reviewedBy: { id: string; name: string | null; email: string } | null
   reviewNote: string | null
-  attachments: { id: string; name: string; url: string }[]
+  attachments: { id: string; name: string; url: string; type?: string | null }[]
 }
 
 // B08: 多人指派成员信息
@@ -1082,7 +1082,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
           <div className="w-full lg:w-64 lg:flex-shrink-0 space-y-4">
             <TeamCard task={task} onRefresh={onRefresh} currentUserId={currentUserId} />
             <StatsCard task={task} />
-            <AttachmentsCard taskId={task.id} />
+            <TaskFilesCard taskId={task.id} />
             <SummaryCard task={task} onRefresh={onRefresh} />
           </div>
 
@@ -1401,12 +1401,14 @@ function StatsCard({ task }: { task: Task }) {
   )
 }
 
-// ============ Attachments Card ============
+// ============ Task Files Card (B10: Shared File Folder) ============
 
-interface AttachmentItem {
+interface TaskFile {
   id: string; name: string; url: string; type: string | null; size: number | null
-  uploader: { name: string | null; email: string }
-  createdAt: string
+  createdAt: string; sourceTag: string
+  sourceStepId?: string; sourceStepOrder?: number
+  uploader: { id: string; name: string | null; isAgent: boolean; agentName?: string }
+  canDelete: boolean
 }
 
 function fileIcon(type: string | null) {
@@ -1424,15 +1426,24 @@ function fmtSize(bytes: number | null) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
+function fmtShortTime(iso: string) {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
-function AttachmentsCard({ taskId }: { taskId: string }) {
-  const [items, setItems] = useState<AttachmentItem[]>([])
+function TaskFilesCard({ taskId }: { taskId: string }) {
+  const [items, setItems] = useState<TaskFile[]>([])
+  const [totalSize, setTotalSize] = useState(0)
   const [uploading, setUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/tasks/${taskId}/attachments`)
-    if (r.ok) { const d = await r.json(); setItems(d.attachments) }
+    const r = await fetch(`/api/tasks/${taskId}/files`)
+    if (r.ok) {
+      const d = await r.json()
+      setItems(d.files || [])
+      setTotalSize(d.totalSize || 0)
+    }
   }, [taskId])
 
   useEffect(() => { load() }, [load])
@@ -1444,22 +1455,24 @@ function AttachmentsCard({ taskId }: { taskId: string }) {
       for (const f of Array.from(files)) {
         const form = new FormData()
         form.append('file', f)
-        await fetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', body: form })
+        await fetch(`/api/tasks/${taskId}/files`, { method: 'POST', body: form })
       }
       await load()
     } finally { setUploading(false) }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('删除这个附件？')) return
-    await fetch(`/api/tasks/${taskId}/attachments?attachmentId=${id}`, { method: 'DELETE' })
+    if (!confirm('删除这个文件？')) return
+    await fetch(`/api/tasks/${taskId}/files?fileId=${id}`, { method: 'DELETE' })
     await load()
   }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">📎 参考资料</h3>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          📁 任务文件{items.length > 0 && <span className="ml-1 text-slate-400">({items.length})</span>}
+        </h3>
         <button
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
@@ -1469,7 +1482,7 @@ function AttachmentsCard({ taskId }: { taskId: string }) {
         </button>
         <input ref={inputRef} type="file" multiple className="hidden"
           onChange={e => handleUpload(e.target.files)}
-          accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.png,.jpg,.jpeg"
+          accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.png,.jpg,.jpeg,.zip,.json"
         />
       </div>
 
@@ -1481,35 +1494,46 @@ function AttachmentsCard({ taskId }: { taskId: string }) {
           onDragOver={e => e.preventDefault()}
         >
           <div className="text-2xl mb-1">📁</div>
-          <p className="text-xs text-slate-400">拖拽或点击上传参考文档</p>
-          <p className="text-xs text-slate-300 mt-0.5">PDF / Word / TXT / 图片 · 最大 20MB</p>
+          <p className="text-xs text-slate-400">拖拽或点击上传文件</p>
+          <p className="text-xs text-slate-300 mt-0.5">PDF / Word / 图片 / JSON / ZIP · 最大 20MB</p>
         </div>
       ) : (
         <div
-          className="space-y-1.5"
+          className="space-y-1"
           onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files) }}
           onDragOver={e => e.preventDefault()}
         >
           {items.map(item => (
-            <div key={item.id} className="flex items-center gap-2 group px-2 py-1.5 rounded-lg hover:bg-slate-50">
-              <span className="text-base flex-shrink-0">{fileIcon(item.type)}</span>
-              <div className="flex-1 min-w-0">
-                <a href={item.url} target="_blank" rel="noreferrer"
-                  className="text-xs font-medium text-slate-700 hover:text-orange-500 truncate block transition">
-                  {item.name}
-                </a>
-                <span className="text-xs text-slate-400">{fmtSize(item.size)}</span>
-              </div>
-              <button onClick={() => handleDelete(item.id)}
-                className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition text-xs flex-shrink-0">
-                ✕
-              </button>
+            <div key={item.id} className="flex items-center gap-1.5 group px-2 py-1.5 rounded-lg hover:bg-slate-50">
+              <span className="text-sm flex-shrink-0">{fileIcon(item.type)}</span>
+              <a href={item.url} target="_blank" rel="noreferrer"
+                className="text-xs font-medium text-slate-700 hover:text-orange-500 truncate flex-1 min-w-0 transition">
+                {item.name}
+              </a>
+              <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
+                {item.uploader.isAgent ? '🤖' : '👤'}{item.uploader.agentName || item.uploader.name}
+              </span>
+              <span className="text-[10px] text-slate-300 flex-shrink-0 whitespace-nowrap hidden sm:inline">
+                {fmtShortTime(item.createdAt)}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0 whitespace-nowrap">
+                {item.sourceTag}
+              </span>
+              {item.canDelete && (
+                <button onClick={() => handleDelete(item.id)}
+                  className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition text-xs flex-shrink-0 ml-0.5">
+                  ✕
+                </button>
+              )}
             </div>
           ))}
-          <div className="pt-1 border-t border-slate-50 text-center">
+          <div className="pt-1.5 border-t border-slate-50 flex items-center justify-between">
+            <span className="text-[10px] text-slate-300">
+              共 {items.length} 个文件{totalSize > 0 && `，${fmtSize(totalSize)}`}
+            </span>
             <button onClick={() => inputRef.current?.click()}
               className="text-xs text-slate-400 hover:text-orange-500 transition">
-              + 继续添加文件
+              + 添加文件
             </button>
           </div>
         </div>
@@ -2076,6 +2100,9 @@ function StepCard({
   const [commentText, setCommentText] = useState('')
   const [commentSending, setCommentSending] = useState(false)
   const [commentsLoaded, setCommentsLoaded] = useState(false)
+  // B10: 步骤文件
+  const [stepFiles, setStepFiles] = useState<TaskFile[]>([])
+  const [stepFilesLoaded, setStepFilesLoaded] = useState(false)
   // F02: @mention 自动补全状态
   const [mentionQuery, setMentionQuery] = useState<string | null>(null) // null = 隐藏
   const [mentionIdx, setMentionIdx] = useState(0)
@@ -2125,6 +2152,20 @@ function StepCard({
     }
   }
 
+  // B10: 加载步骤文件
+  const loadStepFiles = async () => {
+    try {
+      const res = await fetch(`/api/steps/${step.id}/files`)
+      if (res.ok) {
+        const data = await res.json()
+        setStepFiles(data.files || [])
+        setStepFilesLoaded(true)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   const sendComment = async () => {
     if (!commentText.trim() || commentSending) return
     setCommentSending(true)
@@ -2151,6 +2192,7 @@ function StepCard({
     setExpanded(next)
     if (next && history.length === 0) loadHistory()
     if (next && !commentsLoaded) loadComments()
+    if (next && !stepFilesLoaded) loadStepFiles()
   }
 
   const saveAssignee = async (e: React.MouseEvent) => {
@@ -2742,6 +2784,31 @@ function StepCard({
             </div>
           )}
 
+          {/* 📎 B10: 步骤文件 */}
+          {stepFiles.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs text-slate-500 mb-1.5 font-medium">📎 步骤文件 ({stepFiles.length})</div>
+              <div className="space-y-0.5">
+                {stepFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 group">
+                    <span className="text-sm flex-shrink-0">{fileIcon(f.type)}</span>
+                    <a href={f.url} target="_blank" rel="noreferrer"
+                      className="text-xs text-slate-700 hover:text-orange-500 truncate flex-1 min-w-0 transition">
+                      {f.name}
+                    </a>
+                    <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
+                      {f.uploader.isAgent ? '🤖' : '👤'}{f.uploader.agentName || f.uploader.name}
+                    </span>
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">
+                      {f.sourceTag}
+                    </span>
+                    <span className="text-[10px] text-slate-300 flex-shrink-0">{fmtSize(f.size)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 💬 评论区 */}
           <div className="mt-4 pt-3 border-t border-slate-100">
             <div className="text-xs text-slate-500 mb-2 font-medium">💬 讨论 {comments.length > 0 ? `(${comments.length})` : ''}</div>
@@ -2943,6 +3010,18 @@ function HistoryItem({ submission, defaultOpen }: { submission: Submission; defa
               submission.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
             }`}>
               <span className="font-medium">{submission.reviewedBy?.name}:</span> {submission.reviewNote}
+            </div>
+          )}
+          {/* B10: 提交附件 */}
+          {submission.attachments && submission.attachments.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {submission.attachments.map(att => (
+                <a key={att.id} href={att.url} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline transition">
+                  <span>{fileIcon(att.type || null)}</span>
+                  <span className="truncate">{att.name}</span>
+                </a>
+              ))}
             </div>
           )}
         </div>
