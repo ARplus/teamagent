@@ -46,6 +46,34 @@ interface TaskData {
   stepStats: { total: number; done: number; pending: number; inProgress: number; waitingApproval: number }
 }
 
+// F05: 三级层级
+interface HierarchyMember {
+  role: 'member'
+  id: string; name: string; status: string; avatar: string | null
+  capabilities: string[]; reputation: number | null
+  linkedUser: { id: string; name: string | null } | null
+}
+interface HierarchyCommander {
+  role: 'commander'
+  id: string; name: string; status: string; avatar: string | null
+  capabilities: string[]; reputation: number | null; claimedAt: string | null
+  members: HierarchyMember[]
+}
+interface HierarchyNode {
+  role: 'human'
+  id: string; name: string; email: string; avatar: string | null; createdAt: string
+  workspaces: { role: string; name: string; id: string }[]
+  stats: { tasks: number; steps: number }
+  commander: HierarchyCommander | null
+}
+interface WorkspaceOverview {
+  id: string; name: string; memberCount: number
+  taskStats: { total: number; done: number; inProgress: number; todo: number }
+}
+interface HierarchySummary {
+  totalHumans: number; totalCommanders: number; totalMembers: number; unpairedHumans: number
+}
+
 // ============ Utils ============
 const STATUS_COLORS: Record<string, string> = {
   todo: 'bg-gray-100 text-gray-600',
@@ -96,9 +124,13 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<UserData[]>([])
   const [tasks, setTasks] = useState<TaskData[]>([])
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'tasks'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'tasks' | 'hierarchy'>('overview')
   const [loading, setLoading] = useState(true)
   const [taskStatus, setTaskStatus] = useState('')
+  const [hierarchy, setHierarchy] = useState<HierarchyNode[]>([])
+  const [wsOverview, setWsOverview] = useState<WorkspaceOverview[]>([])
+  const [hSummary, setHSummary] = useState<HierarchySummary | null>(null)
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
   const ADMIN_EMAILS = ['aurora@arplus.top']
 
@@ -116,14 +148,28 @@ export default function AdminPage() {
   async function loadAll() {
     setLoading(true)
     try {
-      const [sRes, uRes, tRes] = await Promise.all([
+      const [sRes, uRes, tRes, hRes] = await Promise.all([
         fetch('/api/admin/stats'),
         fetch('/api/admin/users'),
         fetch('/api/admin/tasks?limit=30'),
+        fetch('/api/admin/hierarchy'),
       ])
       if (sRes.ok) setStats(await sRes.json())
       if (uRes.ok) { const d = await uRes.json(); setUsers(d.users || []) }
       if (tRes.ok) { const d = await tRes.json(); setTasks(d.tasks || []) }
+      if (hRes.ok) {
+        const d = await hRes.json()
+        setHierarchy(d.hierarchy || [])
+        setWsOverview(d.workspaceOverview || [])
+        setHSummary(d.summary || null)
+        // 默认展开所有节点
+        const ids = new Set<string>()
+        ;(d.hierarchy || []).forEach((h: HierarchyNode) => {
+          ids.add(h.id)
+          if (h.commander) ids.add(h.commander.id)
+        })
+        setExpandedNodes(ids)
+      }
     } finally {
       setLoading(false)
     }
@@ -168,6 +214,7 @@ export default function AdminPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-6 border-t border-gray-100">
           {[
             { key: 'overview', label: '📊 总览' },
+            { key: 'hierarchy', label: '🌳 团队层级' },
             { key: 'users', label: '👥 用户 & Agent' },
             { key: 'tasks', label: '📋 任务总览' },
           ].map(tab => (
@@ -269,6 +316,232 @@ export default function AdminPage() {
                   <div>
                     <p className="text-xl font-bold text-yellow-600">{stats.steps.pendingApproval}</p>
                     <p className="text-xs text-gray-400">待审批</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== HIERARCHY (F05) ===== */}
+        {activeTab === 'hierarchy' && (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            {hSummary && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <StatCard label="人类用户" value={hSummary.totalHumans} icon="👤" color="bg-indigo-50" />
+                <StatCard label="主 Agent" value={hSummary.totalCommanders} icon="🤖" color="bg-blue-50" sub={`${hSummary.unpairedHumans} 人未配对`} />
+                <StatCard label="子 Agent" value={hSummary.totalMembers} icon="⚙️" color="bg-purple-50" />
+                <StatCard label="总成员" value={hSummary.totalHumans + hSummary.totalCommanders + hSummary.totalMembers} icon="🌳" color="bg-orange-50" />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Tree View */}
+              <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-800">🌳 三级层级视图</h3>
+                  <div className="flex gap-3 text-xs text-gray-400">
+                    <span>👤 Human</span>
+                    <span>🤖 Commander</span>
+                    <span>⚙️ Member</span>
+                  </div>
+                </div>
+                <div className="p-4 space-y-1">
+                  {hierarchy.map(node => {
+                    const isExpanded = expandedNodes.has(node.id)
+                    const hasChildren = !!node.commander
+                    const totalSubs = node.commander?.members.length || 0
+                    return (
+                      <div key={node.id} className="select-none">
+                        {/* Level 1: Human */}
+                        <div
+                          className="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors group"
+                          onClick={() => {
+                            const next = new Set(expandedNodes)
+                            if (isExpanded) { next.delete(node.id) } else { next.add(node.id) }
+                            setExpandedNodes(next)
+                          }}
+                        >
+                          <span className="w-4 text-gray-400 text-xs">{hasChildren ? (isExpanded ? '▼' : '▶') : '●'}</span>
+                          <span className="text-lg">👤</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{node.name}</span>
+                              <span className="text-xs bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-medium">Human</span>
+                              {node.workspaces.map(w => (
+                                <span key={w.id} className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{w.name} ({w.role})</span>
+                              ))}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">{node.email} · 任务 {node.stats.tasks} · 步骤 {node.stats.steps}</div>
+                          </div>
+                          {!node.commander && (
+                            <span className="text-xs text-orange-400 bg-orange-50 px-2 py-0.5 rounded-full">未配对 Agent</span>
+                          )}
+                        </div>
+
+                        {/* Level 2: Commander (Main Agent) */}
+                        {isExpanded && node.commander && (
+                          <div className="ml-6">
+                            <div
+                              className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50/50 cursor-pointer transition-colors"
+                              onClick={() => {
+                                const next = new Set(expandedNodes)
+                                const cid = node.commander!.id
+                                if (next.has(cid)) { next.delete(cid) } else { next.add(cid) }
+                                setExpandedNodes(next)
+                              }}
+                            >
+                              <span className="w-4 text-gray-400 text-xs">{totalSubs > 0 ? (expandedNodes.has(node.commander.id) ? '▼' : '▶') : '●'}</span>
+                              <span className="text-lg">🤖</span>
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${AGENT_STATUS_DOT[node.commander.status] || 'bg-gray-300'}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-800">{node.commander.name}</span>
+                                  <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">Commander</span>
+                                  {node.commander.reputation != null && node.commander.reputation > 0 && (
+                                    <span className="text-xs text-yellow-600">⭐ {node.commander.reputation.toFixed(1)}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-400 mt-0.5">
+                                  {node.commander.capabilities.length > 0
+                                    ? node.commander.capabilities.join(' · ')
+                                    : '无特殊能力标签'}
+                                  {totalSubs > 0 && ` · ${totalSubs} 个子 Agent`}
+                                </div>
+                              </div>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                node.commander.status === 'online' ? 'bg-green-100 text-green-700' :
+                                node.commander.status === 'working' ? 'bg-blue-100 text-blue-700' :
+                                node.commander.status === 'waiting' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-500'
+                              }`}>{node.commander.status}</span>
+                            </div>
+
+                            {/* Level 3: Members (Sub Agents) */}
+                            {expandedNodes.has(node.commander.id) && node.commander.members.map(member => (
+                              <div key={member.id} className="ml-6 flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-purple-50/50 transition-colors">
+                                <span className="w-4 text-gray-300 text-xs">└</span>
+                                <span className="text-lg">⚙️</span>
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${AGENT_STATUS_DOT[member.status] || 'bg-gray-300'}`} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-700">{member.name}</span>
+                                    <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-medium">Member</span>
+                                    {member.reputation != null && member.reputation > 0 && (
+                                      <span className="text-xs text-yellow-600">⭐ {member.reputation.toFixed(1)}</span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-0.5">
+                                    {member.capabilities.length > 0
+                                      ? member.capabilities.join(' · ')
+                                      : '无能力标签'}
+                                    {member.linkedUser && ` · 关联: ${member.linkedUser.name || member.linkedUser.id}`}
+                                  </div>
+                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  member.status === 'online' ? 'bg-green-100 text-green-700' :
+                                  member.status === 'working' ? 'bg-blue-100 text-blue-700' :
+                                  member.status === 'waiting' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-500'
+                                }`}>{member.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {hierarchy.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-8">暂无数据</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Workspace Overview Sidebar */}
+              <div className="space-y-4">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-5 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-800">🏢 工作区任务概览</h3>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {wsOverview.map(ws => {
+                      const { total, done, inProgress, todo } = ws.taskStats
+                      const doneRate = total > 0 ? Math.round((done / total) * 100) : 0
+                      return (
+                        <div key={ws.id} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-800">{ws.name}</span>
+                            <span className="text-xs text-gray-400">{ws.memberCount} 成员</span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 text-center">
+                            <div>
+                              <p className="text-sm font-bold text-gray-700">{total}</p>
+                              <p className="text-xs text-gray-400">总计</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-blue-600">{inProgress}</p>
+                              <p className="text-xs text-gray-400">进行中</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-green-600">{done}</p>
+                              <p className="text-xs text-gray-400">完成</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-gray-500">{todo}</p>
+                              <p className="text-xs text-gray-400">待办</p>
+                            </div>
+                          </div>
+                          {total > 0 && (
+                            <div className="mt-2">
+                              <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${doneRate}%` }} />
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1 text-right">{doneRate}% 完成</p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {wsOverview.length === 0 && (
+                      <p className="text-sm text-gray-400 text-center py-4">暂无工作区</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 归属链快速查看 */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-5 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-800">🔗 归属链速览</h3>
+                  </div>
+                  <div className="p-4 space-y-2">
+                    {hierarchy.flatMap(node =>
+                      node.commander
+                        ? [
+                            // Commander line
+                            <div key={`chain-${node.commander.id}`} className="flex items-center gap-1 text-xs text-gray-600 py-1">
+                              <span>🤖 {node.commander.name}</span>
+                              <span className="text-gray-300">→</span>
+                              <span>👤 {node.name}</span>
+                              <div className={`w-1.5 h-1.5 rounded-full ml-1 ${AGENT_STATUS_DOT[node.commander.status] || 'bg-gray-300'}`} />
+                            </div>,
+                            // Each sub-agent line
+                            ...node.commander.members.map(m => (
+                              <div key={`chain-${m.id}`} className="flex items-center gap-1 text-xs text-gray-500 py-1 pl-4">
+                                <span>⚙️ {m.name}</span>
+                                <span className="text-gray-300">→</span>
+                                <span>🤖 {node.commander!.name}</span>
+                                <span className="text-gray-300">→</span>
+                                <span>👤 {node.name}</span>
+                                <div className={`w-1.5 h-1.5 rounded-full ml-1 ${AGENT_STATUS_DOT[m.status] || 'bg-gray-300'}`} />
+                              </div>
+                            )),
+                          ]
+                        : []
+                    )}
+                    {hierarchy.filter(n => n.commander).length === 0 && (
+                      <p className="text-sm text-gray-400 text-center py-4">暂无归属链</p>
+                    )}
                   </div>
                 </div>
               </div>
