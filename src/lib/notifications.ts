@@ -1,7 +1,7 @@
 import { prisma } from './db'
 
 // 通知类型
-export type NotificationType = 
+export type NotificationType =
   | 'task_assigned'      // 任务分配给你
   | 'step_assigned'      // 步骤分配给你
   | 'step_waiting'       // 步骤等待审批
@@ -12,6 +12,10 @@ export type NotificationType =
   | 'task_completed'     // 任务完成
   | 'step_commented'     // 步骤新评论
   | 'mention'            // @提及
+  | 'agent_call'         // F06: Agent 主动呼叫
+
+// F06: 通知优先级
+export type NotificationPriority = 'urgent' | 'normal' | 'low'
 
 // 创建通知
 export async function createNotification({
@@ -132,5 +136,12 @@ export const notificationTemplates = {
     type: 'mention' as NotificationType,
     title: '📣 有人 @提到了你',
     content: `${authorName} 在步骤「${stepTitle}」的评论中提到了你`
+  }),
+
+  // F06: Agent 主动呼叫
+  agentCall: (agentName: string, message: string, priority: NotificationPriority = 'normal') => ({
+    type: 'agent_call' as NotificationType,
+    title: priority === 'urgent' ? `🚨 ${agentName} 紧急呼叫` : `📞 ${agentName} 呼叫你`,
+    content: message,
   })
 }

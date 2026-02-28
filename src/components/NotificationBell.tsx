@@ -10,6 +10,8 @@ interface Notification {
   content: string | null
   read: boolean
   createdAt: string
+  priority?: string   // F06
+  callStatus?: string | null // F06
   task: { id: string; title: string } | null
   step: { id: string; title: string } | null
 }
@@ -22,7 +24,15 @@ const typeIcons: Record<string, string> = {
   step_approved: '✅',
   step_rejected: '❌',
   task_completed: '🎉',
-  mention: '💬'
+  mention: '💬',
+  agent_call: '📞',
+}
+
+// F06: 优先级样式
+const priorityStyles: Record<string, string> = {
+  urgent: 'border-l-4 border-l-red-500 bg-red-50/50',
+  normal: '',
+  low: 'opacity-80',
 }
 
 function formatTime(dateStr: string): string {
@@ -166,10 +176,10 @@ export function NotificationBell() {
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
                   className={`px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors ${
-                    notification.read 
-                      ? 'bg-white hover:bg-gray-50' 
+                    notification.read
+                      ? 'bg-white hover:bg-gray-50'
                       : 'bg-orange-50/50 hover:bg-orange-50'
-                  }`}
+                  } ${priorityStyles[notification.priority || 'normal'] || ''}`}
                 >
                   <div className="flex items-start space-x-3">
                     <span className="text-lg flex-shrink-0">
@@ -189,9 +199,25 @@ export function NotificationBell() {
                           {notification.content}
                         </p>
                       )}
-                      <span className="text-xs text-gray-400 mt-1 block">
-                        {formatTime(notification.createdAt)}
-                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-gray-400">
+                          {formatTime(notification.createdAt)}
+                        </span>
+                        {notification.type === 'agent_call' && notification.callStatus === 'pending' && (
+                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium animate-pulse">
+                            待回应
+                          </span>
+                        )}
+                        {notification.type === 'agent_call' && notification.callStatus === 'accepted' && (
+                          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">已接受</span>
+                        )}
+                        {notification.type === 'agent_call' && notification.callStatus === 'declined' && (
+                          <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">已拒绝</span>
+                        )}
+                        {notification.priority === 'urgent' && (
+                          <span className="text-xs text-red-500 font-medium">🔴 紧急</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

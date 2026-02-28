@@ -53,6 +53,8 @@ model User {
   evaluationsReceived TaskEvaluation[] @relation("EvaluationMember")
   // F04: 任务编辑历史
   taskEdits TaskEditHistory[]
+  // F06: 通知偏好
+  preference UserPreference?
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -373,26 +375,52 @@ model Attachment {
 // 站内通知
 model Notification {
   id          String   @id @default(cuid())
-  type        String   // task_assigned, step_waiting, step_approved, step_rejected, task_completed, mention
+  type        String   // task_assigned, step_waiting, step_approved, step_rejected, task_completed, mention, agent_call
   title       String
   content     String?
   read        Boolean  @default(false)
   createdAt   DateTime @default(now())
-  
+
+  // F06: 优先级 + 呼叫状态
+  priority    String   @default("normal")  // urgent, normal, low
+  callStatus  String?  // null=普通通知, pending=等待回复, accepted=已接受, declined=已拒绝
+  respondedAt DateTime?
+
   // 接收者
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // 关联的任务（可选）
   taskId      String?
   task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
+
   // 关联的步骤（可选）
   stepId      String?
   step        TaskStep? @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  
+
   @@index([userId, read])
   @@index([userId, createdAt])
+  @@index([userId, callStatus])
+}
+
+// F06: 用户通知偏好（免打扰等）
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 免打扰设置
+  dndEnabled    Boolean  @default(false)
+  dndStart      String?  // HH:mm 格式，如 "22:00"
+  dndEnd        String?  // HH:mm 格式，如 "08:00"
+
+  // 通知级别过滤：只推送指定优先级以上的通知
+  minPriority   String   @default("low")  // "urgent" = 只推送紧急, "normal" = 推送普通+紧急, "low" = 全部
+
+  // 审批呼叫是否弹窗提醒
+  callPopupEnabled Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
 }
 
 // ============ NextAuth 相关表 ============

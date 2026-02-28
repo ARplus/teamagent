@@ -21,6 +21,9 @@ export type TeamAgentEvent =
   | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
   | { type: 'task:evaluated'; taskId: string; title: string; count: number }
   | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorName: string; content: string }
+  // F06: Agent 主动呼叫
+  | { type: 'agent:calling'; callId: string; priority: 'urgent' | 'normal' | 'low'; title: string; content: string; agentName: string; taskId?: string; stepId?: string }
+  | { type: 'agent:call-responded'; callId: string; action: string; message?: string; respondedBy: string }
   | { type: 'ping' }
 
 // 订阅者类型

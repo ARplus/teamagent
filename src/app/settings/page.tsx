@@ -42,6 +42,15 @@ export default function SettingsPage() {
   const [inviting, setInviting] = useState(false)
   const [inviteMsg, setInviteMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
+  // F06: 通知偏好
+  const [dndEnabled, setDndEnabled] = useState(false)
+  const [dndStart, setDndStart] = useState('22:00')
+  const [dndEnd, setDndEnd] = useState('08:00')
+  const [minPriority, setMinPriority] = useState('low')
+  const [callPopupEnabled, setCallPopupEnabled] = useState(true)
+  const [prefSaving, setPrefSaving] = useState(false)
+  const [prefMsg, setPrefMsg] = useState<string | null>(null)
+
   // 未登录跳转
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -49,13 +58,53 @@ export default function SettingsPage() {
     }
   }, [status, router])
 
-  // 加载 token 列表 + 工作区信息
+  // 加载 token 列表 + 工作区信息 + 通知偏好
   useEffect(() => {
     if (session) {
       fetchTokens()
       fetchWorkspace()
+      fetchPreferences()
     }
   }, [session])
+
+  const fetchPreferences = async () => {
+    try {
+      const res = await fetch('/api/user-preferences')
+      if (res.ok) {
+        const { preference } = await res.json()
+        setDndEnabled(preference.dndEnabled)
+        setDndStart(preference.dndStart || '22:00')
+        setDndEnd(preference.dndEnd || '08:00')
+        setMinPriority(preference.minPriority || 'low')
+        setCallPopupEnabled(preference.callPopupEnabled ?? true)
+      }
+    } catch (e) {
+      console.error('获取通知偏好失败', e)
+    }
+  }
+
+  const savePreferences = async () => {
+    setPrefSaving(true)
+    setPrefMsg(null)
+    try {
+      const res = await fetch('/api/user-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dndEnabled, dndStart, dndEnd, minPriority, callPopupEnabled }),
+      })
+      if (res.ok) {
+        setPrefMsg('✅ 保存成功')
+        setTimeout(() => setPrefMsg(null), 2000)
+      } else {
+        const d = await res.json()
+        setPrefMsg(`❌ ${d.error}`)
+      }
+    } catch (e) {
+      setPrefMsg('❌ 保存失败')
+    } finally {
+      setPrefSaving(false)
+    }
+  }
 
   const fetchWorkspace = async () => {
     try {
@@ -284,6 +333,111 @@ export default function SettingsPage() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+
+        {/* F06: 通知偏好 / 免打扰 */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">🔔 通知偏好</h2>
+          <p className="text-gray-500 text-sm mb-5">
+            设置免打扰时段和 Agent 呼叫通知方式。
+          </p>
+
+          <div className="space-y-5">
+            {/* 免打扰开关 */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-gray-800 text-sm">🌙 免打扰模式</div>
+                <div className="text-xs text-gray-400">开启后，在指定时段内不推送普通/低优通知（紧急呼叫仍然推送）</div>
+              </div>
+              <button
+                onClick={() => setDndEnabled(!dndEnabled)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  dndEnabled ? 'bg-orange-500' : 'bg-gray-300'
+                }`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                  dndEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+
+            {/* 免打扰时段 */}
+            {dndEnabled && (
+              <div className="flex items-center gap-3 pl-4 border-l-2 border-orange-200">
+                <span className="text-sm text-gray-600">从</span>
+                <input
+                  type="time"
+                  value={dndStart}
+                  onChange={e => setDndStart(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+                <span className="text-sm text-gray-600">到</span>
+                <input
+                  type="time"
+                  value={dndEnd}
+                  onChange={e => setDndEnd(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+              </div>
+            )}
+
+            {/* 最低通知级别 */}
+            <div>
+              <div className="font-medium text-gray-800 text-sm mb-2">📊 推送通知级别</div>
+              <div className="flex gap-3">
+                {[
+                  { value: 'low', label: '全部', desc: '接收所有通知', color: 'green' },
+                  { value: 'normal', label: '普通+紧急', desc: '过滤低优通知', color: 'yellow' },
+                  { value: 'urgent', label: '仅紧急', desc: '只推送紧急呼叫', color: 'red' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setMinPriority(opt.value)}
+                    className={`flex-1 p-3 rounded-xl border-2 transition-all text-left ${
+                      minPriority === opt.value
+                        ? `border-${opt.color}-400 bg-${opt.color}-50`
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`text-sm font-medium ${
+                      minPriority === opt.value ? `text-${opt.color}-700` : 'text-gray-700'
+                    }`}>{opt.label}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 呼叫弹窗 */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-gray-800 text-sm">📞 Agent 呼叫弹窗</div>
+                <div className="text-xs text-gray-400">Agent 发起呼叫时在页面右上角显示弹窗通知</div>
+              </div>
+              <button
+                onClick={() => setCallPopupEnabled(!callPopupEnabled)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  callPopupEnabled ? 'bg-orange-500' : 'bg-gray-300'
+                }`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                  callPopupEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+
+            {/* 保存按钮 */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={savePreferences}
+                disabled={prefSaving}
+                className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm"
+              >
+                {prefSaving ? '保存中...' : '保存偏好'}
+              </button>
+              {prefMsg && <span className="text-sm text-gray-600">{prefMsg}</span>}
+            </div>
           </div>
         </div>
 

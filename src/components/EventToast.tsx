@@ -6,10 +6,12 @@ import { useAgentEvents, TeamAgentEvent } from '@/hooks/useAgentEvents'
 
 interface Toast {
   id: string
-  type: 'info' | 'success' | 'warning'
+  type: 'info' | 'success' | 'warning' | 'urgent'
   title: string
   message: string
   timestamp: number
+  persistent?: boolean   // F06: 紧急呼叫不自动消失
+  callId?: string        // F06: 关联呼叫 ID
 }
 
 /**
@@ -22,25 +24,29 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [showStatus, setShowStatus] = useState(true)
 
-  const addToast = (type: Toast['type'], title: string, message: string) => {
+  const addToast = (type: Toast['type'], title: string, message: string, opts?: { persistent?: boolean; callId?: string }) => {
     const toast: Toast = {
       id: `${Date.now()}-${Math.random()}`,
       type,
       title,
       message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      persistent: opts?.persistent,
+      callId: opts?.callId,
     }
-    
+
     setToasts(prev => {
-      // 最多显示 3 个通知
+      // 最多显示 5 个通知（紧急通知可能驻留）
       const newToasts = [...prev, toast]
-      return newToasts.slice(-3)
+      return newToasts.slice(-5)
     })
 
-    // 5 秒后自动消失
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== toast.id))
-    }, 5000)
+    // 紧急呼叫通知不自动消失，其他 5 秒后消失
+    if (!opts?.persistent) {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== toast.id))
+      }, 5000)
+    }
   }
 
   const { connected, reconnecting, disconnect } = useAgentEvents({
@@ -72,12 +78,36 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
           addToast('info', '💬 新评论', `${event.authorName} 发表了评论`)
           onTaskUpdate?.()
           break
+
+        // F06: Agent 主动呼叫
+        case 'agent:calling':
+          if (event.priority === 'urgent') {
+            addToast('urgent', `🚨 ${event.agentName} 紧急呼叫`, event.title, { persistent: true, callId: event.callId })
+          } else {
+            addToast('warning', `📞 ${event.agentName} 呼叫你`, event.title, { callId: event.callId })
+          }
+          onTaskUpdate?.()
+          break
       }
     }
   })
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id))
+  }
+
+  // F06: 回应 Agent 呼叫
+  const respondToCall = async (callId: string, action: 'accept' | 'decline', toastId: string) => {
+    try {
+      await fetch(`/api/agent-calls/${callId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      removeToast(toastId)
+    } catch (e) {
+      console.error('回应呼叫失败:', e)
+    }
   }
 
   return (
@@ -112,8 +142,9 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
               ${toast.type === 'success' ? 'bg-green-50 border-green-200' : ''}
               ${toast.type === 'warning' ? 'bg-yellow-50 border-yellow-200' : ''}
               ${toast.type === 'info' ? 'bg-blue-50 border-blue-200' : ''}
+              ${toast.type === 'urgent' ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : ''}
             `}
-            onClick={() => removeToast(toast.id)}
+            onClick={() => !toast.persistent && removeToast(toast.id)}
           >
             <div className="font-medium text-sm text-gray-900">
               {toast.title}
@@ -121,6 +152,23 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
             <div className="text-sm text-gray-600 mt-0.5">
               {toast.message}
             </div>
+            {/* F06: 呼叫回应按钮 */}
+            {toast.callId && (
+              <div className="flex gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                <button
+                  className="text-xs px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                  onClick={() => respondToCall(toast.callId!, 'accept', toast.id)}
+                >
+                  ✅ 接受
+                </button>
+                <button
+                  className="text-xs px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  onClick={() => respondToCall(toast.callId!, 'decline', toast.id)}
+                >
+                  ❌ 拒绝
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
