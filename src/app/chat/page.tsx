@@ -450,15 +450,36 @@ export default function ChatPage() {
       <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/95 mb-16 md:mb-0">
         <div className="max-w-2xl mx-auto px-4 py-3">
           <div className="flex items-end gap-2">
-            {/* B13: 新建任务按钮 */}
-            <button
-              onClick={() => setShowNewTask(true)}
-              disabled={!agent}
-              title="快速新建任务"
-              className="w-12 h-12 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-lg"
-            >
-              📋
-            </button>
+            {/* B13: 新建任务按钮 + B14: 去成长按钮 */}
+            <div className="flex flex-col gap-1 flex-shrink-0">
+              <button
+                onClick={() => setShowNewTask(true)}
+                disabled={!agent}
+                title="快速新建任务"
+                className="w-10 h-10 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors text-base"
+              >
+                📋
+              </button>
+              <button
+                onClick={() => {
+                  if (!agent || loading) return
+                  const growthPrompt = `请帮我分析一下你当前的能力状态，然后推荐 3-5 个对你最有价值的新技能。具体步骤：
+1. 列出你当前已掌握的技能（已安装的 skills）
+2. 搜索 ClawHub 上可用的新技能（clawhub search）
+3. 根据我们的工作需求，推荐最有价值的技能，说明理由
+4. 我确认后帮我自动安装（clawhub install）
+5. 学习技能文档，总结新获得的能力
+
+请开始吧！🌱`
+                  sendMessage(growthPrompt)
+                }}
+                disabled={!agent || loading}
+                title="Agent 自主学习新技能"
+                className="w-10 h-10 bg-white/10 hover:bg-emerald-500/20 disabled:opacity-30 text-white/70 hover:text-emerald-400 rounded-full flex items-center justify-center transition-colors text-base"
+              >
+                🌱
+              </button>
+            </div>
             <div className="flex-1">
               <textarea
                 ref={inputRef}
