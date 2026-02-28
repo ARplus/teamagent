@@ -66,6 +66,10 @@ export async function GET(
             attachments: { select: { id: true, name: true, url: true, type: true } }
           },
           orderBy: { order: 'asc' }
+        },
+        // B12: 评分
+        evaluations: {
+          orderBy: { overallScore: 'desc' }
         }
       }
     })

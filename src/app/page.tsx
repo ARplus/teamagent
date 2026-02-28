@@ -115,6 +115,23 @@ interface Task {
   agentWorkRatio?: number | null
   autoSummary?: string | null
   creatorComment?: string | null
+  // B12: 评分
+  evaluations?: TaskEvaluation[]
+}
+
+interface TaskEvaluation {
+  id: string
+  memberId: string
+  memberName: string | null
+  memberType: string
+  quality: number
+  efficiency: number
+  collaboration: number
+  overallScore: number
+  comment: string | null
+  stepsTotal: number
+  stepsDone: number
+  model?: string
 }
 
 interface ChatMessage {
@@ -858,7 +875,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-8">
           {/* Left: Team & Stats - 移动端全宽，桌面端固定宽 */}
           <div className="w-full lg:w-64 lg:flex-shrink-0 space-y-4">
-            <TeamCard task={task} />
+            <TeamCard task={task} onRefresh={onRefresh} currentUserId={currentUserId} />
             <StatsCard task={task} />
             <AttachmentsCard taskId={task.id} />
             <SummaryCard task={task} onRefresh={onRefresh} />
@@ -874,7 +891,35 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
   )
 }
 
-function TeamCard({ task }: { task: Task }) {
+function TeamCard({ task, onRefresh, currentUserId }: { task: Task; onRefresh: () => void; currentUserId?: string }) {
+  const [evaluating, setEvaluating] = useState(false)
+  const [expandedEval, setExpandedEval] = useState<string | null>(null)
+
+  const taskDone = (task.steps || []).length > 0 && (task.steps || []).every(s => s.status === 'done' || s.status === 'skipped')
+  const hasEvaluations = (task.evaluations?.length || 0) > 0
+  const isCreator = currentUserId === task.creator?.id
+
+  const handleEvaluate = async () => {
+    setEvaluating(true)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/evaluate`, { method: 'POST' })
+      if (res.ok) {
+        onRefresh()
+      } else {
+        const data = await res.json()
+        alert(data.error || '评分失败')
+      }
+    } finally {
+      setEvaluating(false)
+    }
+  }
+
+  // 评分 map: memberId → evaluation
+  const evalMap = new Map<string, TaskEvaluation>()
+  for (const ev of task.evaluations || []) {
+    evalMap.set(ev.memberId, ev)
+  }
+
   // 收集每个 assignee 的步骤统计 + Agent 元数据
   const memberMap = new Map<string, {
     userId: string
@@ -969,25 +1014,55 @@ function TeamCard({ task }: { task: Task }) {
                       </div>
                     </div>
                   </div>
-                  <div className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</span>
+                    {evalMap.has(m.userId) && (
+                      <button
+                        onClick={() => setExpandedEval(expandedEval === m.userId ? null : m.userId)}
+                        className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100"
+                        title="查看评分详情"
+                      >
+                        ⭐{evalMap.get(m.userId)!.overallScore}
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {/* B12: 评分详情展开 */}
+                {expandedEval === m.userId && evalMap.has(m.userId) && (
+                  <EvalDetail ev={evalMap.get(m.userId)!} />
+                )}
                 {/* 子 Agent 行（缩进） */}
                 {children.map((c, j) => (
-                  <div key={`sub-${i}-${j}`} className="flex items-center justify-between p-2.5 pl-12 ml-4 border-l-2 border-slate-200">
-                    <div className="flex items-center space-x-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white text-xs font-bold">
-                        {c.agentName.charAt(0)}
+                  <div key={`sub-${i}-${j}`}>
+                    <div className="flex items-center justify-between p-2.5 pl-12 ml-4 border-l-2 border-slate-200">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white text-xs font-bold">
+                          {c.agentName.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
+                            <span>⚙️ {c.agentName}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <StatusDot status={c.agentStatus} />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
-                          <span>⚙️ {c.agentName}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <StatusDot status={c.agentStatus} />
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 font-medium">{c.done}/{c.total}</span>
+                        {evalMap.has(c.userId) && (
+                          <button
+                            onClick={() => setExpandedEval(expandedEval === c.userId ? null : c.userId)}
+                            className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100"
+                          >
+                            ⭐{evalMap.get(c.userId)!.overallScore}
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="text-xs text-slate-500 font-medium">{c.done}/{c.total}</div>
+                    {expandedEval === c.userId && evalMap.has(c.userId) && (
+                      <div className="ml-12 mb-1"><EvalDetail ev={evalMap.get(c.userId)!} /></div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -995,30 +1070,91 @@ function TeamCard({ task }: { task: Task }) {
           })}
           {/* 无归属成员（纯人类步骤等） */}
           {others.map((m, i) => (
-            <div key={`other-${i}`} className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-xl">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-blue-500/20">
-                  {(m.humanName || m.agentName).charAt(0)}
+            <div key={`other-${i}`}>
+              <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-xl">
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-blue-500/20">
+                    {(m.humanName || m.agentName).charAt(0)}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">{m.agentName !== '未绑定' ? m.agentName : m.humanName}</div>
+                    {m.agentName !== '未绑定' ? (
+                      <div className="text-xs text-slate-500 flex items-center space-x-1">
+                        <span>→ 👤 {m.humanName}</span>
+                        <StatusDot status={m.agentStatus} />
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-500">👤 纯人类步骤</div>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-800">{m.agentName !== '未绑定' ? m.agentName : m.humanName}</div>
-                  {m.agentName !== '未绑定' ? (
-                    <div className="text-xs text-slate-500 flex items-center space-x-1">
-                      <span>→ 👤 {m.humanName}</span>
-                      <StatusDot status={m.agentStatus} />
-                    </div>
-                  ) : (
-                    <div className="text-xs text-slate-500">👤 纯人类步骤</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</span>
+                  {evalMap.has(m.userId) && (
+                    <button
+                      onClick={() => setExpandedEval(expandedEval === m.userId ? null : m.userId)}
+                      className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100"
+                    >
+                      ⭐{evalMap.get(m.userId)!.overallScore}
+                    </button>
                   )}
                 </div>
               </div>
-              <div className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</div>
+              {expandedEval === m.userId && evalMap.has(m.userId) && (
+                <EvalDetail ev={evalMap.get(m.userId)!} />
+              )}
             </div>
           ))}
         </div>
       ) : (
         <div className="text-sm text-slate-400 text-center py-4">暂无成员</div>
       )}
+
+      {/* B12: 评分按钮 */}
+      {taskDone && isCreator && !hasEvaluations && allMembers.length > 0 && (
+        <button
+          onClick={handleEvaluate}
+          disabled={evaluating}
+          className="mt-4 w-full px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl text-sm font-semibold hover:from-amber-400 hover:to-orange-400 disabled:opacity-50 shadow-lg shadow-amber-500/20"
+        >
+          {evaluating ? '⏳ AI 评分中...' : '📊 生成评分报告'}
+        </button>
+      )}
+      {hasEvaluations && (
+        <div className="mt-3 text-center text-xs text-slate-400">
+          📊 已评分 · {task.evaluations?.[0]?.model || 'AI'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// B12: 评分详情卡片
+function EvalDetail({ ev }: { ev: TaskEvaluation }) {
+  return (
+    <div className="mt-1 mb-2 p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-xs space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-amber-700 font-semibold">📊 {ev.memberName || '成员'} 评分</span>
+        <span className="text-amber-600 font-bold text-sm">⭐ {ev.overallScore}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="text-center p-1.5 bg-white rounded-lg">
+          <div className="text-[10px] text-slate-500">⭐ 质量</div>
+          <div className="text-sm font-bold text-slate-700">{ev.quality}</div>
+        </div>
+        <div className="text-center p-1.5 bg-white rounded-lg">
+          <div className="text-[10px] text-slate-500">⏱️ 效率</div>
+          <div className="text-sm font-bold text-slate-700">{ev.efficiency}</div>
+        </div>
+        <div className="text-center p-1.5 bg-white rounded-lg">
+          <div className="text-[10px] text-slate-500">🤝 协作</div>
+          <div className="text-sm font-bold text-slate-700">{ev.collaboration}</div>
+        </div>
+      </div>
+      {ev.comment && (
+        <div className="text-slate-600 italic">&ldquo;{ev.comment}&rdquo;</div>
+      )}
+      <div className="text-slate-400">{ev.stepsDone}/{ev.stepsTotal} 步骤完成</div>
     </div>
   )
 }

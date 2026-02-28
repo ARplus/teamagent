@@ -49,6 +49,8 @@ model User {
 
   // B08: 多人指派
   stepAssignments StepAssignee[]
+  // B12: 评分
+  evaluationsReceived TaskEvaluation[] @relation("EvaluationMember")
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -204,6 +206,9 @@ model Task {
   
   // 任务级附件（参考资料、背景文档）
   attachments Attachment[]
+
+  // B12: 评分
+  evaluations   TaskEvaluation[]
 
   // 通知
   notifications Notification[]
@@ -486,4 +491,36 @@ model StepComment {
   attachments Attachment[]
 
   @@index([stepId, createdAt])
+}
+
+// B12: 任务完成评分
+model TaskEvaluation {
+  id            String   @id @default(cuid())
+  taskId        String
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  memberId      String   // 被评分的成员 userId
+  member        User     @relation("EvaluationMember", fields: [memberId], references: [id])
+  memberName    String?  // 被评分者名字（冗余，方便展示）
+  memberType    String   @default("agent") // "agent" | "human"
+
+  // 评分维度 (1-5)
+  quality       Float    // ⭐ 质量分
+  efficiency    Float    // ⏱️ 效率分
+  collaboration Float    // 🤝 协作分
+  overallScore  Float    // 📊 综合分（加权平均）
+  comment       String?  // 💬 一句话点评
+
+  // 评分统计依据
+  stepsTotal    Int      @default(0)  // 该成员负责步骤总数
+  stepsDone     Int      @default(0)  // 已完成步骤数
+  avgDurationMs Int?     // 平均步骤耗时
+
+  // 元信息
+  evaluatedBy   String?  // 评分执行者（Agent userId 或 "system"）
+  model         String?  // 使用的 LLM 模型
+  createdAt     DateTime @default(now())
+
+  @@unique([taskId, memberId])
+  @@index([taskId])
+  @@index([memberId])
 }
