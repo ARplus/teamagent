@@ -125,7 +125,17 @@ export async function GET(
   }
 }
 
-// 更新任务（支持 Token 认证）
+// F04: 判断任务是否已开始（有步骤被领取/执行）
+function isTaskStarted(taskStatus: string): boolean {
+  return ['in_progress', 'review', 'done'].includes(taskStatus)
+}
+
+// F04: 允许全量编辑的字段
+const FULL_EDIT_FIELDS = ['title', 'description', 'priority', 'dueDate', 'mode', 'status']
+// F04: 任务开始后只允许的字段
+const SUPPLEMENT_FIELDS = ['supplement', 'status', 'creatorComment', 'autoSummary']
+
+// 更新任务（支持 Token 认证 + F04 编辑权限 + 编辑历史）
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -133,7 +143,7 @@ export async function PATCH(
   try {
     const { id } = await params
     const auth = await authenticate(req)
-    
+
     if (!auth) {
       return NextResponse.json({ error: '请先登录或提供 API Token' }, { status: 401 })
     }
@@ -158,14 +168,72 @@ export async function PATCH(
       return NextResponse.json({ error: '无权限更新此任务' }, { status: 403 })
     }
 
-    const task = await prisma.task.update({
-      where: { id },
-      data,
-      include: {
-        creator: { select: { id: true, name: true, avatar: true } },
-        assignee: { select: { id: true, name: true, avatar: true } },
-        workspace: { select: { id: true, name: true } }
+    // F04: 编辑权限检查
+    const started = isTaskStarted(existingTask.status)
+    const isCreator = existingTask.creatorId === auth.userId
+
+    if (started && isCreator) {
+      // 任务已开始 + 创建者 → 只能补充说明，不能改标题/描述等核心字段
+      const requestedFields = Object.keys(data)
+      const disallowed = requestedFields.filter(f => FULL_EDIT_FIELDS.includes(f) && !SUPPLEMENT_FIELDS.includes(f))
+      if (disallowed.length > 0) {
+        return NextResponse.json({
+          error: `任务已开始执行，不能修改 ${disallowed.join('、')}。请使用"补充说明"功能。`,
+          disallowedFields: disallowed,
+          canSupplement: true
+        }, { status: 403 })
       }
+    }
+
+    // F04: 记录编辑历史
+    const historyEntries: { fieldName: string; oldValue: string | null; newValue: string | null; editType: string }[] = []
+    const editType = started ? 'supplement' : 'full_edit'
+
+    for (const key of Object.keys(data)) {
+      if (['dueDate'].includes(key)) {
+        // Date 类型比较
+        const oldVal = (existingTask as any)[key] ? (existingTask as any)[key].toISOString() : null
+        const newVal = data[key] ? data[key].toISOString() : null
+        if (oldVal !== newVal) {
+          historyEntries.push({ fieldName: key, oldValue: oldVal, newValue: newVal, editType })
+        }
+      } else if (['title', 'description', 'priority', 'mode', 'status', 'supplement', 'creatorComment'].includes(key)) {
+        const oldVal = (existingTask as any)[key] ?? null
+        const newVal = data[key] ?? null
+        if (oldVal !== newVal) {
+          historyEntries.push({
+            fieldName: key,
+            oldValue: typeof oldVal === 'string' ? oldVal : JSON.stringify(oldVal),
+            newValue: typeof newVal === 'string' ? newVal : JSON.stringify(newVal),
+            editType
+          })
+        }
+      }
+    }
+
+    // 事务：更新任务 + 批量写入历史
+    const task = await prisma.$transaction(async (tx) => {
+      const updated = await tx.task.update({
+        where: { id },
+        data,
+        include: {
+          creator: { select: { id: true, name: true, avatar: true } },
+          assignee: { select: { id: true, name: true, avatar: true } },
+          workspace: { select: { id: true, name: true } }
+        }
+      })
+
+      if (historyEntries.length > 0) {
+        await tx.taskEditHistory.createMany({
+          data: historyEntries.map(e => ({
+            taskId: id,
+            editorId: auth.userId,
+            ...e
+          }))
+        })
+      }
+
+      return updated
     })
 
     return NextResponse.json(task)

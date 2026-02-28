@@ -113,10 +113,13 @@ interface Task {
   totalAgentTimeMs?: number | null
   totalHumanTimeMs?: number | null
   agentWorkRatio?: number | null
+  supplement?: string | null
   autoSummary?: string | null
   creatorComment?: string | null
   // B12: 评分
   evaluations?: TaskEvaluation[]
+  // F04: 编辑元数据
+  viewerIsCreator?: boolean
 }
 
 interface TaskEvaluation {
@@ -637,7 +640,7 @@ function getTaskAlerts(task: Task): { type: 'warning' | 'success' | 'info'; mess
 
 // ============ Right Panel: Task Detail ============
 
-function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUserId }: { 
+function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUserId }: {
   task: Task; onRefresh: () => void; canApprove: boolean; onDelete: () => void; myAgent?: { name: string; status: string } | null; currentUserId?: string
 }) {
   const router = useRouter()
@@ -647,6 +650,91 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
   const [copied, setCopied] = useState(false)
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [generatingInvite, setGeneratingInvite] = useState(false)
+
+  // F04: 编辑状态
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(task.title)
+  const [editDesc, setEditDesc] = useState(task.description || '')
+  const [editPriority, setEditPriority] = useState(task.priority)
+  const [saving, setSaving] = useState(false)
+  // F04: 补充说明
+  const [showSupplement, setShowSupplement] = useState(false)
+  const [supplementText, setSupplementText] = useState(task.supplement || '')
+  const [savingSupplement, setSavingSupplement] = useState(false)
+  // F04: 编辑历史
+  const [showHistory, setShowHistory] = useState(false)
+  const [editHistory, setEditHistory] = useState<any[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  const isCreator = currentUserId === task.creator?.id
+  const taskStarted = ['in_progress', 'review', 'done'].includes(task.status)
+
+  // 重置编辑状态当任务变化
+  useEffect(() => {
+    setEditTitle(task.title)
+    setEditDesc(task.description || '')
+    setEditPriority(task.priority)
+    setSupplementText(task.supplement || '')
+    setEditing(false)
+  }, [task.id, task.title, task.description, task.priority, task.supplement])
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim() || saving) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDesc.trim() || null,
+          priority: editPriority
+        })
+      })
+      if (res.ok) {
+        setEditing(false)
+        onRefresh()
+      } else {
+        const data = await res.json()
+        alert(data.error || '保存失败')
+      }
+    } catch { alert('网络错误') }
+    finally { setSaving(false) }
+  }
+
+  const handleSaveSupplement = async () => {
+    if (savingSupplement) return
+    setSavingSupplement(true)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supplement: supplementText.trim() || null })
+      })
+      if (res.ok) {
+        setShowSupplement(false)
+        onRefresh()
+      } else {
+        const data = await res.json()
+        alert(data.error || '保存失败')
+      }
+    } catch { alert('网络错误') }
+    finally { setSavingSupplement(false) }
+  }
+
+  const loadHistory = async () => {
+    if (loadingHistory) return
+    setLoadingHistory(true)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/history`)
+      if (res.ok) {
+        const data = await res.json()
+        setEditHistory(data.history || [])
+        setShowHistory(true)
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingHistory(false) }
+  }
 
   const generateInviteUrl = async () => {
     if (inviteUrl) return inviteUrl // 已生成过，复用
@@ -860,10 +948,127 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                   <span>{new Date(task.dueDate).toLocaleDateString('zh-CN')}</span>
                 </span>
               )}
+              {/* F04: 编辑/补充按钮 */}
+              {isCreator && !editing && (
+                <div className="flex items-center gap-1">
+                  {!taskStarted ? (
+                    <button onClick={() => setEditing(true)}
+                      className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition" title="编辑任务">
+                      ✏️ 编辑
+                    </button>
+                  ) : (
+                    <button onClick={() => setShowSupplement(!showSupplement)}
+                      className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition" title="补充说明">
+                      📝 补充说明
+                    </button>
+                  )}
+                  <button onClick={loadHistory} disabled={loadingHistory}
+                    className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition" title="编辑历史">
+                    {loadingHistory ? '...' : '📜'}
+                  </button>
+                </div>
+              )}
             </div>
-            <h1 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">{task.title}</h1>
-            {task.description && (
-              <p className="text-slate-600 text-xs sm:text-sm max-w-2xl line-clamp-2 sm:line-clamp-none">{task.description}</p>
+
+            {/* F04: 编辑模式 */}
+            {editing ? (
+              <div className="space-y-2 max-w-2xl">
+                <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-lg font-bold border border-blue-300 rounded-lg bg-white focus:outline-none focus:border-blue-500" />
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={3}
+                  placeholder="任务描述（可选）"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 resize-none" />
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-500">优先级:</label>
+                  {(['low','medium','high','urgent'] as const).map(p => (
+                    <button key={p} onClick={() => setEditPriority(p)}
+                      className={`text-xs px-2 py-1 rounded-full transition ${editPriority === p ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      {p === 'low' ? '低' : p === 'medium' ? '中' : p === 'high' ? '高' : '紧急'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleSaveEdit} disabled={!editTitle.trim() || saving}
+                    className="px-4 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition disabled:opacity-50">
+                    {saving ? '保存中...' : '✅ 保存'}
+                  </button>
+                  <button onClick={() => { setEditing(false); setEditTitle(task.title); setEditDesc(task.description || ''); setEditPriority(task.priority) }}
+                    className="px-4 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200 transition">
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">{task.title}</h1>
+                {task.description && (
+                  <p className="text-slate-600 text-xs sm:text-sm max-w-2xl line-clamp-2 sm:line-clamp-none">{task.description}</p>
+                )}
+              </>
+            )}
+
+            {/* F04: 补充说明 */}
+            {task.supplement && !showSupplement && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 max-w-2xl">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-xs font-semibold text-amber-700">📝 补充说明</span>
+                </div>
+                <p className="text-xs text-amber-800 whitespace-pre-wrap">{task.supplement}</p>
+              </div>
+            )}
+            {showSupplement && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 max-w-2xl space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-amber-700">📝 补充说明</span>
+                  <span className="text-xs text-amber-500">（任务已开始，可追加补充信息）</span>
+                </div>
+                <textarea value={supplementText} onChange={e => setSupplementText(e.target.value)} rows={3}
+                  placeholder="输入补充说明，参与者会看到..."
+                  className="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg bg-white focus:outline-none focus:border-amber-500 resize-none" />
+                <div className="flex items-center gap-2">
+                  <button onClick={handleSaveSupplement} disabled={savingSupplement}
+                    className="px-4 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition disabled:opacity-50">
+                    {savingSupplement ? '保存中...' : '💾 保存补充说明'}
+                  </button>
+                  <button onClick={() => { setShowSupplement(false); setSupplementText(task.supplement || '') }}
+                    className="px-4 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200 transition">
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* F04: 编辑历史弹窗 */}
+            {showHistory && (
+              <div className="bg-white border border-slate-200 rounded-lg p-3 max-w-2xl shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-700">📜 编辑历史</span>
+                  <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                </div>
+                {editHistory.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-2">暂无编辑记录</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {editHistory.map((h: any) => (
+                      <div key={h.id} className="text-xs border-b border-slate-100 pb-1.5 last:border-0">
+                        <div className="flex items-center gap-2 text-slate-500 mb-0.5">
+                          <span>{h.editor.name || h.editor.email}</span>
+                          <span>·</span>
+                          <span>{h.editType === 'supplement' ? '📝补充' : '✏️编辑'}</span>
+                          <span>·</span>
+                          <span>{new Date(h.createdAt).toLocaleString('zh-CN')}</span>
+                        </div>
+                        <div className="text-slate-600">
+                          <span className="font-medium">{h.fieldName === 'title' ? '标题' : h.fieldName === 'description' ? '描述' : h.fieldName === 'priority' ? '优先级' : h.fieldName === 'supplement' ? '补充说明' : h.fieldName}:</span>
+                          {h.oldValue && <span className="line-through text-slate-400 mx-1">{h.oldValue.substring(0, 50)}</span>}
+                          {h.oldValue && h.newValue && <span className="text-slate-400">→</span>}
+                          {h.newValue && <span className="text-slate-700 ml-1">{h.newValue.substring(0, 80)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -276,6 +276,165 @@ function MyAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: stri
   )
 }
 
+// ============ Sub Agent Card ============
+function SubAgentCard({ agent }: { agent: AgentData }) {
+  const caps = parseCaps(agent.capabilities)
+  const dot = statusDot[agent.status] || statusDot.offline
+  const label = statusLabel[agent.status] || '离线'
+
+  return (
+    <div className="bg-slate-800/40 rounded-xl border border-slate-700/40 p-3 hover:border-slate-600/60 transition-all group">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-slate-700/60 border border-slate-600/40 flex items-center justify-center text-xl flex-shrink-0">
+          {agentAvatar(agent.name, agent.avatar)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold text-slate-200 truncate">{stripEmoji(agent.name)}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">⚙️ 子Agent</span>
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
+            <span className="text-xs text-slate-500">{label}</span>
+          </div>
+          {agent.personality && <p className="text-xs text-slate-500 truncate mt-0.5">{agent.personality}</p>}
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="text-xs text-slate-500">{agent.stats.doneSteps} 完成</div>
+        </div>
+      </div>
+      {caps.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 ml-13">
+          {caps.map(c => (
+            <span key={c} className="text-xs px-1.5 py-0.5 rounded-full bg-slate-700/50 text-slate-400 border border-slate-600/40">{c}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============ Create Sub Agent Modal ============
+function CreateSubAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('')
+  const [personality, setPersonality] = useState('')
+  const [capInput, setCapInput] = useState('')
+  const [caps, setCaps] = useState<string[]>([])
+  const [creating, setCreating] = useState(false)
+  const [result, setResult] = useState<{ token: string; agentName: string } | null>(null)
+  const [error, setError] = useState('')
+
+  const addCap = () => {
+    const v = capInput.trim()
+    if (v && !caps.includes(v)) { setCaps([...caps, v]); setCapInput('') }
+  }
+  const removeCap = (c: string) => setCaps(caps.filter(x => x !== c))
+
+  const handleCreate = async () => {
+    if (!name.trim() || creating) return
+    setCreating(true); setError('')
+    try {
+      const res = await fetch('/api/agents/create-sub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          capabilities: caps,
+          personality: personality.trim() || undefined
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setResult({ token: data.token, agentName: data.agent.name })
+        onCreated()
+      } else {
+        setError(data.error || '创建失败')
+      }
+    } catch { setError('网络错误，请重试') }
+    finally { setCreating(false) }
+  }
+
+  // Show token result
+  if (result) return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="text-center">
+          <div className="text-4xl mb-2">🎉</div>
+          <h3 className="text-lg font-bold text-white">{result.agentName} 创建成功！</h3>
+          <p className="text-sm text-slate-400 mt-1">以下是 Agent 的 API Token，请妥善保管</p>
+        </div>
+        <div className="bg-slate-900 rounded-xl p-3 border border-slate-700">
+          <p className="text-xs text-slate-500 mb-1">API Token（仅显示一次）</p>
+          <p className="text-xs text-orange-300 font-mono break-all select-all">{result.token}</p>
+        </div>
+        <p className="text-xs text-slate-500 text-center">⚠️ 请复制保存此 Token，关闭后无法再次查看</p>
+        <button onClick={onClose}
+          className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:opacity-90 transition">
+          我已保存，关闭
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <span>⚙️</span> 创建子 Agent
+          </h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-lg">✕</button>
+        </div>
+
+        <p className="text-xs text-slate-500">子 Agent 归属于你的主 Agent，可以执行分配的任务步骤</p>
+
+        {/* Name */}
+        <div>
+          <label className="text-sm text-slate-300 mb-1 block">名称 <span className="text-rose-400">*</span></label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="如：Galileo、Compass..."
+            className="w-full px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition" />
+        </div>
+
+        {/* Personality */}
+        <div>
+          <label className="text-sm text-slate-300 mb-1 block">个性描述</label>
+          <textarea value={personality} onChange={e => setPersonality(e.target.value)} rows={2}
+            placeholder="如：擅长市场调研，行事严谨..."
+            className="w-full px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition resize-none" />
+        </div>
+
+        {/* Capabilities */}
+        <div>
+          <label className="text-sm text-slate-300 mb-1 block">能力标签</label>
+          <div className="flex items-center gap-1.5">
+            <input value={capInput} onChange={e => setCapInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCap() } }}
+              placeholder="输入标签后回车"
+              className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition" />
+            <button onClick={addCap}
+              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-lg transition">+</button>
+          </div>
+          {caps.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {caps.map(c => (
+                <span key={c} className="text-xs px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                  {c}
+                  <button onClick={() => removeCap(c)} className="text-cyan-400 hover:text-white">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {error && <div className="text-sm text-rose-400 text-center">{error}</div>}
+
+        <button onClick={handleCreate} disabled={!name.trim() || creating}
+          className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
+          {creating ? '⏳ 创建中...' : '🚀 创建子 Agent'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ============ Main Page ============
 export default function WorkspacePage() {
   const { data: session, status } = useSession()
@@ -284,6 +443,7 @@ export default function WorkspacePage() {
   const [wsData, setWsData] = useState<WorkspaceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showPairing, setShowPairing] = useState(false)
+  const [showCreateSub, setShowCreateSub] = useState(false)
   const [liveStatus, setLiveStatus] = useState('online')
 
   // Editable fields
@@ -445,10 +605,33 @@ export default function WorkspacePage() {
             )}
 
             {/* Action buttons */}
-            <button onClick={() => setShowPairing(true)}
-              className="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-600 hover:border-orange-500/50 text-slate-400 hover:text-orange-300 hover:bg-orange-900/10 transition-all text-sm font-medium flex items-center justify-center gap-2">
-              <span>🔗</span><span>配对 Agent</span>
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setShowPairing(true)}
+                className="flex-1 py-2.5 rounded-xl border-2 border-dashed border-slate-600 hover:border-orange-500/50 text-slate-400 hover:text-orange-300 hover:bg-orange-900/10 transition-all text-sm font-medium flex items-center justify-center gap-1.5">
+                <span>🔗</span><span>配对</span>
+              </button>
+              {mainAgent && (
+                <button onClick={() => setShowCreateSub(true)}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-dashed border-slate-600 hover:border-cyan-500/50 text-slate-400 hover:text-cyan-300 hover:bg-cyan-900/10 transition-all text-sm font-medium flex items-center justify-center gap-1.5">
+                  <span>⚙️</span><span>创建子Agent</span>
+                </button>
+              )}
+            </div>
+
+            {/* Sub Agents List */}
+            {teamData && teamData.subAgents.length > 0 && (
+              <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 p-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">⚙️ 子Agent军团</h3>
+                  <span className="text-xs text-slate-600">{teamData.subAgents.length} 个</span>
+                </div>
+                <div className="space-y-2">
+                  {teamData.subAgents.map(sub => (
+                    <SubAgentCard key={sub.id} agent={sub} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Workspace stats card */}
             {ts && (
@@ -551,6 +734,12 @@ export default function WorkspacePage() {
       </div>
 
       {showPairing && <PairingModal onClose={() => setShowPairing(false)} />}
+      {showCreateSub && (
+        <CreateSubAgentModal
+          onClose={() => setShowCreateSub(false)}
+          onCreated={() => fetchAll()}
+        />
+      )}
     </div>
   )
 }
