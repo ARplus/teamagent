@@ -252,9 +252,36 @@ async function main() {
 
         const CHAT_ROUTER_SESSION_KEY = process.env.TEAMAGENT_CHAT_SESSION_KEY || 'agent:main:main'
 
+        // B03-fix: 先检查 gateway 是否存活
+        async function checkGatewayHealth() {
+          const http = require('http')
+          return new Promise((resolve) => {
+            const req = http.request({
+              hostname: '127.0.0.1',
+              port: 18789,
+              path: '/health',
+              method: 'GET',
+              timeout: 3000
+            }, (res) => {
+              res.resume()
+              resolve(res.statusCode < 500)
+            })
+            req.on('error', () => resolve(false))
+            req.setTimeout(3000, () => { req.destroy(); resolve(false) })
+            req.end()
+          })
+        }
+
         async function injectToOpenClawSession(userMessage, agentName, msgId) {
           const gatewayToken = getGatewayToken()
           if (!gatewayToken) throw new Error('Gateway token not found in openclaw config')
+
+          // B03-fix: 先检查 gateway 是否在线
+          const gwAlive = await checkGatewayHealth()
+          if (!gwAlive) {
+            console.error('   ⚠️  [B03] OpenClaw gateway 不可达 (127.0.0.1:18789)，请确认 gateway 已启动')
+            throw new Error('OpenClaw gateway unreachable')
+          }
 
           const prompt = [
             `[TeamAgent Mobile Chat from ${agentName}]`,
@@ -267,6 +294,7 @@ async function main() {
           ].join('\n')
 
           const http = require('http')
+          let httpStatusCode = 0
           const raw = await new Promise((resolve, reject) => {
             const body = JSON.stringify({
               tool: 'sessions_send',
@@ -287,18 +315,47 @@ async function main() {
                 'Content-Length': Buffer.byteLength(body)
               }
             }, (res) => {
+              httpStatusCode = res.statusCode
               let data = ''
               res.on('data', c => data += c)
               res.on('end', () => resolve(data))
             })
             req.on('error', reject)
-            req.setTimeout(130000, () => { req.destroy(); reject(new Error('inject timeout')) })
+            req.setTimeout(130000, () => { req.destroy(); reject(new Error('inject timeout (130s)')) })
             req.write(body)
             req.end()
           })
 
+          // B03-fix: 详细诊断日志（只打前 500 字符，防泄露长回复）
+          const rawPreview = raw.length > 500 ? raw.slice(0, 500) + `...(${raw.length} chars total)` : raw
+          console.log(`   🔍 [B03] gateway HTTP ${httpStatusCode} | sessionKey=${CHAT_ROUTER_SESSION_KEY}`)
+          console.log(`   🔍 [B03] raw response: ${rawPreview}`)
+
+          // B03-fix: HTTP 错误码检测
+          if (httpStatusCode >= 400) {
+            console.error(`   ❌ [B03] gateway 返回 HTTP ${httpStatusCode}`)
+            throw new Error(`Gateway HTTP ${httpStatusCode}: ${raw.slice(0, 200)}`)
+          }
+
           let parsed
-          try { parsed = JSON.parse(raw) } catch { parsed = null }
+          try { parsed = JSON.parse(raw) } catch {
+            console.error('   ❌ [B03] 响应非 JSON:', raw.slice(0, 200))
+            parsed = null
+          }
+
+          // B03-fix: 检测 gateway 级别错误（tool not allowed, forbidden, not found 等）
+          if (parsed?.ok === false || parsed?.error) {
+            const errCode = parsed?.error?.code || parsed?.errorCode || 'UNKNOWN'
+            const errMsg = parsed?.error?.message || parsed?.error || parsed?.message || 'unknown error'
+            console.error(`   ❌ [B03] gateway 错误: code=${errCode}, msg=${errMsg}`)
+            throw new Error(`Gateway error [${errCode}]: ${errMsg}`)
+          }
+
+          // B03-fix: 检测 sessions_send 结果状态
+          if (parsed?.status === 'error' || parsed?.status === 'forbidden') {
+            console.error(`   ❌ [B03] sessions_send 状态: ${parsed.status}`, parsed.error || parsed.message || '')
+            throw new Error(`sessions_send ${parsed.status}: ${parsed.error || parsed.message || ''}`)
+          }
 
           let inner = null
           const innerText = parsed?.result?.content?.[0]?.text
@@ -310,18 +367,55 @@ async function main() {
           const isErrorResult = inner?.status === 'timeout' || inner?.status === 'error' ||
             parsed?.result?.details?.status === 'timeout' || parsed?.status === 'timeout'
 
-          if (isErrorResult) return ''  // 交给 fallback 处理
+          if (isErrorResult) {
+            console.error('   ⚠️  [B03] sessions_send 返回 timeout/error 状态')
+            return ''  // 交给 fallback 处理
+          }
 
+          // B03-fix: 更全面的回复提取（覆盖 gateway 各种响应格式）
           const candidate =
+            // 标准 A2A 回复格式
             inner?.reply?.trim?.() ||
             inner?.details?.reply?.trim?.() ||
+            // result 嵌套格式
             parsed?.result?.details?.reply?.trim?.() ||
             parsed?.result?.response?.trim?.() ||
+            parsed?.result?.text?.trim?.() ||
+            parsed?.result?.reply?.trim?.() ||
+            // 顶层格式
             parsed?.response?.trim?.() ||
-            parsed?.result?.message?.trim?.() ||
+            parsed?.reply?.trim?.() ||
+            parsed?.text?.trim?.() ||
             parsed?.message?.trim?.() ||
-            innerText?.trim?.() ||
+            parsed?.result?.message?.trim?.() ||
+            // content 数组格式（Anthropic 标准）
+            parsed?.result?.content?.map?.(c => c.text || '')?.join?.('')?.trim?.() ||
+            parsed?.content?.map?.(c => c.text || '')?.join?.('')?.trim?.() ||
+            // 原始 innerText（可能就是纯文本回复）
+            (innerText && !inner ? innerText.trim() : '') ||
             ''
+
+          if (!candidate) {
+            // B03-fix: 最后一招——递归搜索响应树中的文本
+            const extractText = (obj, depth = 0) => {
+              if (!obj || depth > 5) return ''
+              if (typeof obj === 'string') return obj.trim()
+              if (Array.isArray(obj)) return obj.map(i => extractText(i, depth + 1)).filter(Boolean).join('\n')
+              if (typeof obj === 'object') {
+                for (const key of ['text', 'reply', 'response', 'message', 'content', 'result', 'data', 'output']) {
+                  const v = extractText(obj[key], depth + 1)
+                  if (v && v.length > 2 && !['timeout', 'error', 'NO_REPLY'].includes(v)) return v
+                }
+              }
+              return ''
+            }
+            const deepExtract = extractText(parsed)
+            if (deepExtract) {
+              console.log(`   💡 [B03] 通过深度提取找到回复 (${deepExtract.length} chars)`)
+              return deepExtract
+            }
+            console.error('   ❌ [B03] 未能从响应中提取到有效回复文本')
+          }
 
           return candidate
         }
