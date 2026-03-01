@@ -55,7 +55,7 @@ async function callDecomposeLLM(systemPrompt: string, userMessage: string): Prom
       'Authorization': `Bearer ${QWEN_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'qwen-max',
+      model: 'qwen-max-latest',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },

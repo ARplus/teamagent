@@ -292,7 +292,7 @@ async function parseWithQwen(description: string, teamContext: string): Promise<
     },
     signal: controller.signal,
     body: JSON.stringify({
-      model: 'qwen-max',
+      model: 'qwen-max-latest',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT + teamContext },
         { role: 'user', content: `请拆解以下任务：\n\n${description}` }

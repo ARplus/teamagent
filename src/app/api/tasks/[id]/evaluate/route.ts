@@ -55,7 +55,7 @@ async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promi
       'Authorization': `Bearer ${QWEN_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'qwen-max',
+      model: 'qwen-max-latest',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
