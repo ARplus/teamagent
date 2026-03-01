@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
+import { tryAutoExecuteStep } from '@/lib/agent-auto-execute'
 
 // POST /api/steps/[id]/reject - 人类审核拒绝
 export async function POST(
@@ -108,6 +109,11 @@ export async function POST(
         stepId: id
       })
     }
+
+    // 🤖 打回后触发 Agent 自动重新执行（fire-and-forget）
+    tryAutoExecuteStep(id, step.taskId).catch(err => {
+      console.error(`[AutoExec] 打回后重执行触发失败:`, err)
+    })
 
     return NextResponse.json({
       message: '已打回修改',

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
 import { processWorkflowAfterSubmit } from '@/lib/workflow-engine'
-import { getStartableSteps } from '@/lib/step-scheduling'
+import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
 import { generateSummary } from '@/lib/ai-summary'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
 
@@ -169,18 +169,9 @@ export async function POST(
         const userIds = Array.from(involvedUserIds)
         sendToUsers(userIds, { type: 'task:created', taskId: step.task.id, title: step.task.title })
 
-        // 通知可以立刻开始的步骤（无 parallelGroup 的第一步，或所有 parallelGroup 的第一个）
+        // 通知可以立刻开始的步骤 + 触发 Agent 自动执行
         const startableSteps = getStartableSteps(createdSteps)
-        for (const startable of startableSteps) {
-          if (startable.assigneeId) {
-            sendToUser(startable.assigneeId, {
-              type: 'step:ready',
-              taskId: step.task.id,
-              stepId: startable.id,
-              title: startable.title
-            })
-          }
-        }
+        await activateAndNotifySteps(step.task.id, startableSteps as any[])
       }
 
       // 通知任务创建者
