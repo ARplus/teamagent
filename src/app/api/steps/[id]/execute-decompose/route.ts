@@ -214,6 +214,7 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
 8. 需要质量把控的步骤，requiresApproval 设为 true
 9. 中间过渡步骤或无需审查的 requiresApproval 设为 false
 10. 最少 2 步，最多 8 步
+11. **禁止 meta 步骤**：Agent 只能执行具体工作，不能"安排别人"。"安排 N 个 Agent 测试"→ 你直接选 N 个 Agent 各创建一步；"让 XX 安排 YY"→ 直接给 YY 创建步骤
 
 只输出 JSON 数组，不要其他内容。`
 
