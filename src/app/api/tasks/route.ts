@@ -366,14 +366,42 @@ export async function POST(req: NextRequest) {
           for (const step of parseResult.steps) {
             order++
             let assigneeId: string | null = null
+            let resolvedAssigneeType: 'agent' | 'human' = step.assigneeType || 'agent'
             for (const assigneeName of (step.assignees || [])) {
-              const member = workspaceMembers.find(m =>
-                m.user.nickname === assigneeName || m.user.name === assigneeName ||
-                m.user.name?.includes(assigneeName) || assigneeName.includes(m.user.name || '') ||
+              // 先精确匹配人名（优先人类身份）
+              const humanMatch = workspaceMembers.find(m =>
+                m.user.nickname === assigneeName || m.user.name === assigneeName
+              )
+              if (humanMatch) {
+                assigneeId = humanMatch.user.id
+                // 如果AI没指定type，根据匹配逻辑判断：匹配到人名 + 该人有agent → 看AI意图
+                // 如果AI说human就是human，否则看该用户是否有agent来决定
+                if (!step.assigneeType) {
+                  resolvedAssigneeType = humanMatch.user.agent ? 'agent' : 'human'
+                }
+                break
+              }
+              // 再匹配 Agent 名字
+              const agentMatch = workspaceMembers.find(m =>
                 (m.user.agent as any)?.name?.includes(assigneeName) ||
                 assigneeName.includes((m.user.agent as any)?.name || '')
               )
-              if (member) { assigneeId = member.user.id; break }
+              if (agentMatch) {
+                assigneeId = agentMatch.user.id
+                if (!step.assigneeType) resolvedAssigneeType = 'agent'
+                break
+              }
+              // 最后模糊匹配
+              const fuzzy = workspaceMembers.find(m =>
+                m.user.name?.includes(assigneeName) || assigneeName.includes(m.user.name || '')
+              )
+              if (fuzzy) {
+                assigneeId = fuzzy.user.id
+                if (!step.assigneeType) {
+                  resolvedAssigneeType = fuzzy.user.agent ? 'agent' : 'human'
+                }
+                break
+              }
             }
             if (!assigneeId) assigneeId = matchByCapabilities(step.title, step.description || '')
 
@@ -394,10 +422,10 @@ export async function POST(req: NextRequest) {
               },
               include: { assignee: { select: { id: true, name: true } } }
             })
-            // B08: 同步创建 StepAssignee 记录
+            // B08: 同步创建 StepAssignee 记录（根据 AI 输出或匹配结果决定 human/agent）
             if (assigneeId) {
               await prisma.stepAssignee.create({
-                data: { stepId: created.id, userId: assigneeId, isPrimary: true, assigneeType: 'agent' }
+                data: { stepId: created.id, userId: assigneeId, isPrimary: true, assigneeType: resolvedAssigneeType }
               }).catch(() => {})
             }
             createdSteps.push(created)

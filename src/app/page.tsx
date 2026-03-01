@@ -1512,7 +1512,7 @@ function TaskFilesCard({ taskId }: { taskId: string }) {
                 {item.name}
               </a>
               <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
-                {item.uploader.isAgent ? '🤖' : '👤'}{item.uploader.agentName || item.uploader.name}
+                {item.uploader.isAgent ? '🤖' : '👤'}{item.uploader.isAgent ? (item.uploader.agentName || item.uploader.name) : item.uploader.name}
               </span>
               <span className="text-[10px] text-slate-300 flex-shrink-0 whitespace-nowrap hidden sm:inline">
                 {fmtShortTime(item.createdAt)}
@@ -2166,6 +2166,7 @@ function StepCard({
   const assignDropdownRef = useRef<HTMLDivElement>(null)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; openUp: boolean }>({ top: 0, left: 0, openUp: false })
   const [humanCompleting, setHumanCompleting] = useState(false)
+  const [stepUploading, setStepUploading] = useState(false)
   // 申诉相关状态
   const [showAppealForm, setShowAppealForm] = useState(false)
   const [appealText, setAppealText] = useState('')
@@ -2366,6 +2367,30 @@ function StepCard({
       }
     } finally {
       setHumanCompleting(false)
+    }
+  }
+
+  // 步骤文件上传（人类也可上传）
+  const handleStepFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    setStepUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch(`/api/steps/${step.id}/files`, { method: 'POST', body: formData })
+        if (!res.ok) {
+          const data = await res.json()
+          alert(`上传失败：${data.error || '未知错误'}`)
+        }
+      }
+      // 刷新步骤文件列表
+      setStepFilesLoaded(false)
+      onRefresh?.()
+    } finally {
+      setStepUploading(false)
+      e.target.value = '' // 重置 input
     }
   }
 
@@ -2786,9 +2811,30 @@ function StepCard({
             </div>
           )}
 
+          {/* 步骤文件上传（被指派者或任务创建者可上传） */}
+          {isStepAssignee && (step.status === 'in_progress' || step.status === 'pending') && (
+            <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-dashed border-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 rounded-lg px-2 py-1.5 transition-colors">
+                <span className="text-sm">📎</span>
+                <span className="text-xs text-slate-600 font-medium">
+                  {stepUploading ? '⏳ 上传中...' : '点击上传步骤文档'}
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleStepFileUpload}
+                  disabled={stepUploading}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.json,.csv,.zip,.rar,.7z,.png,.jpg,.jpeg,.gif,.webp,.svg"
+                />
+              </label>
+              <p className="text-[10px] text-slate-400 mt-1 px-2">支持文档、图片、压缩包等，单文件最大 20MB</p>
+            </div>
+          )}
+
           {/* B08: 纯人类步骤 - 手动完成按钮 */}
           {isHumanStep && isStepAssignee && step.status === 'in_progress' && (
-            <div className="mt-4">
+            <div className="mt-3">
               <button
                 onClick={handleHumanComplete}
                 disabled={humanCompleting}
@@ -2951,7 +2997,7 @@ function StepCard({
                       {f.name}
                     </a>
                     <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
-                      {f.uploader.isAgent ? '🤖' : '👤'}{f.uploader.agentName || f.uploader.name}
+                      {f.uploader.isAgent ? '🤖' : '👤'}{f.uploader.isAgent ? (f.uploader.agentName || f.uploader.name) : f.uploader.name}
                     </span>
                     <span className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">
                       {f.sourceTag}
@@ -3678,19 +3724,28 @@ function MobileProfileView({ userEmail, userName, onSignOut }: {
   const initials = (userName || userEmail || '?').charAt(0).toUpperCase()
   const [agents, setAgents] = useState<MobileAgent[]>([])
   const [mainAgent, setMainAgent] = useState<MobileAgent | null>(null)
+  const [humanPartners, setHumanPartners] = useState<{ id: string; name: string; email: string; avatar?: string; role: string; hasAgent: boolean }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/agents/team')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d) {
-          setMainAgent(d.mainAgent || null)
-          setAgents(d.subAgents || [])
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    // 并行加载 Agent 列表 + 工作区成员
+    Promise.all([
+      fetch('/api/agents/team').then(r => r.ok ? r.json() : null),
+      fetch('/api/workspace/team').then(r => r.ok ? r.json() : { members: [] }),
+    ]).then(([agentData, wsData]) => {
+      if (agentData) {
+        setMainAgent(agentData.mainAgent || null)
+        setAgents(agentData.subAgents || [])
+      }
+      // 提取非自己的人类伙伴
+      const partners = (wsData.members || [])
+        .filter((m: any) => !m.isSelf)
+        .map((m: any) => ({
+          id: m.id, name: m.name || m.email, email: m.email,
+          avatar: m.avatar, role: m.role, hasAgent: !!m.agent,
+        }))
+      setHumanPartners(partners)
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   const allAgents = mainAgent ? [mainAgent, ...agents] : agents
@@ -3791,6 +3846,34 @@ function MobileProfileView({ userEmail, userName, onSignOut }: {
           </div>
         )}
       </div>
+
+      {/* 人类伙伴 */}
+      {humanPartners.length > 0 && (
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-base">👥</span>
+            <span className="text-white font-bold text-sm">人类伙伴</span>
+            <span className="text-slate-500 text-xs">{humanPartners.length} 位</span>
+          </div>
+          <div className="space-y-2">
+            {humanPartners.map(p => (
+              <div key={p.id} className="flex items-center gap-3 rounded-2xl px-3.5 py-3 bg-slate-800/60 border border-slate-700/50">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/80 to-pink-500/80 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                  {(p.name || '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-white text-sm font-semibold truncate">{p.name}</span>
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-purple-500/15 text-purple-300 font-medium flex-shrink-0">👤 人类</span>
+                  </div>
+                  <p className="text-slate-500 text-[10px] truncate">{p.email}</p>
+                </div>
+                {p.hasAgent && <span className="text-[10px] text-slate-500 flex-shrink-0">有 Agent</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 底部快捷操作 + 退出 */}
       <div className="px-4 pt-2 pb-8 space-y-2">

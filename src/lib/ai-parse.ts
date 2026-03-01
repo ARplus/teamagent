@@ -29,6 +29,7 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
       "title": "子流程标题（简洁）",
       "description": "详细描述",
       "assignees": ["人名1"],
+      "assigneeType": "agent",
       "requiresApproval": true,
       "parallelGroup": null,
       "inputs": ["需要的输入"],
@@ -42,6 +43,10 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
 }
 
 ## 字段说明
+- **assigneeType**：被指派者的身份类型
+  - "agent" = 指派给 Agent（🤖 的名字，如「八爪」「Lobster」）
+  - "human" = 指派给真人（👤 的名字，如「木须」「Aurora」）
+  - 看清楚团队成员列表中 🤖 和 👤 的标记来判断
 - **requiresApproval**：该步骤完成后是否需要人类审批？
   - true = 需要人类看结果后才进行下一步（重要决策、关键产出）
   - false = 完成后自动流转下一步（常规执行步骤）
@@ -98,28 +103,28 @@ const SYSTEM_PROMPT = `你是 TeamAgent 任务拆解助手。请将用户的任�
     {
       "order": 1, "title": "拆解分析报告",
       "description": "拆解于主任提供的报告",
-      "assignees": ["小敏"], "requiresApproval": false, "parallelGroup": null,
+      "assignees": ["小敏"], "assigneeType": "human", "requiresApproval": false, "parallelGroup": null,
       "inputs": ["于主任的报告"], "outputs": ["报告拆解结果.md"], "skills": ["文档分析"],
       "stepType": "task", "participants": [], "agenda": ""
     },
     {
       "order": 2, "title": "设计模版",
       "description": "基于拆解结果设计模版",
-      "assignees": ["小敏"], "requiresApproval": false, "parallelGroup": null,
+      "assignees": ["小敏"], "assigneeType": "human", "requiresApproval": false, "parallelGroup": null,
       "inputs": ["报告拆解结果.md"], "outputs": ["模版设计.md"], "skills": ["模版设计"],
       "stepType": "task", "participants": [], "agenda": ""
     },
     {
       "order": 3, "title": "讨论确认方案",
       "description": "与段段讨论模版设计并确认",
-      "assignees": ["小敏", "段段"], "requiresApproval": true, "parallelGroup": null,
+      "assignees": ["小敏", "段段"], "assigneeType": "human", "requiresApproval": true, "parallelGroup": null,
       "inputs": ["模版设计.md"], "outputs": ["确认方案.md"], "skills": [],
       "stepType": "task", "participants": [], "agenda": ""
     },
     {
       "order": 4, "title": "安排与于主任开会",
       "description": "联系于主任安排会议",
-      "assignees": ["段段"], "requiresApproval": false, "parallelGroup": null,
+      "assignees": ["段段"], "assigneeType": "human", "requiresApproval": false, "parallelGroup": null,
       "inputs": ["确认方案.md"], "outputs": ["会议纪要.md"], "skills": ["日程管理"],
       "stepType": "meeting", "participants": ["小敏", "段段", "于主任"], "agenda": "确认模版方案并推进下一步"
     }
@@ -133,6 +138,7 @@ export interface ParsedStep {
   title: string
   description: string
   assignees: string[]
+  assigneeType?: 'agent' | 'human'
   requiresApproval?: boolean
   parallelGroup?: string | null
   inputs: string[]

@@ -158,7 +158,10 @@ export async function GET(
 
     const files = attachments.map(att => {
       const { sourceTag, sourceStepId, sourceStepOrder } = deriveSourceTag(att, taskStartedAt)
-      const isAgent = !!att.uploader.agent
+      // 判断是否为 Agent 上传：检查 uploadChannel 或 sourceTag 区分
+      // Web 端（session）上传 = 人类；Agent API（token）上传 = Agent
+      const isAgentUpload = (att as any).uploadChannel === 'agent_api' ||
+        (sourceTag === '步骤产出' && !!att.uploader.agent)
       return {
         id: att.id,
         name: att.name,
@@ -172,8 +175,8 @@ export async function GET(
         uploader: {
           id: att.uploader.id,
           name: att.uploader.name,
-          isAgent,
-          agentName: isAgent ? att.uploader.agent!.name : undefined,
+          isAgent: isAgentUpload,
+          agentName: att.uploader.agent?.name || undefined,
         },
         canDelete: att.uploaderId === auth.userId || task.creatorId === auth.userId,
       }
