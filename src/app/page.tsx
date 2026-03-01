@@ -2193,17 +2193,24 @@ function StepCard({
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
   const hasAgent = !!step.assignee?.agent
-  // B08: 多人指派显示
+  // B08: 多人指派显示 — 根据 assigneeType 区分真人/Agent
   const multiAssignees = step.assignees || []
   const hasMultiAssignees = multiAssignees.length > 1
+  const primaryAssigneeType = multiAssignees[0]?.assigneeType
   const assigneeName = hasMultiAssignees
-    ? multiAssignees.map(a => a.user?.agent ? `🤖${a.user.agent.name}` : `👤${a.user?.name || '?'}`).join(' ')
-    : hasAgent
-      ? step.assignee!.agent!.name
-      : (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
-  // B08: 是否纯人类步骤（无 agent 的 assignee）
+    ? multiAssignees.map(a =>
+        a.assigneeType === 'human'
+          ? `👤${a.user?.name || '?'}`
+          : a.user?.agent ? `🤖${a.user.agent.name}` : `👤${a.user?.name || '?'}`
+      ).join(' ')
+    : primaryAssigneeType === 'human'
+      ? (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
+      : hasAgent
+        ? step.assignee!.agent!.name
+        : (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
+  // B08: 是否纯人类步骤（根据 assigneeType 判断，不再只看有没有 agent）
   const isHumanStep = multiAssignees.length > 0
-    ? multiAssignees.every(a => a.assigneeType === 'human')
+    ? multiAssignees.some(a => a.assigneeType === 'human')
     : !hasAgent && !!step.assignee
   const participantList = parseJSON(step.participants)
 
