@@ -13,8 +13,11 @@ const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/com
  * 调用 LLM（优先 Claude → 降级千问）
  */
 async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promise<{ content: string; model: string }> {
+  // 优先 Claude（15s 超时，fast fail 降级千问）
   if (ANTHROPIC_API_KEY) {
     try {
+      const ac = new AbortController()
+      const t = setTimeout(() => ac.abort(), 15_000)
       const res = await fetch(ANTHROPIC_API_URL, {
         method: 'POST',
         headers: {
@@ -29,18 +32,22 @@ async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promi
           messages: [{ role: 'user', content: userMessage }],
           temperature: 0.3,
         }),
-      })
+        signal: ac.signal,
+      }).finally(() => clearTimeout(t))
       if (res.ok) {
         const data = await res.json()
         const text = data.content?.[0]?.text
         if (text) return { content: text, model: 'claude-sonnet' }
       }
       console.warn('[Evaluate] Claude 调用失败，降级到千问')
-    } catch (e) {
-      console.warn('[Evaluate] Claude 异常，降级到千问:', e)
+    } catch (e: any) {
+      console.warn('[Evaluate] Claude 异常，降级到千问:', e.name === 'AbortError' ? '超时(15s)' : e.message)
     }
   }
 
+  // 降级千问（120s 超时）
+  const ac2 = new AbortController()
+  const t2 = setTimeout(() => ac2.abort(), 120_000)
   const res = await fetch(QWEN_API_URL, {
     method: 'POST',
     headers: {
@@ -56,7 +63,8 @@ async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promi
       temperature: 0.3,
       response_format: { type: 'json_object' },
     }),
-  })
+    signal: ac2.signal,
+  }).finally(() => clearTimeout(t2))
 
   if (!res.ok) {
     const err = await res.text()

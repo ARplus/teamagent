@@ -185,10 +185,12 @@ export async function callLLM(
   }))
   messages.push({ role: 'user', content: userMessage })
 
-  // 优先 Claude
+  // 优先 Claude（15s 超时，fast fail）
   if (anthropicKey) {
     try {
       const apiUrl = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages'
+      const ac = new AbortController()
+      const t = setTimeout(() => ac.abort(), 15_000)
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -202,7 +204,8 @@ export async function callLLM(
           system: systemPrompt,
           messages,
         }),
-      })
+        signal: ac.signal,
+      }).finally(() => clearTimeout(t))
       if (res.ok) {
         const data = await res.json()
         return data.content?.[0]?.text || '我不太理解，能换个方式说吗？'

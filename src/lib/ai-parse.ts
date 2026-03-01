@@ -218,7 +218,7 @@ function buildTeamContext(members?: TeamMemberContext[]): string {
  */
 async function parseWithClaude(description: string, teamContext: string): Promise<ParseResult> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 45_000) // 45s for Sonnet 4.5
+  const timer = setTimeout(() => controller.abort(), 15_000) // 15s — fast fail, 降级到千问
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -282,7 +282,7 @@ async function parseWithClaude(description: string, teamContext: string): Promis
  */
 async function parseWithQwen(description: string, teamContext: string): Promise<ParseResult> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 45_000) // 45s timeout
+  const timer = setTimeout(() => controller.abort(), 120_000) // 120s — 大团队 prompt 需要更长时间
 
   const response = await fetch(QWEN_API_URL, {
     method: 'POST',
@@ -343,7 +343,7 @@ export async function parseTaskWithAI(
       }
       console.warn('[B04] Claude 拆解失败，尝试降级到千问:', result.error)
     } catch (error: any) {
-      const msg = error.name === 'AbortError' ? 'Claude API 超时（30s）' : error.message
+      const msg = error.name === 'AbortError' ? 'Claude API 超时（15s）' : error.message
       console.warn('[B04] Claude 调用异常，降级到千问:', msg)
     }
   }
@@ -354,7 +354,7 @@ export async function parseTaskWithAI(
       console.log('[B04] 使用千问 API 拆解任务（降级）')
       return await parseWithQwen(description, teamContext)
     } catch (error: any) {
-      const msg = error.name === 'AbortError' ? '千问 API 超时（30s）' : error.message
+      const msg = error.name === 'AbortError' ? '千问 API 超时（120s）' : error.message
       console.error('[B04] 千问也失败:', msg)
       return { success: false, error: msg || '拆解失败', engine: 'qwen' }
     }
