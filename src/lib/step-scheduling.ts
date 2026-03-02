@@ -10,7 +10,6 @@
 
 import { prisma } from './db'
 import { sendToUser } from './events'
-import { tryAutoExecuteStep } from './agent-auto-execute'
 
 interface StepLike {
   id: string
@@ -140,11 +139,16 @@ export async function activateAndNotifySteps(
   }
 
   // 🤖 自动执行：对 Agent 类型的步骤触发 auto-execute（fire-and-forget）
-  for (const s of steps) {
-    tryAutoExecuteStep(s.id, taskId).catch(err => {
-      console.error(`[AutoExec] 步骤 ${s.id} 自动执行触发失败:`, err)
-    })
-  }
+  // 用动态 import 打破循环依赖: step-scheduling → agent-auto-execute → workflow-engine → step-scheduling
+  import('./agent-auto-execute').then(({ tryAutoExecuteStep }) => {
+    for (const s of steps) {
+      tryAutoExecuteStep(s.id, taskId).catch(err => {
+        console.error(`[AutoExec] 步骤 ${s.id} 自动执行触发失败:`, err)
+      })
+    }
+  }).catch(err => {
+    console.error('[AutoExec] 动态加载 agent-auto-execute 失败:', err)
+  })
 
   return notified
 }

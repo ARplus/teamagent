@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
-import { getStartableSteps } from '@/lib/step-scheduling'
+import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
 import { parseTaskWithAI } from '@/lib/ai-parse'
 
 // 统一认证
@@ -211,17 +211,10 @@ export async function POST(req: NextRequest) {
         prebuiltSteps.push(createdStep)
       }
 
-      // 通知第一个可以开始的步骤
+      // 通知可以开始的步骤 + 触发 Agent 自动执行
       if (prebuiltSteps.length > 0) {
-        const firstStep = prebuiltSteps[0]
-        if (firstStep.assigneeId) {
-          sendToUser(firstStep.assigneeId, {
-            type: 'step:ready',
-            taskId: task.id,
-            stepId: firstStep.id,
-            title: firstStep.title,
-          })
-        }
+        const startable = getStartableSteps(prebuiltSteps as any[])
+        await activateAndNotifySteps(task.id, startable as any[])
       }
       console.log(`[Task/Create] 直接创建 ${prebuiltSteps.length} 个步骤（跳过 decompose）`)
     }
@@ -437,11 +430,9 @@ export async function POST(req: NextRequest) {
           if (involvedUserIds.size > 0) {
             const userIds = Array.from(involvedUserIds)
             sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
-            // 通知所有可以立即开始的步骤（并行组全部成员）
+            // 通知所有可以立即开始的步骤 + 触发 Agent 自动执行
             const startable = getStartableSteps(createdSteps as any[])
-            for (const s of startable) {
-              if (s.assigneeId) sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
-            }
+            await activateAndNotifySteps(task.id, startable as any[])
           }
           // 🔔 通知任务创建者：拆解完成，前端自动刷新步骤列表
           sendToUser(auth.userId, {

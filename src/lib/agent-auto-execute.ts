@@ -64,7 +64,12 @@ export async function tryAutoExecuteStep(stepId: string, taskId: string): Promis
 
     if (!step || step.status !== 'pending') return
 
-    // 2. 判断是否是 Agent 步骤
+    // 2. 跳过 decompose 类型步骤（由 agent-worker.js 处理）
+    if (step.stepType === 'decompose') {
+      return
+    }
+
+    // 3. 判断是否是 Agent 步骤
     const agentUserId = await resolveAgentUserId(stepId, step.assigneeId)
     if (!agentUserId) {
       // 人类步骤或未分配，跳过
@@ -73,21 +78,21 @@ export async function tryAutoExecuteStep(stepId: string, taskId: string): Promis
 
     console.log(`[AutoExec] 🤖 开始自动执行步骤 "${step.title}" (${stepId})`)
 
-    // 3. 获取并发槽位
+    // 4. 获取并发槽位
     if (!acquireSlot()) {
       console.log(`[AutoExec] ⏳ 并发已满(${MAX_CONCURRENT})，步骤 "${step.title}" 留在 pending 等待`)
       return
     }
 
     try {
-      // 4. 原子领取
+      // 5. 原子领取
       const claimed = await claimStepInternal(stepId, agentUserId)
       if (!claimed) {
         console.log(`[AutoExec] 步骤 "${step.title}" 已被其他人领取，跳过`)
         return
       }
 
-      // 5. 构建 prompt + 调用 AI
+      // 6. 构建 prompt + 调用 AI
       const previousOutputs = step.task.steps.filter(s => s.order < step.order)
       const prompt = buildExecutionPrompt(step, step.task, previousOutputs)
 
@@ -95,7 +100,7 @@ export async function tryAutoExecuteStep(stepId: string, taskId: string): Promis
       const result = await callQwenAI(prompt)
       console.log(`[AutoExec] ✅ AI 返回结果 (${result.length} 字)`)
 
-      // 6. 提交结果
+      // 7. 提交结果
       await submitResultInternal(stepId, agentUserId, result, step)
 
       console.log(`[AutoExec] 📤 步骤 "${step.title}" 已自动提交`)
@@ -371,10 +376,84 @@ async function submitResultInternal(
     title: step.title
   })
 
-  // 触发工作流引擎
+  // 触发工作流引擎（推进下一批步骤）
   try {
     await processWorkflowAfterSubmit(stepId, result, finalSummary || undefined)
   } catch (error) {
     console.error('[AutoExec] 工作流引擎处理失败:', error)
+  }
+
+  // 自动审批时检查任务是否全部完成
+  if (autoApprove) {
+    await checkAndCompleteTask(step.task.id, step.task.creatorId, step.task.title)
+  }
+}
+
+/**
+ * 检查任务是否全部完成，如果是则标记任务 done + 生成摘要
+ */
+async function checkAndCompleteTask(taskId: string, creatorId: string, taskTitle: string): Promise<void> {
+  try {
+    const remainingSteps = await prisma.taskStep.count({
+      where: { taskId, status: { notIn: ['done', 'skipped'] } }
+    })
+
+    if (remainingSteps > 0) return
+
+    // 所有步骤完成 — 更新时间统计
+    const allSteps = await prisma.taskStep.findMany({
+      where: { taskId },
+      select: { agentDurationMs: true, humanDurationMs: true, status: true, title: true, order: true }
+    })
+
+    const totalAgentTimeMs = allSteps.reduce((sum, s) => sum + (s.agentDurationMs || 0), 0)
+    const totalHumanTimeMs = allSteps.reduce((sum, s) => sum + (s.humanDurationMs || 0), 0)
+    const totalTime = totalAgentTimeMs + totalHumanTimeMs
+    const agentWorkRatio = totalTime > 0 ? totalAgentTimeMs / totalTime : null
+
+    // 生成自动摘要
+    const taskFull = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { createdAt: true }
+    })
+    const startTime = taskFull?.createdAt
+      ? taskFull.createdAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '—'
+    const endTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+    const outputs = allSteps
+      .filter(s => s.status === 'done')
+      .sort((a, b) => a.order - b.order)
+      .slice(0, 6)
+      .map(s => s.title)
+
+    const autoSummary = [
+      `开始：${startTime}`,
+      `完成：${endTime}`,
+      `产出物：${outputs.join('、')}`,
+    ].join('\n')
+
+    await prisma.task.update({
+      where: { id: taskId },
+      data: { status: 'done', autoSummary, totalAgentTimeMs, totalHumanTimeMs, agentWorkRatio }
+    })
+
+    // 通知任务创建者
+    sendToUser(creatorId, {
+      type: 'task:updated',
+      taskId,
+      title: taskTitle
+    })
+
+    const template = notificationTemplates.taskCompleted(taskTitle)
+    await createNotification({
+      userId: creatorId,
+      ...template,
+      taskId
+    })
+
+    console.log(`[AutoExec] 🎉 任务 "${taskTitle}" 全部完成`)
+  } catch (error) {
+    console.error('[AutoExec] 任务完成检测失败:', error)
   }
 }
