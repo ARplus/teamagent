@@ -56,7 +56,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   await prisma.workspaceMember.upsert({
     where: { userId_workspaceId: { userId: user.id, workspaceId: invite.workspaceId } },
     update: {},
-    create: { userId: user.id, workspaceId: invite.workspaceId, role: 'member' }
+    create: {
+      userId: user.id,
+      workspaceId: invite.workspaceId,
+      role: 'member',
+      memberSource: 'invite_link',
+      addedByUserId: invite.inviterId,
+    }
   })
 
   // 标记邀请已使用

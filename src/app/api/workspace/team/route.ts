@@ -102,6 +102,8 @@ export async function GET(req: NextRequest) {
         avatar: user.avatar,
         isSelf: user.id === auth.userId,
         role: m.role, // owner / admin / member
+        memberSource: m.memberSource || 'unknown',
+        addedByUserId: m.addedByUserId || null,
         agent: agent ? {
           id: agent.id,
           name: agent.name,

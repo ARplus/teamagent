@@ -53,7 +53,9 @@ export async function POST(req: NextRequest) {
         members: {
           create: {
             userId: user.id,
-            role: 'owner'
+            role: 'owner',
+            memberSource: 'system_init',
+            addedByUserId: user.id,
           }
         }
       }

@@ -39,6 +39,8 @@ interface WorkspaceMember {
   avatar: string | null
   isSelf: boolean
   role: string
+  memberSource?: string
+  addedByUserId?: string | null
   agent: {
     id: string; name: string; isMainAgent: boolean
     capabilities: string[]; status: string
@@ -76,6 +78,18 @@ function agentAvatar(name: string, avatar?: string | null): string {
 
 function stripEmoji(name: string): string {
   return name.replace(/^(\p{Emoji_Presentation}|\p{Extended_Pictographic})\s*/u, '')
+}
+
+function memberSourceLabel(source?: string): string {
+  const map: Record<string, string> = {
+    invite: '手动邀请',
+    invite_link: '邀请链接',
+    agent_register: 'Agent创建',
+    system_init: '系统初始化',
+    manual: '手动添加',
+    unknown: '历史数据',
+  }
+  return map[source || 'unknown'] || source || '未知来源'
 }
 
 // ============ Inline editable field ============
@@ -157,7 +171,7 @@ function InvitePartnerInline() {
 }
 
 // ============ Partner Card ============
-function PartnerCard({ member }: { member: WorkspaceMember }) {
+function PartnerCard({ member, canRemove, onRemove }: { member: WorkspaceMember; canRemove: boolean; onRemove: (m: WorkspaceMember) => void }) {
   const agent = member.agent
   const initials = (member.name || member.email || '?').charAt(0).toUpperCase()
 
@@ -169,12 +183,24 @@ function PartnerCard({ member }: { member: WorkspaceMember }) {
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-slate-200 text-sm truncate">{member.name || member.email}</span>
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">👤 人类</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-700/50 text-slate-400 border border-slate-600/50">
+              来源：{memberSourceLabel(member.memberSource)}
+            </span>
           </div>
           <p className="text-xs text-slate-500 truncate">{member.email}</p>
         </div>
+        {canRemove && (
+          <button
+            onClick={() => onRemove(member)}
+            className="text-xs px-2 py-1 rounded-lg border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 transition-colors"
+            title="移除协作者"
+          >
+            移除
+          </button>
+        )}
       </div>
 
       {/* Agent row */}
@@ -450,6 +476,7 @@ export default function WorkspacePage() {
   const [showPairing, setShowPairing] = useState(false)
   const [showCreateSub, setShowCreateSub] = useState(false)
   const [liveStatus, setLiveStatus] = useState('online')
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null)
 
   // Editable fields
   const [nameValue, setNameValue] = useState('')
@@ -524,10 +551,36 @@ export default function WorkspacePage() {
   const c = teamData?.commander
   const mainAgent = teamData?.mainAgent
   const ts = teamData?.taskStats
+  const me = (wsData?.members || []).find(m => m.isSelf)
+  const isOwner = me?.role === 'owner'
   const partners = (wsData?.members || []).filter(m => !m.isSelf)
   const onlinePartnerAgents = partners.filter(p => p.agent && p.agent.status !== 'offline').length
   const displayName = nameValue || c?.name || c?.email || '用户'
   const initials = displayName.charAt(0).toUpperCase()
+
+  const removePartner = async (member: WorkspaceMember) => {
+    if (!wsData?.workspaceId) return
+    if (!confirm(`确认移除协作者 ${member.name || member.email} 吗？`)) return
+
+    setRemovingUserId(member.id)
+    try {
+      const res = await fetch(`/api/workspaces/${wsData.workspaceId}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: member.id })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || '移除失败')
+        return
+      }
+      await fetchAll()
+    } catch {
+      alert('网络错误，移除失败')
+    } finally {
+      setRemovingUserId(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 pb-24 md:pb-0">
@@ -728,7 +781,14 @@ export default function WorkspacePage() {
                 ))}
 
                 {/* Partner cards */}
-                {partners.map(p => <PartnerCard key={p.id} member={p} />)}
+                {partners.map(p => (
+                  <PartnerCard
+                    key={p.id}
+                    member={p}
+                    canRemove={!!isOwner && removingUserId !== p.id}
+                    onRemove={removePartner}
+                  />
+                ))}
 
                 {/* Empty state */}
                 {partners.length === 0 && (

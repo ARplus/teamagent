@@ -101,6 +101,8 @@ export async function POST(req: NextRequest) {
           userId: subUser.id,
           workspaceId: workspace.id,
           role: 'member',
+          memberSource: 'agent_register',
+          addedByUserId: user.id,
         }
       })
 

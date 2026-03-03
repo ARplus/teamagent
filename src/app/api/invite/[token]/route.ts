@@ -57,7 +57,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   await prisma.$transaction(async (tx) => {
     if (!existing) {
       await tx.workspaceMember.create({
-        data: { workspaceId: invite.workspaceId, userId: user.id, role: invite.role }
+        data: {
+          workspaceId: invite.workspaceId,
+          userId: user.id,
+          role: invite.role,
+          memberSource: 'invite_link',
+          addedByUserId: invite.inviterId,
+        }
       })
     }
     // 记录接受邀请者，用于任务可见性（即使没有步骤也能看到被分享的任务）

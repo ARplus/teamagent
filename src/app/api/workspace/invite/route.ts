@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
 // POST /api/workspace/invite — 邀请协作伙伴加入我的工作区
-// 简化版：自动使用当前用户的主工作区，任何成员都可以邀请
+// 仅 owner 可邀请，避免协作关系被意外扩散
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
@@ -31,19 +31,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '不能邀请自己哦 😄' }, { status: 400 })
     }
 
-    // 找到当前用户的主工作区（owner 优先，否则任意所在工作区）
-    let membership = await prisma.workspaceMember.findFirst({
+    // 只允许 owner 邀请，避免成员误拉人
+    const membership = await prisma.workspaceMember.findFirst({
       where: { userId: currentUser.id, role: 'owner' },
       orderBy: { joinedAt: 'asc' }
     })
+
     if (!membership) {
-      membership = await prisma.workspaceMember.findFirst({
-        where: { userId: currentUser.id },
-        orderBy: { joinedAt: 'asc' }
-      })
-    }
-    if (!membership) {
-      return NextResponse.json({ error: '你还没有工作区' }, { status: 404 })
+      return NextResponse.json({ error: '只有工作区创建者可以邀请协作伙伴' }, { status: 403 })
     }
 
     const workspaceId = membership.workspaceId
@@ -75,7 +70,9 @@ export async function POST(req: NextRequest) {
       data: {
         workspaceId,
         userId: invitee.id,
-        role: 'member'
+        role: 'member',
+        memberSource: 'invite',
+        addedByUserId: currentUser.id,
       },
       include: {
         user: {

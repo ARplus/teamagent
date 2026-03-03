@@ -90,7 +90,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     data: {
       workspaceId: id,
       userId: invitee.id,
-      role
+      role,
+      memberSource: 'invite',
+      addedByUserId: auth.user.id,
     },
     include: {
       user: {

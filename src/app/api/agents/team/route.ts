@@ -103,9 +103,9 @@ export async function GET(req: NextRequest) {
             reputation: a.reputation,
             claimedAt: a.claimedAt,
             isMainAgent: false,
-            userId: a.user.id,
-            userName: a.user.name,
-            userEmail: a.user.email,
+            userId: a.user!.id,
+            userName: a.user!.name,
+            userEmail: a.user!.email,
             stats: { doneSteps, pendingSteps }
           }
         })

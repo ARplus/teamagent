@@ -60,7 +60,13 @@ export async function POST(req: NextRequest) {
   if (!existing) {
     // 加入工作区
     await prisma.workspaceMember.create({
-      data: { workspaceId: invite.workspaceId, userId: user.id, role: invite.role }
+      data: {
+        workspaceId: invite.workspaceId,
+        userId: user.id,
+        role: invite.role,
+        memberSource: 'invite_link',
+        addedByUserId: invite.inviterId,
+      }
     })
   }
 

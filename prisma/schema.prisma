@@ -153,9 +153,11 @@ model InviteToken {
 
 // 工作区成员
 model WorkspaceMember {
-  id          String    @id @default(cuid())
-  role        String    @default("member") // owner, admin, member
-  joinedAt    DateTime  @default(now())
+  id            String    @id @default(cuid())
+  role          String    @default("member") // owner, admin, member
+  joinedAt      DateTime  @default(now())
+  memberSource  String?   // invite | invite_link | system_init | agent_register | manual | unknown
+  addedByUserId String?   // 谁添加的（User.id），历史数据可能为空
 
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
