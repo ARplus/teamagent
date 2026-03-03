@@ -465,16 +465,6 @@ function TaskList({
           {hasAgent && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
         </a>
 
-        {/* 官网预览 */}
-        <a
-          href="/landing"
-          target="_blank"
-          className="w-full py-2 rounded-xl text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/40 flex items-center justify-center space-x-1.5 transition-colors"
-        >
-          <span>🌐</span>
-          <span>查看官网首页</span>
-        </a>
-
         {/* 我的工作区 */}
         <a
           href="/workspace"
@@ -1515,40 +1505,53 @@ function TaskFilesCard({ taskId }: { taskId: string }) {
         </div>
       ) : (
         <div
-          className="space-y-1"
+          className="space-y-1.5"
           onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files) }}
           onDragOver={e => e.preventDefault()}
         >
-          {items.map(item => (
-            <div key={item.id} className="flex items-center gap-1.5 group px-2 py-1.5 rounded-lg hover:bg-slate-50">
-              <span className="text-sm flex-shrink-0">{fileIcon(item.type)}</span>
-              <a href={item.url} target="_blank" rel="noreferrer"
-                className="text-xs font-medium text-slate-700 hover:text-orange-500 truncate flex-1 min-w-0 transition">
-                {item.name}
-              </a>
-              <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
-                {item.uploader.isAgent ? '🤖' : '👤'}{item.uploader.isAgent ? (item.uploader.agentName || item.uploader.name) : item.uploader.name}
-              </span>
-              <span className="text-[10px] text-slate-300 flex-shrink-0 whitespace-nowrap hidden sm:inline">
-                {fmtShortTime(item.createdAt)}
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0 whitespace-nowrap">
-                {item.sourceTag}
-              </span>
-              {item.canDelete && (
-                <button onClick={() => handleDelete(item.id)}
-                  className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition text-xs flex-shrink-0 ml-0.5">
-                  ✕
-                </button>
-              )}
+          {[...items]
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) // 从旧到新
+            .map(item => (
+            <div key={item.id} className="group rounded-lg border border-slate-100 bg-slate-50/60 hover:bg-slate-50 px-2 py-1.5 transition">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm flex-shrink-0">{fileIcon(item.type)}</span>
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-slate-700 hover:text-orange-500 truncate min-w-0 underline-offset-2 hover:underline"
+                  title={item.name || '查看文件'}
+                >
+                  {item.name || '未命名文件'}
+                </a>
+                <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+                  <a href={item.url} target="_blank" rel="noreferrer" className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100">查看</a>
+                  <a href={item.url} target="_blank" rel="noreferrer" download className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100">下载</a>
+                  {item.canDelete && (
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition text-xs"
+                      title="删除文件"
+                    >✕</button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1 flex-wrap">
+                <span className="px-1 py-0.5 rounded bg-white border border-slate-200 text-slate-500">{item.sourceTag}</span>
+                <span>{item.uploader.isAgent ? '🤖' : '👤'} {item.uploader.isAgent ? (item.uploader.agentName || item.uploader.name) : item.uploader.name}</span>
+                <span>{fmtShortTime(item.createdAt)}</span>
+                {item.size ? <span>{fmtSize(item.size)}</span> : null}
+              </div>
             </div>
           ))}
-          <div className="pt-1.5 border-t border-slate-50 flex items-center justify-between">
-            <span className="text-[10px] text-slate-300">
-              共 {items.length} 个文件{totalSize > 0 && `，${fmtSize(totalSize)}`}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">
+              共 {items.length} 个文件{totalSize > 0 && ` · ${fmtSize(totalSize)}`}
             </span>
-            <button onClick={() => inputRef.current?.click()}
-              className="text-xs text-slate-400 hover:text-orange-500 transition">
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="text-xs px-2 py-1 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+            >
               + 添加文件
             </button>
           </div>
@@ -2415,7 +2418,7 @@ function StepCard({
     // 人类成员
     items.push({
       userId: m.id,
-      displayName: m.nickname || m.name,
+      displayName: m.name || m.nickname || m.email || '成员',
       icon: '👤'
     })
     // Agent 成员
@@ -3008,8 +3011,9 @@ function StepCard({
                   <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 group">
                     <span className="text-sm flex-shrink-0">{fileIcon(f.type)}</span>
                     <a href={f.url} target="_blank" rel="noreferrer"
-                      className="text-xs text-slate-700 hover:text-orange-500 truncate flex-1 min-w-0 transition">
-                      {f.name}
+                      className="text-xs text-slate-700 hover:text-orange-500 truncate flex-1 min-w-0 transition underline-offset-2 hover:underline"
+                      title={f.name || '查看文件'}>
+                      {f.name || '未命名文件'}
                     </a>
                     <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
                       {f.uploader.isAgent ? '🤖' : '👤'}{f.uploader.isAgent ? (f.uploader.agentName || f.uploader.name) : f.uploader.name}
@@ -3018,6 +3022,16 @@ function StepCard({
                       {f.sourceTag}
                     </span>
                     <span className="text-[10px] text-slate-300 flex-shrink-0">{fmtSize(f.size)}</span>
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      className="text-[10px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex-shrink-0 whitespace-nowrap"
+                      title="查看或下载文件"
+                    >
+                      下载
+                    </a>
                   </div>
                 ))}
               </div>

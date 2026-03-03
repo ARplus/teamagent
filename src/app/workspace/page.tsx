@@ -39,6 +39,7 @@ interface WorkspaceMember {
   avatar: string | null
   isSelf: boolean
   role: string
+  joinedAt?: string
   memberSource?: string
   addedByUserId?: string | null
   agent: {
@@ -191,6 +192,9 @@ function PartnerCard({ member, canRemove, onRemove }: { member: WorkspaceMember;
             </span>
           </div>
           <p className="text-xs text-slate-500 truncate">{member.email}</p>
+          {member.joinedAt && (
+            <p className="text-[11px] text-slate-500 mt-0.5">加入时间：{new Date(member.joinedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          )}
         </div>
         {canRemove && (
           <button
