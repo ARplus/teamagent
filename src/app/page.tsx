@@ -402,6 +402,15 @@ function TaskList({
         <div className="flex items-center space-x-2">
           <span className="text-2xl">🦞</span>
           <span className="font-bold text-white text-lg">TeamAgent</span>
+          <a
+            href="/landing"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="打开官网首页"
+            className="w-8 h-8 rounded-lg bg-slate-800/70 hover:bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-colors border border-slate-700/60"
+          >
+            🌐
+          </a>
         </div>
         <button 
           onClick={onToggleCollapse}
@@ -782,7 +791,13 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
         {/* Top bar: workspace + my agent */}
         <div className="flex items-center justify-between mb-2 sm:mb-3 text-xs flex-wrap gap-2">
           <div className="flex items-center space-x-2 sm:space-x-4 text-slate-500 flex-wrap gap-1">
-            <span className="hidden sm:inline">📁 {task.workspace?.name || '默认工作区'}</span>
+            <a
+              href="/workspace"
+              className="hidden sm:inline text-slate-500 hover:text-orange-600 transition-colors underline-offset-2 hover:underline"
+              title="查看工作区"
+            >
+              📁 {task.workspace?.name || '默认工作区'}
+            </a>
             <span className="hidden sm:inline">·</span>
             <span>👤 {task.creator?.name || task.creator?.email}</span>
             <span>·</span>
