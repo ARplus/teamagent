@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         content: content.trim(),
         role: 'user',
         userId: user.id,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        metadata: metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null,
       },
     })
 

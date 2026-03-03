@@ -198,28 +198,35 @@ export async function POST(
     }
 
     // F02: 给被 @mention 的人发送专门的提及通知
+    // 同时通知子Agent的主Agent（子Agent可能没有独立watch进程）
+    const mentionEvent = {
+      type: 'step:mentioned' as const,
+      taskId: step.taskId,
+      stepId: id,
+      commentId: comment.id,
+      authorName: userName,
+      content: content.trim().substring(0, 100)
+    }
+
     for (const mentionedId of mentionedUserIds) {
-      if (!notifyUserIds.has(mentionedId)) {
-        // 这些人没有收到评论通知，单独发 mention 通知
-        sendToUser(mentionedId, {
-          type: 'step:mentioned',
-          taskId: step.taskId,
-          stepId: id,
-          commentId: comment.id,
-          authorName: userName,
-          content: content.trim().substring(0, 100)
+      sendToUser(mentionedId, mentionEvent)
+
+      // 如果被@的是子Agent，也通知其主Agent（子Agent可能不在线）
+      try {
+        const mentionedAgent = await prisma.agent.findFirst({
+          where: { userId: mentionedId },
+          select: { parentAgentId: true }
         })
-      } else {
-        // 已经收到评论通知的，额外发一条 mention SSE（让前端高亮）
-        sendToUser(mentionedId, {
-          type: 'step:mentioned',
-          taskId: step.taskId,
-          stepId: id,
-          commentId: comment.id,
-          authorName: userName,
-          content: content.trim().substring(0, 100)
-        })
-      }
+        if (mentionedAgent?.parentAgentId) {
+          const parentAgent = await prisma.agent.findFirst({
+            where: { id: mentionedAgent.parentAgentId },
+            select: { userId: true }
+          })
+          if (parentAgent?.userId && parentAgent.userId !== userId) {
+            sendToUser(parentAgent.userId, mentionEvent)
+          }
+        }
+      } catch { /* 查询失败不影响主流程 */ }
 
       // 创建 mention 站内通知
       const mentionTemplate = notificationTemplates.mentioned(step.title, userName)

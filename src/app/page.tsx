@@ -221,32 +221,71 @@ const agentStatusConfig: Record<string, { dot: string; label: string }> = {
 
 // ============ Chat Types & Bubble ============
 
+interface ChatAttachment {
+  url: string
+  name: string
+  type: string
+  size?: number
+}
+
 interface ChatMessage {
   id: string
   content: string
   role: 'user' | 'agent'
   createdAt: string
+  metadata?: string | null
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
   const isPending = message.content === '...' || message.content === '__pending__'
 
+  // 解析 metadata 中的附件
+  let attachments: ChatAttachment[] = []
+  if (message.metadata) {
+    try {
+      const meta = typeof message.metadata === 'string' ? JSON.parse(message.metadata) : message.metadata
+      attachments = meta.attachments || []
+    } catch { /* ignore */ }
+  }
+
+  const hasText = message.content.trim().length > 0
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-
       <div
-        className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+        className={`max-w-[75%] rounded-2xl text-sm leading-relaxed ${
           isUser
             ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-br-md'
             : 'bg-slate-800 text-slate-200 rounded-bl-md'
-        } ${isPending ? 'animate-pulse' : ''}`}
+        } ${isPending ? 'animate-pulse' : ''} ${attachments.length > 0 ? 'overflow-hidden' : 'px-4 py-2.5'}`}
       >
+        {/* 图片附件 */}
+        {attachments.filter(a => a.type?.startsWith('image/')).map((att, i) => (
+          <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="block">
+            <img
+              src={att.url}
+              alt={att.name}
+              className="max-w-full max-h-60 object-cover"
+              loading="lazy"
+            />
+          </a>
+        ))}
+        {/* 非图片附件 */}
+        {attachments.filter(a => !a.type?.startsWith('image/')).map((att, i) => (
+          <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+            className={`flex items-center gap-2 px-4 py-2 ${isUser ? 'text-white/90 hover:text-white' : 'text-blue-400 hover:text-blue-300'}`}>
+            <span>📎</span>
+            <span className="underline truncate">{att.name}</span>
+            {att.size && <span className="text-xs opacity-70">({Math.round(att.size / 1024)}KB)</span>}
+          </a>
+        ))}
+        {/* 文字内容 */}
         {isPending ? (
-          <span className="tracking-widest text-slate-400">···</span>
-        ) : (
-          <span className="whitespace-pre-wrap break-words">{message.content}</span>
-        )}
+          <span className={`tracking-widest text-slate-400 ${attachments.length > 0 ? 'px-4 py-2 block' : ''}`}>···</span>
+        ) : hasText ? (
+          <span className={`whitespace-pre-wrap break-words ${attachments.length > 0 ? 'px-4 py-2 block' : ''}`}>{message.content}</span>
+        ) : null}
       </div>
     </div>
   )
@@ -3944,6 +3983,10 @@ export default function HomePage() {
   const [chatLoading, setChatLoading] = useState(false)
   const [chatReloading, setChatReloading] = useState(false)
   const [pendingMsgId, setPendingMsgId] = useState<string | null>(null)
+  const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [chatCreateMode, setChatCreateMode] = useState(false)
+  const chatFileRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // 未登录由下方 LandingPage 处理，不再强制跳转
@@ -4020,10 +4063,14 @@ export default function HomePage() {
   // 对话页始终自动滚动到底部，确保进入即看到最新消息
   useEffect(() => {
     if (!isMobile || activeTab !== 'chat') return
+    // 双重滚动：立即 + 延迟，确保 DOM 渲染完成后也能滚到底
+    const raf = requestAnimationFrame(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    })
     const id = setTimeout(() => {
       chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
-    }, 0)
-    return () => clearTimeout(id)
+    }, 150)
+    return () => { cancelAnimationFrame(raf); clearTimeout(id) }
   }, [chatMessages, isMobile, activeTab])
 
   const pollForReply = useCallback(async (msgId: string) => {
@@ -4055,26 +4102,62 @@ export default function HomePage() {
     setPendingMsgId(null)
   }, [loadChatHistory])
 
+  // 上传文件到 /api/upload
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    setUploading(true)
+    const newAttachments: ChatAttachment[] = []
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        if (!res.ok) throw new Error('上传失败')
+        const data = await res.json()
+        newAttachments.push({ url: data.url, name: data.filename || file.name, type: data.type || file.type, size: data.size || file.size })
+      } catch (err) {
+        console.error('文件上传失败:', err)
+      }
+    }
+    setChatAttachments(prev => [...prev, ...newAttachments])
+    setUploading(false)
+    // 清空 file input
+    if (chatFileRef.current) chatFileRef.current.value = ''
+  }, [])
+
   const handleChatSend = useCallback(async (overrideMsg?: string) => {
     const content = (overrideMsg || chatInput).trim()
-    if (!content || chatLoading) return
+    const hasAttachments = chatAttachments.length > 0
+    if ((!content && !hasAttachments) || chatLoading) return
     if (!overrideMsg) setChatInput('')
+
+    // 收集当前附件，然后清空
+    const attachments = [...chatAttachments]
+    setChatAttachments([])
     setChatLoading(true)
+
+    // 构建 metadata
+    const metadata = attachments.length > 0 ? JSON.stringify({ attachments }) : undefined
 
     // 乐观更新：先加用户消息
     const tempUserMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
-      content,
+      content: content || (attachments.length > 0 ? `[${attachments.map(a => a.name).join(', ')}]` : ''),
       role: 'user',
       createdAt: new Date().toISOString(),
+      metadata: metadata || null,
     }
     setChatMessages(prev => [...prev, tempUserMsg])
+
+    // 如果只有附件没有文字，自动生成描述
+    const sendContent = content || attachments.map(a => `[附件: ${a.name}](${a.url})`).join('\n')
 
     try {
       const res = await fetch('/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: sendContent, metadata }),
       })
       if (!res.ok) throw new Error('发送失败')
       const data = await res.json()
@@ -4105,7 +4188,62 @@ export default function HomePage() {
     } finally {
       setChatLoading(false)
     }
-  }, [chatInput, chatLoading, pollForReply])
+  }, [chatInput, chatLoading, chatAttachments, pollForReply])
+
+  // #9: 对话式创建任务
+  const handleChatCreateTask = useCallback(async (desc: string) => {
+    if (!desc.trim() || chatLoading) return
+    setChatInput('')
+    setChatCreateMode(false)
+    setChatLoading(true)
+
+    // 乐观更新：显示用户消息
+    setChatMessages(prev => [...prev, {
+      id: `temp-${Date.now()}`,
+      content: desc,
+      role: 'user',
+      createdAt: new Date().toISOString(),
+    }])
+
+    // 显示 Agent 正在处理
+    const pendingId = `creating-${Date.now()}`
+    setChatMessages(prev => [...prev, {
+      id: pendingId,
+      content: '...',
+      role: 'agent',
+      createdAt: new Date().toISOString(),
+    }])
+
+    try {
+      const res = await fetch('/api/tasks/create-from-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: desc }),
+      })
+      const data = await res.json()
+      if (res.ok && data.task) {
+        setChatMessages(prev => prev.map(m => m.id === pendingId ? {
+          ...m,
+          id: `task-created-${data.task.id}`,
+          content: `✅ 已创建任务「${data.task.title}」\n${data.task.description ? `📝 ${data.task.description}\n` : ''}模式：${data.task.mode === 'team' ? '🤝 团队' : '🤖 Solo'}\n\nAI 正在自动拆解步骤...`,
+        } : m))
+        // 刷新任务列表 (inline to avoid dependency order issue)
+        fetch('/api/tasks').then(r => r.ok ? r.json() : []).then(t => Array.isArray(t) && setTasks(t)).catch(() => {})
+      } else {
+        setChatMessages(prev => prev.map(m => m.id === pendingId ? {
+          ...m,
+          content: `❌ 创建失败：${data.error || '未知错误'}`,
+        } : m))
+      }
+    } catch {
+      setChatMessages(prev => prev.map(m => m.id === pendingId ? {
+        ...m,
+        content: '❌ 网络错误，请重试',
+      } : m))
+    } finally {
+      setChatLoading(false)
+    }
+  }, [chatLoading])
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -4337,16 +4475,67 @@ export default function HomePage() {
 
             {/* 输入框 — 常驻 */}
             <div className="px-4 pb-3 pt-2 border-t border-slate-700/50 bg-slate-900/80 flex-shrink-0">
+              {/* 附件预览条 */}
+              {chatAttachments.length > 0 && (
+                <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+                  {chatAttachments.map((att, i) => (
+                    <div key={i} className="relative flex-shrink-0 group">
+                      {att.type?.startsWith('image/') ? (
+                        <img src={att.url} alt={att.name} className="h-16 w-16 object-cover rounded-lg border border-slate-600" />
+                      ) : (
+                        <div className="h-16 w-16 bg-slate-700 rounded-lg border border-slate-600 flex items-center justify-center text-xs text-slate-400 p-1 text-center truncate">
+                          📎 {att.name}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => setChatAttachments(prev => prev.filter((_, j) => j !== i))}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-80 hover:opacity-100"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {uploading && (
+                    <div className="h-16 w-16 bg-slate-700/50 rounded-lg border border-dashed border-slate-500 flex items-center justify-center flex-shrink-0">
+                      <span className="animate-spin text-sm">⏳</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* 隐藏的文件 input */}
+              <input
+                ref={chatFileRef}
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.txt,.md,.zip"
+                multiple
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              {/* #9: 对话式创建模式提示条 */}
+              {chatCreateMode && (
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs text-orange-300">📋 描述你想创建的任务，AI 自动提取并创建</span>
+                  <button onClick={() => setChatCreateMode(false)} className="text-xs text-slate-500 hover:text-slate-300 ml-2">取消</button>
+                </div>
+              )}
               <div className="flex items-center space-x-2">
-                {/* B13/B14 移动端: 新建任务 + 成长 */}
+                {/* B13/B14 移动端: 新建任务 + 成长 + 上传 */}
                 <div className="flex flex-col gap-1 flex-shrink-0">
                   <button
-                    onClick={() => setShowCreateModal(true)}
+                    onClick={() => setChatCreateMode(!chatCreateMode)}
                     disabled={!myAgent}
-                    title="快速新建任务"
-                    className="w-9 h-9 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors text-sm"
+                    title="对话式新建任务"
+                    className={`w-9 h-9 ${chatCreateMode ? 'bg-orange-500/30 text-orange-300 ring-1 ring-orange-500/50' : 'bg-white/10 hover:bg-white/15 text-white/70 hover:text-white'} disabled:opacity-30 rounded-full flex items-center justify-center transition-colors text-sm`}
                   >
                     📋
+                  </button>
+                  <button
+                    onClick={() => chatFileRef.current?.click()}
+                    disabled={uploading}
+                    title="上传图片/文件"
+                    className="w-9 h-9 bg-white/10 hover:bg-blue-500/20 disabled:opacity-30 text-white/70 hover:text-blue-400 rounded-full flex items-center justify-center transition-colors text-sm"
+                  >
+                    📷
                   </button>
                   <button
                     onClick={() => {
@@ -4370,14 +4559,14 @@ export default function HomePage() {
                 <input
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
-                  placeholder="和你的Agent说话..."
-                  className="flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 border border-slate-700/50"
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), chatCreateMode ? handleChatCreateTask(chatInput) : handleChatSend())}
+                  placeholder={chatCreateMode ? "描述任务，例如：帮我写一篇关于AI的文章..." : "和你的Agent说话..."}
+                  className={`flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 placeholder-slate-500 border ${chatCreateMode ? 'focus:ring-orange-400/70 border-orange-500/40' : 'focus:ring-orange-500/50 border-slate-700/50'}`}
                 />
                 <button
-                  onClick={() => handleChatSend()}
-                  disabled={!chatInput.trim() || chatLoading}
-                  className="w-11 h-11 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 flex items-center justify-center disabled:opacity-40 transition-all active:scale-95 shadow-lg shadow-orange-500/30 flex-shrink-0"
+                  onClick={() => chatCreateMode ? handleChatCreateTask(chatInput) : handleChatSend()}
+                  disabled={(!chatInput.trim() && chatAttachments.length === 0) || chatLoading}
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center disabled:opacity-40 transition-all active:scale-95 shadow-lg flex-shrink-0 ${chatCreateMode ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-500/30' : 'bg-gradient-to-r from-orange-500 to-rose-500 shadow-orange-500/30'}`}
                 >
                   <span className="text-white text-lg">→</span>
                 </button>

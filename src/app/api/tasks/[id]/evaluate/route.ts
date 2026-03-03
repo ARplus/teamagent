@@ -10,14 +10,75 @@ const QWEN_API_KEY = process.env.QWEN_API_KEY || 'sk-4a673b39b21f4e2aad6b9e38f48
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 
 /**
+ * 查找工作区的主 Agent（首席 Review 官）
+ * 优先找任务创建者所在 workspace 的主 Agent，fallback 到任意主 Agent
+ */
+async function findMainAgent(creatorId: string) {
+  // 找创建者所在 workspace 的主 Agent
+  const membership = await prisma.workspaceMember.findFirst({
+    where: { userId: creatorId },
+    select: { workspaceId: true }
+  })
+
+  if (membership) {
+    // 找该 workspace 下的主 Agent
+    const mainAgentMember = await prisma.workspaceMember.findFirst({
+      where: { workspaceId: membership.workspaceId },
+      include: {
+        user: {
+          include: {
+            agent: { where: { isMainAgent: true } }
+          }
+        }
+      }
+    })
+    if (mainAgentMember?.user?.agent) {
+      return {
+        agentId: mainAgentMember.user.agent.id,
+        agentName: mainAgentMember.user.agent.name,
+        agentUserId: mainAgentMember.user.id,
+      }
+    }
+
+    // fallback: 找 workspace 下任何有 agent 的成员
+    const anyAgentMember = await prisma.workspaceMember.findFirst({
+      where: { workspaceId: membership.workspaceId },
+      include: {
+        user: {
+          include: { agent: true }
+        }
+      }
+    })
+    if (anyAgentMember?.user?.agent) {
+      return {
+        agentId: anyAgentMember.user.agent.id,
+        agentName: anyAgentMember.user.agent.name,
+        agentUserId: anyAgentMember.user.id,
+      }
+    }
+  }
+
+  // 全局 fallback：找任意主 Agent
+  const globalMain = await prisma.agent.findFirst({
+    where: { isMainAgent: true },
+    select: { id: true, name: true, userId: true }
+  })
+  if (globalMain) {
+    return { agentId: globalMain.id, agentName: globalMain.name, agentUserId: globalMain.userId }
+  }
+
+  return null
+}
+
+/**
  * 调用 LLM（优先 Claude → 降级千问）
  */
 async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promise<{ content: string; model: string }> {
-  // 优先 Claude（15s 超时，fast fail 降级千问）
+  // 优先 Claude（30s 超时，评分比聊天更重要所以超时更长）
   if (ANTHROPIC_API_KEY) {
     try {
       const ac = new AbortController()
-      const t = setTimeout(() => ac.abort(), 15_000)
+      const t = setTimeout(() => ac.abort(), 30_000)
       const res = await fetch(ANTHROPIC_API_URL, {
         method: 'POST',
         headers: {
@@ -41,7 +102,7 @@ async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promi
       }
       console.warn('[Evaluate] Claude 调用失败，降级到千问')
     } catch (e: any) {
-      console.warn('[Evaluate] Claude 异常，降级到千问:', e.name === 'AbortError' ? '超时(15s)' : e.message)
+      console.warn('[Evaluate] Claude 异常，降级到千问:', e.name === 'AbortError' ? '超时(30s)' : e.message)
     }
   }
 
@@ -202,8 +263,15 @@ export async function POST(
       return NextResponse.json({ error: '没有可评分的成员' }, { status: 400 })
     }
 
-    // 构建 LLM prompt
-    const systemPrompt = `你是 TeamAgent 的评分系统，负责在任务完成后为每位参与成员打分。
+    // 查找主 Agent（首席 Review 官）
+    const mainAgent = await findMainAgent(task.creatorId)
+    const reviewerName = mainAgent?.agentName || 'TeamAgent 评分系统'
+    const reviewerId = mainAgent?.agentUserId || user.id
+
+    console.log(`[Evaluate] 评审官: ${reviewerName}${mainAgent ? ` (Agent ID: ${mainAgent.agentId})` : ' (系统默认)'}`)
+
+    // 构建 LLM prompt — 以主 Agent 身份评分
+    const systemPrompt = `你是「${reviewerName}」，TeamAgent 军团的首席 Review 官，负责在任务完成后为每位参与成员打分。
 
 ## 评分维度（1-5 分，支持 0.5 步进）
 - quality（质量分）：产出质量、准确性、完整度
@@ -249,8 +317,18 @@ ${task.description ? `描述：${task.description}` : ''}
 ## 参与成员及表现
 ${memberLines}`
 
-    // 调用 LLM 评分
-    console.log(`[Evaluate] 开始评分: ${task.title} (${members.length} 成员)`)
+    // 通知前端：主 Agent 正在评分
+    if (mainAgent) {
+      sendToUser(task.creatorId, {
+        type: 'task:evaluating',
+        taskId,
+        title: task.title,
+        agentName: reviewerName,
+      })
+    }
+
+    // 调用 LLM 评分（以主 Agent 身份）
+    console.log(`[Evaluate] 开始评分: ${task.title} (${members.length} 成员) by ${reviewerName}`)
     const llmResult = await callEvaluateLLM(systemPrompt, userMessage)
     console.log(`[Evaluate] 使用模型: ${llmResult.model}`)
 
@@ -294,26 +372,28 @@ ${memberLines}`
           stepsTotal: member.stepsTotal,
           stepsDone: member.stepsDone,
           avgDurationMs: member.stepsTotal > 0 ? Math.round(member.totalDurationMs / member.stepsTotal) : null,
-          evaluatedBy: user.id,
-          model: llmResult.model,
+          evaluatedBy: reviewerId,
+          model: mainAgent ? `${reviewerName} (${llmResult.model})` : llmResult.model,
         }
       })
       evaluations.push(ev)
     }
 
-    // 通知任务创建者
+    // 通知任务创建者：评分完成
     sendToUser(task.creatorId, {
       type: 'task:evaluated',
       taskId,
       title: task.title,
-      count: evaluations.length
+      count: evaluations.length,
+      reviewerName,
     })
 
-    console.log(`[Evaluate] ✅ 完成 (${llmResult.model})，${evaluations.length} 成员评分`)
+    console.log(`[Evaluate] ✅ 完成 by ${reviewerName} (${llmResult.model})，${evaluations.length} 成员评分`)
 
     return NextResponse.json({
-      message: `✅ 已为 ${evaluations.length} 位成员生成评分`,
+      message: `✅ ${reviewerName} 已为 ${evaluations.length} 位成员生成评分`,
       model: llmResult.model,
+      reviewer: reviewerName,
       evaluations
     })
 

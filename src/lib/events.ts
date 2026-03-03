@@ -19,7 +19,8 @@ export type TeamAgentEvent =
   | { type: 'appeal:resolved'; taskId: string; stepId: string; decision: 'upheld' | 'dismissed'; note?: string }
   | { type: 'chat:incoming'; msgId: string; content: string; agentId: string }
   | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
-  | { type: 'task:evaluated'; taskId: string; title: string; count: number }
+  | { type: 'task:evaluating'; taskId: string; title: string; agentName: string }
+  | { type: 'task:evaluated'; taskId: string; title: string; count: number; reviewerName?: string }
   | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorName: string; content: string }
   // F06: Agent 主动呼叫
   | { type: 'agent:calling'; callId: string; priority: 'urgent' | 'normal' | 'low'; title: string; content: string; agentName: string; taskId?: string; stepId?: string }

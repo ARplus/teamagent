@@ -44,6 +44,7 @@ interface WorkspaceMember {
     id: string; name: string; isMainAgent: boolean
     capabilities: string[]; status: string
     avatar: string | null; personality: string | null
+    parentAgentId: string | null
   } | null
 }
 interface WorkspaceData {
@@ -104,56 +105,61 @@ function InlineEditable({ value, onSave, placeholder, className }: {
 }
 
 // ============ Invite Partner Inline ============
-function InvitePartnerInline() {
-  const [showInput, setShowInput] = useState(false)
-  const [email, setEmail] = useState('')
+function InvitePartnerInline({ compact }: { compact?: boolean } = {}) {
   const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [copied, setCopied] = useState(false)
 
-  const handleInvite = async () => {
-    if (!email.trim()) return
-    setLoading(true); setMsg(null)
+  const handleCopyInviteLink = async () => {
+    setLoading(true)
     try {
-      const res = await fetch('/api/workspace/invite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
-      })
+      const res = await fetch('/api/workspace/invite', { method: 'POST' })
       const data = await res.json()
-      if (res.ok) {
-        setMsg({ text: data.message || '邀请成功！', ok: true })
-        setEmail('')
-        setTimeout(() => { setShowInput(false); setMsg(null) }, 2500)
+      if (res.ok && data.inviteUrl) {
+        try {
+          await navigator.clipboard.writeText(data.inviteUrl)
+        } catch {
+          const ta = document.createElement('textarea')
+          ta.value = data.inviteUrl
+          ta.style.position = 'fixed'
+          ta.style.opacity = '0'
+          document.body.appendChild(ta)
+          ta.select()
+          document.execCommand('copy')
+          document.body.removeChild(ta)
+        }
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2500)
       } else {
-        setMsg({ text: data.error || '邀请失败', ok: false })
+        alert(data.error || '生成邀请链接失败')
       }
-    } catch { setMsg({ text: '网络错误', ok: false }) }
+    } catch { alert('网络错误') }
     finally { setLoading(false) }
   }
 
-  if (!showInput) return (
-    <button onClick={() => setShowInput(true)}
-      className="w-full py-2.5 rounded-xl border-2 border-dashed border-emerald-700/50 hover:border-emerald-500/70 text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-900/20 transition-all text-sm font-medium flex items-center justify-center gap-2">
-      <span>🤝</span><span>邀请协作伙伴</span>
-    </button>
-  )
+  if (compact) {
+    return (
+      <button onClick={handleCopyInviteLink} disabled={loading}
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 flex-shrink-0 ${
+          copied
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+            : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30'
+        } disabled:opacity-50`}>
+        <span>{copied ? '✓' : '🔗'}</span>
+        <span>{loading ? '...' : copied ? '已复制' : '邀请'}</span>
+      </button>
+    )
+  }
 
   return (
-    <div className="bg-slate-800/60 rounded-xl p-3 space-y-2 border border-slate-700/50">
-      <div className="flex items-center gap-1.5">
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleInvite()}
-          placeholder="输入对方邮箱"
-          className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-          autoFocus />
-        <button onClick={handleInvite} disabled={loading || !email.trim()}
-          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm rounded-lg disabled:opacity-50 transition-colors font-medium">
-          {loading ? '...' : '邀请'}
-        </button>
-        <button onClick={() => { setShowInput(false); setMsg(null) }}
-          className="px-2 py-2 text-slate-500 hover:text-slate-300 text-sm">✕</button>
-      </div>
-      {msg && <div className={`text-xs px-1 ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{msg.text}</div>}
-    </div>
+    <button onClick={handleCopyInviteLink} disabled={loading}
+      className={`w-full py-2.5 rounded-xl border-2 border-dashed transition-all text-sm font-medium flex items-center justify-center gap-2 ${
+        copied
+          ? 'border-emerald-500/70 text-emerald-300 bg-emerald-900/20'
+          : 'border-emerald-700/50 hover:border-emerald-500/70 text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-900/20'
+      } disabled:opacity-50`}>
+      <span>{copied ? '✓' : '🔗'}</span>
+      <span>{loading ? '生成中...' : copied ? '邀请链接已复制！' : '复制邀请链接'}</span>
+    </button>
   )
 }
 
@@ -172,7 +178,9 @@ function PartnerCard({ member }: { member: WorkspaceMember }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-200 text-sm truncate">{member.name || member.email}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">👤 人类</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full border ${member.agent && !member.agent.isMainAgent ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' : 'bg-purple-500/20 text-purple-300 border-purple-500/30'}`}>
+              {member.agent && !member.agent.isMainAgent ? '⚙️ 子Agent' : '👤 人类'}
+            </span>
           </div>
           <p className="text-xs text-slate-500 truncate">{member.email}</p>
           {member.joinedAt && (
@@ -191,7 +199,9 @@ function PartnerCard({ member }: { member: WorkspaceMember }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-medium text-slate-300 truncate">{stripEmoji(agent.name)}</span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">🤖 主Agent</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full border ${agent.isMainAgent ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'}`}>
+                  {agent.isMainAgent ? '🤖 主Agent' : '⚙️ 子Agent'}
+                </span>
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot[agent.status] || statusDot.offline}`} />
                 <span className="text-xs text-slate-500">{statusLabel[agent.status] || '离线'}</span>
               </div>
@@ -513,7 +523,8 @@ export default function WorkspacePage() {
   const c = teamData?.commander
   const mainAgent = teamData?.mainAgent
   const ts = teamData?.taskStats
-  const partners = (wsData?.members || []).filter(m => !m.isSelf)
+  // 过滤掉子Agent用户（它们已在左侧"子AGENT军团"显示），只保留真正的人类协作者
+  const partners = (wsData?.members || []).filter(m => !m.isSelf && !(m.agent && !m.agent.isMainAgent && m.agent.parentAgentId))
   const onlinePartnerAgents = partners.filter(p => p.agent && p.agent.status !== 'offline').length
   const displayName = nameValue || c?.name || c?.email || '用户'
   const initials = displayName.charAt(0).toUpperCase()
@@ -677,6 +688,7 @@ export default function WorkspacePage() {
                     {partners.length} 位伙伴 · {onlinePartnerAgents} 个 Agent 在线
                   </p>
                 </div>
+                <InvitePartnerInline compact />
               </div>
 
               <div className="p-4 space-y-3">

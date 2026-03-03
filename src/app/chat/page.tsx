@@ -4,12 +4,20 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
+interface ChatAttachment {
+  url: string
+  name: string
+  type: string
+  size?: number
+}
+
 interface Message {
   id: string
   content: string
   role: 'user' | 'agent'
   createdAt: string
   pending?: boolean
+  metadata?: string | Record<string, any> | null
 }
 
 interface AgentInfo {
@@ -35,8 +43,11 @@ export default function ChatPage() {
   const [stats, setStats] = useState<TaskStats>({ inProgress: 0, done: 0 })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const latestMsgIdRef = useRef<string | null>(null)
   const isFirstLoad = useRef(true)
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
+  const [uploading, setUploading] = useState(false)
 
   // B13: 新建任务状态
   const [showNewTask, setShowNewTask] = useState(false)
@@ -112,29 +123,59 @@ export default function ChatPage() {
     }
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    setUploading(true)
+    const newAttachments: ChatAttachment[] = []
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        if (!res.ok) throw new Error('上传失败')
+        const data = await res.json()
+        newAttachments.push({ url: data.url, name: data.filename || file.name, type: data.type || file.type, size: data.size || file.size })
+      } catch (err) {
+        console.error('文件上传失败:', err)
+      }
+    }
+    setAttachments(prev => [...prev, ...newAttachments])
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const sendMessage = async (text?: string) => {
     const content = text || input.trim()
-    if (!content || loading) return
+    const hasAttach = attachments.length > 0
+    if ((!content && !hasAttach) || loading) return
 
+    const currentAttachments = [...attachments]
+    setAttachments([])
     setInput('')
     setLoading(true)
+
+    const metadata = currentAttachments.length > 0 ? JSON.stringify({ attachments: currentAttachments }) : undefined
 
     const tempId = 'temp-' + Date.now()
     const userMsg: Message = {
       id: tempId,
-      content,
+      content: content || currentAttachments.map(a => a.name).join(', '),
       role: 'user',
       createdAt: new Date().toISOString(),
+      metadata,
     }
     setMessages(prev => [...prev, userMsg])
     setTyping(true)
+
+    const sendContent = content || currentAttachments.map(a => `[附件: ${a.name}](${a.url})`).join('\n')
 
     let pendingMode = false
     try {
       const res = await fetch('/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: sendContent, metadata }),
       })
 
       if (res.ok) {
@@ -326,31 +367,58 @@ export default function ChatPage() {
             </div>
           )}
 
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 ${msg.pending ? 'py-3' : 'py-2.5'} ${
-                msg.role === 'user'
-                  ? 'bg-orange-500 text-white rounded-br-md'
-                  : 'bg-white/10 text-white/90 rounded-bl-md'
-              }`}>
-                {msg.pending ? (
-                  /* typing 动画气泡：保持在对应问题下方，不会因刷新错位 */
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                    <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/60' : 'text-white/40'}`}>
-                      {new Date(msg.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+          {messages.map((msg) => {
+            // 解析附件
+            let msgAttachments: ChatAttachment[] = []
+            if (msg.metadata) {
+              try {
+                const meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+                msgAttachments = meta.attachments || []
+              } catch { /* ignore */ }
+            }
+            const hasText = msg.content.trim().length > 0
+
+            return (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-2xl ${msg.pending ? 'px-4 py-3' : msgAttachments.length > 0 ? '' : 'px-4 py-2.5'} ${
+                  msg.role === 'user'
+                    ? 'bg-orange-500 text-white rounded-br-md'
+                    : 'bg-white/10 text-white/90 rounded-bl-md'
+                } overflow-hidden`}>
+                  {msg.pending ? (
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      {/* 图片附件 */}
+                      {msgAttachments.filter(a => a.type?.startsWith('image/')).map((att, i) => (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="block">
+                          <img src={att.url} alt={att.name} className="max-w-full max-h-60 object-cover" loading="lazy" />
+                        </a>
+                      ))}
+                      {/* 非图片附件 */}
+                      {msgAttachments.filter(a => !a.type?.startsWith('image/')).map((att, i) => (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+                          className={`flex items-center gap-2 px-4 py-2 ${msg.role === 'user' ? 'text-white/90 hover:text-white' : 'text-blue-400 hover:text-blue-300'}`}>
+                          <span>📎</span>
+                          <span className="underline truncate">{att.name}</span>
+                        </a>
+                      ))}
+                      {hasText && (
+                        <p className={`text-sm whitespace-pre-wrap break-words ${msgAttachments.length > 0 ? 'px-4 pt-1' : ''}`}>{msg.content}</p>
+                      )}
+                      <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/60' : 'text-white/40'} ${msgAttachments.length > 0 ? 'px-4 pb-2' : ''}`}>
+                        {new Date(msg.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {/* 仅当没有 pending 消息时显示独立 typing 指示器（兼容 LLM fallback） */}
           {typing && !messages.some(m => m.pending) && (
@@ -450,8 +518,37 @@ export default function ChatPage() {
       {/* Input */}
       <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/95 mb-16 md:mb-0">
         <div className="max-w-2xl mx-auto px-4 py-3">
+          {/* 附件预览 */}
+          {attachments.length > 0 && (
+            <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+              {attachments.map((att, i) => (
+                <div key={i} className="relative flex-shrink-0 group">
+                  {att.type?.startsWith('image/') ? (
+                    <img src={att.url} alt={att.name} className="h-16 w-16 object-cover rounded-lg border border-white/20" />
+                  ) : (
+                    <div className="h-16 w-16 bg-white/10 rounded-lg border border-white/20 flex items-center justify-center text-xs text-white/60 p-1 text-center truncate">
+                      📎 {att.name}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-80 hover:opacity-100"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {uploading && (
+                <div className="h-16 w-16 bg-white/5 rounded-lg border border-dashed border-white/20 flex items-center justify-center flex-shrink-0">
+                  <span className="animate-spin text-sm">⏳</span>
+                </div>
+              )}
+            </div>
+          )}
+          {/* 隐藏文件input */}
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.doc,.docx,.txt,.md,.zip" multiple className="hidden" onChange={handleFileUpload} />
           <div className="flex items-end gap-2">
-            {/* B13: 新建任务按钮 + B14: 去成长按钮 */}
+            {/* B13: 新建任务按钮 + 上传 + 成长 */}
             <div className="flex flex-col gap-1 flex-shrink-0">
               <button
                 onClick={() => setShowNewTask(true)}
@@ -460,6 +557,14 @@ export default function ChatPage() {
                 className="w-10 h-10 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors text-base"
               >
                 📋
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                title="上传图片/文件"
+                className="w-10 h-10 bg-white/10 hover:bg-blue-500/20 disabled:opacity-30 text-white/70 hover:text-blue-400 rounded-full flex items-center justify-center transition-colors text-base"
+              >
+                📷
               </button>
               <button
                 onClick={() => {
@@ -496,7 +601,7 @@ export default function ChatPage() {
             </div>
             <button
               onClick={() => sendMessage()}
-              disabled={!input.trim() || loading || !agent}
+              disabled={(!input.trim() && attachments.length === 0) || loading || !agent}
               className="w-12 h-12 bg-orange-500 hover:bg-orange-400 disabled:bg-white/10 disabled:text-white/30 text-white rounded-full flex items-center justify-center transition-colors flex-shrink-0"
             >
               {loading ? <span className="animate-spin text-base">⏳</span> : <span className="text-lg">↑</span>}
