@@ -125,9 +125,11 @@ export async function POST(req: NextRequest) {
       steps,          // 🆕 Agent 可直接传入步骤数组，跳过 decompose 环节
     } = await req.json()
 
-    if (!title) {
+    const normalizedTitle = (title || '').trim() || (description || '').trim().replace(/\s+/g, ' ').slice(0, 28)
+
+    if (!normalizedTitle) {
       return NextResponse.json(
-        { error: '标题不能为空' },
+        { error: '请至少填写标题或任务描述' },
         { status: 400 }
       )
     }
@@ -162,7 +164,7 @@ export async function POST(req: NextRequest) {
 
     const task = await prisma.task.create({
       data: {
-        title,
+        title: normalizedTitle,
         description,
         status: status || 'todo',
         priority: priority || 'medium',

@@ -212,15 +212,16 @@ export default function ChatPage() {
 
   // B13: 在对话页快速新建任务
   const createTask = async () => {
-    if (!newTaskTitle.trim() || creatingTask) return
+    if (!newTaskDesc.trim() || creatingTask) return
     setCreatingTask(true)
     try {
+      const autoTitle = newTaskTitle.trim() || newTaskDesc.trim().replace(/\s+/g, ' ').slice(0, 28)
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: newTaskTitle.trim(),
-          description: newTaskDesc.trim() || null,
+          title: autoTitle,
+          description: newTaskDesc.trim(),
           mode: newTaskMode,
         })
       })
@@ -383,21 +384,21 @@ export default function ChatPage() {
             </div>
 
             <div className="px-5 py-4 space-y-3">
-              {/* 标题 */}
+              {/* 标题（可留空，自动从描述提取） */}
               <input
                 value={newTaskTitle}
                 onChange={e => setNewTaskTitle(e.target.value)}
-                placeholder="任务标题..."
-                autoFocus
+                placeholder="任务标题（可留空，自动生成）..."
                 className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); createTask() } }}
               />
-              {/* 描述 */}
+              {/* 描述（必填） */}
               <textarea
                 value={newTaskDesc}
                 onChange={e => setNewTaskDesc(e.target.value)}
-                placeholder="任务描述（可选）..."
+                placeholder="任务描述（必填），AI 将自动拆解步骤..."
                 rows={3}
+                autoFocus
                 className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               />
               {/* 模式选择 */}
@@ -436,7 +437,7 @@ export default function ChatPage() {
               </button>
               <button
                 onClick={createTask}
-                disabled={!newTaskTitle.trim() || creatingTask}
+                disabled={!newTaskDesc.trim() || creatingTask}
                 className="px-5 py-2 bg-orange-500 hover:bg-orange-400 disabled:bg-white/20 disabled:text-white/40 text-white text-sm font-medium rounded-xl transition-colors"
               >
                 {creatingTask ? '⏳ 创建中...' : '✅ 创建任务'}
