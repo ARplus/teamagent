@@ -187,7 +187,12 @@ function PartnerCard({ member }: { member: WorkspaceMember }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-medium text-slate-300 truncate">{stripEmoji(agent.name)}</span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">🤖 主Agent</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full border ${agent.isMainAgent
+                  ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                }`}>
+                  {agent.isMainAgent ? '🤖 主Agent' : '⚙️ 子Agent'}
+                </span>
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot[agent.status] || statusDot.offline}`} />
                 <span className="text-xs text-slate-500">{statusLabel[agent.status] || '离线'}</span>
               </div>
@@ -456,7 +461,16 @@ export default function WorkspacePage() {
   }, [session, status])
 
   useEffect(() => {
-    fetch('/api/agent/status').then(r => r.json()).then(d => setLiveStatus(d.status || 'online')).catch(() => {})
+    const refreshLiveStatus = () => {
+      fetch('/api/agent/status')
+        .then(r => r.json())
+        .then(d => setLiveStatus(d.status || 'online'))
+        .catch(() => {})
+    }
+
+    refreshLiveStatus()
+    const timer = setInterval(refreshLiveStatus, 10000)
+    return () => clearInterval(timer)
   }, [])
 
   // Auto-refresh on focus + polling
@@ -479,6 +493,7 @@ export default function WorkspacePage() {
         setTeamData(d)
         setNameValue(d.commander.name || '')
         setMission(d.commander.nickname || '')
+        if (d.mainAgent?.status) setLiveStatus(d.mainAgent.status)
       }
       if (wsRes.ok) {
         const d: WorkspaceData = await wsRes.json()

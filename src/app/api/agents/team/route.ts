@@ -64,53 +64,52 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // === 子 Agent们（工作区内所有成员，不含自己） ===
+    // === 子 Agent们（仅当前主 Agent 直属子 Agent） ===
     let subAgents: object[] = []
 
-    if (workspaceIds.length > 0) {
-      // 取工作区内所有成员（不含自己）
-      const teamMemberships = await prisma.workspaceMember.findMany({
+    if (currentUser.agent) {
+      const childAgents = await prisma.agent.findMany({
         where: {
-          workspaceId: { in: workspaceIds },
+          parentAgentId: currentUser.agent.id,
           userId: { not: currentUser.id }
         },
         include: {
-          user: { include: { agent: true } }
-        }
+          user: {
+            select: { id: true, name: true, email: true }
+          }
+        },
+        orderBy: { createdAt: 'asc' }
       })
 
-      const members = teamMemberships
-        .map(m => m.user)
-        .filter(u => u.agent !== null)
-
       subAgents = await Promise.all(
-        members.map(async (u) => {
-              const doneSteps = await prisma.taskStep.count({
-                where: { assigneeId: u.id, status: 'done' }
-              })
-              const pendingSteps = await prisma.taskStep.count({
-                where: {
-                  assigneeId: u.id,
-                  status: { in: ['pending', 'in_progress', 'waiting_approval'] }
-                }
-              })
-              return {
-                id: u.agent!.id,
-                name: u.agent!.name,
-                personality: u.agent!.personality,
-                avatar: u.agent!.avatar,
-                status: u.agent!.status,
-                capabilities: u.agent!.capabilities,
-                reputation: u.agent!.reputation,
-                claimedAt: u.agent!.claimedAt,
-                isMainAgent: false,
-                userId: u.id,
-                userName: u.name,
-                userEmail: u.email,
-                stats: { doneSteps, pendingSteps }
-              }
-            })
-        )
+        childAgents.map(async (a) => {
+          const doneSteps = await prisma.taskStep.count({
+            where: { assigneeId: a.userId, status: 'done' }
+          })
+          const pendingSteps = await prisma.taskStep.count({
+            where: {
+              assigneeId: a.userId,
+              status: { in: ['pending', 'in_progress', 'waiting_approval'] }
+            }
+          })
+
+          return {
+            id: a.id,
+            name: a.name,
+            personality: a.personality,
+            avatar: a.avatar,
+            status: a.status,
+            capabilities: a.capabilities,
+            reputation: a.reputation,
+            claimedAt: a.claimedAt,
+            isMainAgent: false,
+            userId: a.user.id,
+            userName: a.user.name,
+            userEmail: a.user.email,
+            stats: { doneSteps, pendingSteps }
+          }
+        })
+      )
     }
 
     // === 任务统计 ===
