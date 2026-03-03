@@ -255,80 +255,52 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 // ============ Invite Partner Button ============
 
 function InvitePartnerButton() {
-  const [showInput, setShowInput] = useState(false)
-  const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [copied, setCopied] = useState(false)
 
-  const handleInvite = async () => {
-    if (!email.trim()) return
+  const handleCopyInviteLink = async () => {
     setLoading(true)
-    setMsg(null)
     try {
-      const res = await fetch('/api/workspace/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
-      })
+      const res = await fetch('/api/workspace/invite', { method: 'POST' })
       const data = await res.json()
-      if (res.ok) {
-        setMsg({ text: data.message || '邀请成功！', ok: true })
-        setEmail('')
-        setTimeout(() => { setShowInput(false); setMsg(null) }, 2000)
+      if (res.ok && data.inviteUrl) {
+        try {
+          await navigator.clipboard.writeText(data.inviteUrl)
+        } catch {
+          const ta = document.createElement('textarea')
+          ta.value = data.inviteUrl
+          ta.style.position = 'fixed'
+          ta.style.opacity = '0'
+          document.body.appendChild(ta)
+          ta.select()
+          document.execCommand('copy')
+          document.body.removeChild(ta)
+        }
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2500)
       } else {
-        setMsg({ text: data.error || '邀请失败', ok: false })
+        alert(data.error || '生成邀请链接失败')
       }
     } catch {
-      setMsg({ text: '网络错误', ok: false })
+      alert('网络错误')
     } finally {
       setLoading(false)
     }
   }
 
-  if (!showInput) {
-    return (
-      <button
-        onClick={() => setShowInput(true)}
-        className="w-full py-2 rounded-xl text-xs text-slate-500 hover:text-emerald-300 hover:bg-slate-800/40 flex items-center justify-center space-x-1.5 transition-colors"
-      >
-        <span>🤝</span>
-        <span>邀请协作伙伴</span>
-      </button>
-    )
-  }
-
   return (
-    <div className="w-full bg-slate-800/60 rounded-xl p-2.5 space-y-2 border border-slate-700/50">
-      <div className="flex items-center space-x-1.5">
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleInvite()}
-          placeholder="输入邮箱地址"
-          className="flex-1 px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-          autoFocus
-        />
-        <button
-          onClick={handleInvite}
-          disabled={loading || !email.trim()}
-          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded-lg disabled:opacity-50 transition-colors"
-        >
-          {loading ? '...' : '邀请'}
-        </button>
-        <button
-          onClick={() => { setShowInput(false); setMsg(null) }}
-          className="px-1.5 py-1.5 text-slate-500 hover:text-slate-300 text-xs"
-        >
-          ✕
-        </button>
-      </div>
-      {msg && (
-        <div className={`text-xs px-1 ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {msg.text}
-        </div>
-      )}
-    </div>
+    <button
+      onClick={handleCopyInviteLink}
+      disabled={loading}
+      className={`w-full py-2 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition-colors ${
+        copied
+          ? 'text-emerald-300 bg-emerald-900/30'
+          : 'text-slate-500 hover:text-emerald-300 hover:bg-slate-800/40'
+      } disabled:opacity-50`}
+    >
+      <span>{copied ? '✓' : '🔗'}</span>
+      <span>{loading ? '生成中...' : copied ? '邀请链接已复制！' : '复制邀请链接'}</span>
+    </button>
   )
 }
 
@@ -4083,10 +4055,10 @@ export default function HomePage() {
     setPendingMsgId(null)
   }, [loadChatHistory])
 
-  const handleChatSend = useCallback(async () => {
-    if (!chatInput.trim() || chatLoading) return
-    const content = chatInput.trim()
-    setChatInput('')
+  const handleChatSend = useCallback(async (overrideMsg?: string) => {
+    const content = (overrideMsg || chatInput).trim()
+    if (!content || chatLoading) return
+    if (!overrideMsg) setChatInput('')
     setChatLoading(true)
 
     // 乐观更新：先加用户消息
@@ -4366,6 +4338,35 @@ export default function HomePage() {
             {/* 输入框 — 常驻 */}
             <div className="px-4 pb-3 pt-2 border-t border-slate-700/50 bg-slate-900/80 flex-shrink-0">
               <div className="flex items-center space-x-2">
+                {/* B13/B14 移动端: 新建任务 + 成长 */}
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    disabled={!myAgent}
+                    title="快速新建任务"
+                    className="w-9 h-9 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors text-sm"
+                  >
+                    📋
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!myAgent || chatLoading) return
+                      handleChatSend(`请帮我分析一下你当前的能力状态，然后推荐 3-5 个对你最有价值的新技能。具体步骤：
+1. 列出你当前已掌握的技能（已安装的 skills）
+2. 搜索 ClawHub 上可用的新技能（clawhub search）
+3. 根据我们的工作需求，推荐最有价值的技能，说明理由
+4. 我确认后帮我自动安装（clawhub install）
+5. 学习技能文档，总结新获得的能力
+
+请开始吧！🌱`)
+                    }}
+                    disabled={!myAgent || chatLoading}
+                    title="Agent 自主学习新技能"
+                    className="w-9 h-9 bg-white/10 hover:bg-emerald-500/20 disabled:opacity-30 text-white/70 hover:text-emerald-400 rounded-full flex items-center justify-center transition-colors text-sm"
+                  >
+                    🌱
+                  </button>
+                </div>
                 <input
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
@@ -4374,7 +4375,7 @@ export default function HomePage() {
                   className="flex-1 bg-slate-800 text-white rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 border border-slate-700/50"
                 />
                 <button
-                  onClick={handleChatSend}
+                  onClick={() => handleChatSend()}
                   disabled={!chatInput.trim() || chatLoading}
                   className="w-11 h-11 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 flex items-center justify-center disabled:opacity-40 transition-all active:scale-95 shadow-lg shadow-orange-500/30 flex-shrink-0"
                 >
