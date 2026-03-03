@@ -138,7 +138,7 @@ export default function AdminPage() {
     if (status === 'unauthenticated') { router.push('/login'); return }
     if (status === 'authenticated') {
       if (!ADMIN_EMAILS.includes(session.user?.email || '')) {
-        router.push('/')
+        router.push('/workspace')
         return
       }
       loadAll()
@@ -198,7 +198,7 @@ export default function AdminPage() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/')} className="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
+            <button onClick={() => router.push('/workspace')} className="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
             <div className="w-px h-4 bg-gray-200" />
             <span className="text-lg font-bold text-gray-900">⚙️ 系统管理</span>
             <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
