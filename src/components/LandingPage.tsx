@@ -519,7 +519,7 @@ export default function LandingPage() {
             </Link>
             <Link href="/build-agent"
               className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105">
-              免费开始
+              📖 安装指南
             </Link>
           </div>
         </div>
@@ -560,7 +560,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
             <Link href="/register"
               className="glow w-full sm:w-auto bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105">
-              🚀 开始协作
+              🚀 注册账号
             </Link>
             <Link href="/login"
               className="w-full sm:w-auto border border-slate-700 hover:border-orange-500/50 text-slate-300 hover:text-white font-semibold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:bg-orange-500/5">
