@@ -38,9 +38,8 @@ export default function SettingsPage() {
   // 团队成员
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [members, setMembers] = useState<Member[]>([])
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviting, setInviting] = useState(false)
-  const [inviteMsg, setInviteMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
+  const [inviteLoading, setInviteLoading] = useState(false)
 
   // F06: 通知偏好
   const [dndEnabled, setDndEnabled] = useState(false)
@@ -129,29 +128,29 @@ export default function SettingsPage() {
     }
   }
 
-  const inviteMember = async () => {
-    if (!inviteEmail.trim() || !workspaceId) return
-    setInviting(true)
-    setInviteMsg(null)
+  const handleCopyInviteLink = async () => {
+    setInviteLoading(true)
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim() })
-      })
+      const res = await fetch('/api/workspace/invite', { method: 'POST' })
       const data = await res.json()
-      if (res.ok) {
-        setInviteMsg({ type: 'ok', text: data.message })
-        setInviteEmail('')
-        fetchMembers(workspaceId)
-      } else {
-        setInviteMsg({ type: 'err', text: data.error })
+      if (res.ok && data.inviteUrl) {
+        const url = data.inviteUrl
+        const fallback = (text: string) => {
+          const el = document.createElement('textarea')
+          el.value = text; el.style.position = 'fixed'; el.style.opacity = '0'
+          document.body.appendChild(el); el.focus(); el.select()
+          document.execCommand('copy'); document.body.removeChild(el)
+        }
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(url).catch(() => fallback(url))
+        } else {
+          fallback(url)
+        }
+        setInviteCopied(true)
+        setTimeout(() => setInviteCopied(false), 2500)
       }
-    } catch (e) {
-      setInviteMsg({ type: 'err', text: '邀请失败，请重试' })
-    } finally {
-      setInviting(false)
-    }
+    } catch { /* ignore */ }
+    finally { setInviteLoading(false) }
   }
 
   const removeMember = async (userId: string) => {
@@ -263,35 +262,22 @@ export default function SettingsPage() {
             邀请协作者加入你的工作区，任务拆解时可以分配给他们。
           </p>
 
-          {/* 邀请框 */}
-          <div className="flex items-center space-x-3 mb-4">
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && inviteMember()}
-              placeholder="输入协作者邮箱..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
-            />
+          {/* 邀请链接按钮 */}
+          <div className="mb-4">
             <button
-              onClick={inviteMember}
-              disabled={inviting || !inviteEmail.trim()}
-              className="px-5 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm"
+              onClick={handleCopyInviteLink}
+              disabled={inviteLoading}
+              className={`px-5 py-2.5 rounded-lg transition text-sm font-medium flex items-center gap-2 ${
+                inviteCopied
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
+              } disabled:opacity-50`}
             >
-              {inviting ? '邀请中...' : '邀请'}
+              <span>{inviteCopied ? '✓' : '🔗'}</span>
+              <span>{inviteLoading ? '生成中...' : inviteCopied ? '邀请链接已复制！' : '复制邀请链接'}</span>
             </button>
+            <p className="text-xs text-gray-400 mt-2">生成 7 天有效的邀请链接，发给协作伙伴即可加入你的工作区</p>
           </div>
-
-          {/* 邀请反馈 */}
-          {inviteMsg && (
-            <div className={`text-sm px-4 py-2 rounded-lg mb-4 ${
-              inviteMsg.type === 'ok'
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-700 border border-red-200'
-            }`}>
-              {inviteMsg.text}
-            </div>
-          )}
 
           {/* 成员列表 */}
           <div className="space-y-3">
@@ -527,19 +513,23 @@ export default function SettingsPage() {
 
         {/* 使用说明 */}
         <div className="bg-gray-50 rounded-2xl p-6">
-          <h3 className="font-semibold text-gray-800 mb-3">📖 如何使用</h3>
-          <ol className="text-sm text-gray-600 space-y-2">
+          <h3 className="font-semibold text-gray-800 mb-3">📖 如何使用 API Token</h3>
+          <ol className="text-sm text-gray-600 space-y-3">
             <li>1. 点击上方「创建 Token」生成一个 API Token</li>
-            <li>2. 复制 Token 到你的本地 Agent 配置中</li>
-            <li>3. 在 Clawdbot 中运行：</li>
-            <code className="block bg-white px-4 py-2 rounded mt-1 text-xs">
-              node teamagent-client.js set-token ta_xxx...
+            <li>2. 复制 Token（创建后只显示一次！）</li>
+            <li>3. 在 Claude Code 中安装 TeamAgent Skill：</li>
+            <code className="block bg-white px-4 py-2 rounded mt-1 text-xs font-mono">
+              openclaw skill install teamagent
             </code>
-            <li className="mt-2">4. 测试连接：</li>
-            <code className="block bg-white px-4 py-2 rounded mt-1 text-xs">
-              node teamagent-client.js test
+            <li className="mt-2">4. 运行注册命令，按提示粘贴 Token：</li>
+            <code className="block bg-white px-4 py-2 rounded mt-1 text-xs font-mono">
+              /ta-register
             </code>
+            <li className="mt-2">5. 在 TeamAgent 网页输入 6 位配对码完成绑定</li>
           </ol>
+          <p className="text-xs text-gray-400 mt-4">
+            Token 用于 Agent 连接 TeamAgent 服务。如果 Token 泄露，请立即删除并重新创建。
+          </p>
         </div>
       </main>
     </>

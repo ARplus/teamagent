@@ -129,6 +129,8 @@ export default function MacOSInstallGuidePage() {
                 '配置处理',
                 '选择重置范围',
                 '打开 Web UI 开始使用',
+                'openclaw skill install teamagent（安装协作技能包）',
+                '在 OpenClaw 运行 /ta-register → 输入配对码 → 完成！',
               ].map((step, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <span className="bg-orange-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
@@ -460,6 +462,50 @@ source ~/.zshrc`}</CodeBlock>
               <p className="text-orange-100 text-sm">
                 你的 OpenClaw 已经配置好了。现在可以在 Web UI 中和你的 Agent 对话，让它帮你完成各种任务！
               </p>
+            </div>
+          </section>
+
+          {/* Step 14: 安装 TeamAgent Skill */}
+          <section>
+            <h2 className="text-xl font-semibold text-orange-700 mb-3 flex items-center gap-2">
+              <StepNumber n={14} />
+              安装 TeamAgent Skill
+            </h2>
+            <p className="text-sm text-slate-600 mb-3">
+              在 OpenClaw 对话框中运行以下命令，让 Agent 获得 TeamAgent 协作能力：
+            </p>
+            <pre className="bg-slate-900 text-green-300 rounded-xl p-4 text-sm overflow-x-auto"><code>openclaw skill install teamagent</code></pre>
+            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-slate-700">
+              <p className="font-semibold text-blue-800 mb-2">安装完成后，Agent 拥有以下新能力：</p>
+              <ul className="space-y-1">
+                <li className="flex items-center gap-2"><span className="text-emerald-500">✓</span> 自主注册到 TeamAgent，生成配对码</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-500">✓</span> 领取、执行并提交任务步骤</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-500">✓</span> 实时监听任务推送（SSE 长连接）</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-500">✓</span> 主 Agent 自动拆解任务，分配给团队</li>
+              </ul>
+            </div>
+            <div className="mt-3 border border-slate-200 rounded-xl p-4">
+              <p className="font-semibold text-slate-800 mb-2">💡 其他安装方式</p>
+              <ul className="space-y-2 text-sm text-slate-600">
+                <li><strong>ClawHub 搜索：</strong>在 OpenClaw 控制界面 → Skills → 搜索 &quot;teamagent&quot; → 一键安装</li>
+                <li><strong>手动安装：</strong>从 GitHub 下载 <code className="bg-slate-200 px-1 rounded">teamagent-client-skill.zip</code>，解压到 <code className="bg-slate-200 px-1 rounded">~/.openclaw/skills/</code> 目录</li>
+              </ul>
+            </div>
+          </section>
+
+          {/* Step 15: 注册并配对 */}
+          <section>
+            <h2 className="text-xl font-semibold text-orange-700 mb-3 flex items-center gap-2">
+              <StepNumber n={15} />
+              注册并配对到 TeamAgent
+            </h2>
+            <p className="text-sm text-slate-600 mb-3">
+              在 OpenClaw 对话框中运行注册命令：
+            </p>
+            <pre className="bg-slate-900 text-green-300 rounded-xl p-4 text-sm overflow-x-auto"><code>/ta-register</code></pre>
+            <p className="text-sm text-slate-600 mt-3 mb-2">Agent 会生成一个 <strong>6 位配对码</strong>，回到 TeamAgent 网站输入即可完成配对。</p>
+            <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
+              ✅ 配对成功后，你就可以在手机/电脑上给 Agent 派活了！
             </div>
           </section>
 

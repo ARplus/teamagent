@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import crypto from 'crypto'
 
 // POST /api/workspace/invite — 邀请协作伙伴加入我的工作区
-// 仅 owner 可邀请，避免协作关系被意外扩散
+// 两种模式：
+//   1. 带 email: 直接通过邮箱添加到工作区（需用户已注册）
+//   2. 不带 email: 生成邀请链接（任何人可通过链接加入）
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
@@ -19,38 +22,73 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 })
     }
 
-    const { email } = await req.json()
-    if (!email || typeof email !== 'string') {
-      return NextResponse.json({ error: '请提供邮箱地址' }, { status: 400 })
-    }
-
-    const trimmedEmail = email.trim().toLowerCase()
-
-    // 不能邀请自己
-    if (trimmedEmail === currentUser.email) {
-      return NextResponse.json({ error: '不能邀请自己哦 😄' }, { status: 400 })
-    }
-
-    // 只允许 owner 邀请，避免成员误拉人
-    const membership = await prisma.workspaceMember.findFirst({
+    // 找到当前用户的主工作区（owner 优先，否则任意所在工作区）
+    let membership = await prisma.workspaceMember.findFirst({
       where: { userId: currentUser.id, role: 'owner' },
       orderBy: { joinedAt: 'asc' }
     })
-
     if (!membership) {
-      return NextResponse.json({ error: '只有工作区创建者可以邀请协作伙伴' }, { status: 403 })
+      membership = await prisma.workspaceMember.findFirst({
+        where: { userId: currentUser.id },
+        orderBy: { joinedAt: 'asc' }
+      })
+    }
+    if (!membership) {
+      return NextResponse.json({ error: '你还没有工作区' }, { status: 404 })
     }
 
     const workspaceId = membership.workspaceId
 
+    // 尝试解析 body（可能为空）
+    let body: { email?: string } = {}
+    try {
+      body = await req.json()
+    } catch {
+      // body 为空或无效 JSON → 生成邀请链接模式
+    }
+
+    const email = body.email?.trim().toLowerCase()
+
+    // ========== 模式 2: 生成邀请链接（无 email）==========
+    if (!email) {
+      const token = crypto.randomBytes(24).toString('base64url')
+
+      const invite = await prisma.inviteToken.create({
+        data: {
+          token,
+          inviterId: currentUser.id,
+          workspaceId,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7天有效
+        }
+      })
+
+      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      const inviteUrl = `${baseUrl}/join/${token}`
+
+      console.log('[invite] workspace link generated:', inviteUrl)
+
+      return NextResponse.json({
+        inviteUrl,
+        token,
+        expiresAt: invite.expiresAt
+      })
+    }
+
+    // ========== 模式 1: 直接通过邮箱添加 ==========
+
+    // 不能邀请自己
+    if (email === currentUser.email) {
+      return NextResponse.json({ error: '不能邀请自己哦 😄' }, { status: 400 })
+    }
+
     // 查找被邀请的用户
     const invitee = await prisma.user.findUnique({
-      where: { email: trimmedEmail },
+      where: { email },
       include: { agent: { select: { id: true, name: true } } }
     })
     if (!invitee) {
       return NextResponse.json({
-        error: `用户 ${trimmedEmail} 尚未注册 TeamAgent，请让 TA 先注册账号`
+        error: `用户 ${email} 尚未注册 TeamAgent，请让 TA 先注册账号`
       }, { status: 404 })
     }
 
@@ -60,7 +98,7 @@ export async function POST(req: NextRequest) {
     })
     if (existing) {
       return NextResponse.json({
-        error: `${invitee.name || trimmedEmail} 已经是你的协作伙伴了`,
+        error: `${invitee.name || email} 已经是你的协作伙伴了`,
         alreadyMember: true
       }, { status: 400 })
     }
@@ -70,9 +108,7 @@ export async function POST(req: NextRequest) {
       data: {
         workspaceId,
         userId: invitee.id,
-        role: 'member',
-        memberSource: 'invite',
-        addedByUserId: currentUser.id,
+        role: 'member'
       },
       include: {
         user: {
@@ -88,7 +124,7 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({
-      message: `🤝 已邀请 ${invitee.name || trimmedEmail} 成为协作伙伴！`,
+      message: `🤝 已邀请 ${invitee.name || email} 成为协作伙伴！`,
       member: {
         id: newMember.user.id,
         name: newMember.user.name,

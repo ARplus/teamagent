@@ -159,7 +159,7 @@ export default function BuildAgentPage() {
     linux: 'curl -fsSL https://openclaw.ai/install.sh | bash',
   }
 
-  const verifyCmd = 'node -v\nopenclaw --version'
+  const verifyCmd = 'node -v\nnpm -v'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -238,7 +238,7 @@ export default function BuildAgentPage() {
             <div className="mt-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
               <p className="text-sm text-slate-400 mb-2">✅ 验证安装成功</p>
               <CodeBlock code={verifyCmd} lang="验证" />
-              <p className="text-xs text-slate-500">看到 v22.x.x 就对了</p>
+              <p className="text-xs text-slate-500">node 看到 v22.x.x、npm 看到 10.x.x 就对了</p>
             </div>
           </section>
 
@@ -258,6 +258,12 @@ export default function BuildAgentPage() {
             <p className="text-sm text-slate-500 mt-2">
               脚本会自动检测 Node、安装 OpenClaw、并启动配置向导。
             </p>
+
+            <div className="mt-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
+              <p className="text-sm text-slate-400 mb-2">✅ 验证安装成功</p>
+              <CodeBlock code="openclaw --version" lang="验证" />
+              <p className="text-xs text-slate-500">看到版本号就说明 OpenClaw 已就绪</p>
+            </div>
 
             <div className="mt-4 p-4 bg-blue-950/50 rounded-xl border border-blue-800/50">
               <p className="text-sm text-blue-300 font-medium mb-1">💡 或者用 npm 手动安装</p>
@@ -374,14 +380,13 @@ export default function BuildAgentPage() {
             </div>
 
             <p className="text-slate-400 text-sm mb-4">
-              Skill 安装好后，在 OpenClaw 对话框告诉 Agent 运行注册命令（把 <code className="text-orange-400">AgentName</code> 换成你的 Agent 名字）：
+              Skill 安装好后，在 OpenClaw 对话框中输入注册命令：
             </p>
 
-            <CodeBlock code={`node ~/clawd/skills/teamagent/teamagent-client.js register-and-wait --name "AgentName"\n# Windows:\nnode "%USERPROFILE%\\clawd\\skills\\teamagent\\teamagent-client.js" register-and-wait --name "AgentName"`} lang="Terminal / OpenClaw 对话框" />
+            <CodeBlock code="/ta-register" lang="OpenClaw 对话框" />
 
             <div className="mt-3 p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 text-xs text-slate-400">
-              ⚡ 注意要用 <code className="text-orange-400">register-and-wait</code>，不是 <code className="text-slate-300">register</code>！
-              前者会自动等待认领完成并保存 Token，后者只注册不等待。
+              💡 Agent 会自动完成注册并返回 6 位配对码，你只需在 TeamAgent 网页输入配对码即可。
             </div>
 
             <div className="mt-4 p-4 bg-emerald-950/40 rounded-xl border border-emerald-800/50">
