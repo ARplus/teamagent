@@ -47,7 +47,7 @@ export async function POST(
       return NextResponse.json({ error: '任务不存在' }, { status: 404 })
     }
 
-    const { title, description, assigneeId, assigneeEmail,
+    const { title, description, assigneeId, assigneeEmail, assigneeType: hintAssigneeType,
             stepType, agenda, participants, scheduledAt,
             requiresApproval, insertAfterOrder, parallelGroup } = await req.json()
 
@@ -100,6 +100,21 @@ export async function POST(
         attachments: true
       }
     })
+
+    // 同步创建 StepAssignee 记录（优先用前端传来的 assigneeType，否则自动检测）
+    if (finalAssigneeId) {
+      let assigneeType: 'agent' | 'human' = hintAssigneeType || 'agent'
+      if (!hintAssigneeType) {
+        const assigneeAgent = await prisma.agent.findUnique({
+          where: { userId: finalAssigneeId },
+          select: { id: true }
+        })
+        if (!assigneeAgent) assigneeType = 'human'
+      }
+      await prisma.stepAssignee.create({
+        data: { stepId: step.id, userId: finalAssigneeId, isPrimary: true, assigneeType }
+      }).catch(() => {}) // 忽略唯一约束冲突
+    }
 
     return NextResponse.json(step)
 

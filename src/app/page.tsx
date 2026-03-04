@@ -61,6 +61,7 @@ interface TaskStep {
   agentStatus: string | null
   result: string | null
   summary: string | null
+  assigneeId?: string  // 直接字段（fallback 用）
   assignee?: {
     id: string
     name: string | null
@@ -677,6 +678,12 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
   const [showHistory, setShowHistory] = useState(false)
   const [editHistory, setEditHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  // 文件刷新计数器（步骤文件上传后触发任务文件列表刷新）
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0)
+  const handleRefreshWithFiles = useCallback(() => {
+    setFilesRefreshKey(k => k + 1)
+    onRefresh()
+  }, [onRefresh])
 
   const isCreator = currentUserId === task.creator?.id
   const taskStarted = ['in_progress', 'review', 'done'].includes(task.status)
@@ -1100,13 +1107,13 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
           <div className="w-full lg:w-64 lg:flex-shrink-0 space-y-4">
             <TeamCard task={task} onRefresh={onRefresh} currentUserId={currentUserId} />
             <StatsCard task={task} />
-            <TaskFilesCard taskId={task.id} />
+            <TaskFilesCard taskId={task.id} refreshKey={filesRefreshKey} />
             <SummaryCard task={task} onRefresh={onRefresh} />
           </div>
 
           {/* Right: Workflow */}
           <div className="flex-1 min-w-0">
-            <WorkflowPanel task={task} onRefresh={onRefresh} canApprove={canApprove} currentUserId={currentUserId} />
+            <WorkflowPanel task={task} onRefresh={handleRefreshWithFiles} canApprove={canApprove} currentUserId={currentUserId} />
           </div>
         </div>
       </div>
@@ -1449,7 +1456,7 @@ function fmtShortTime(iso: string) {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function TaskFilesCard({ taskId }: { taskId: string }) {
+function TaskFilesCard({ taskId, refreshKey }: { taskId: string; refreshKey?: number }) {
   const [items, setItems] = useState<TaskFile[]>([])
   const [totalSize, setTotalSize] = useState(0)
   const [uploading, setUploading] = useState(false)
@@ -1464,7 +1471,7 @@ function TaskFilesCard({ taskId }: { taskId: string }) {
     }
   }, [taskId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length) return
@@ -1770,6 +1777,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
           scheduledAt: newStepScheduledAt || undefined,
           requiresApproval: newStepRequiresApproval,
           assigneeId: newStepAssigneeId?.startsWith('human:') ? newStepAssigneeId.slice(6) : (newStepAssigneeId || undefined),
+          assigneeType: newStepAssigneeId?.startsWith('human:') ? 'human' : undefined,
           insertAfterOrder: insertAfterOrder ?? undefined,
         })
       })
@@ -2251,6 +2259,12 @@ function StepCard({
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
   const hasAgent = !!step.assignee?.agent
+  // 自动展开：当前用户被分配到此步骤且步骤处于可操作状态
+  const isMyActiveStep = currentUserId && (step.status === 'in_progress' || step.status === 'pending') &&
+    (step.assignee?.id === currentUserId || step.assigneeId === currentUserId || (step.assignees || []).some(a => a.userId === currentUserId))
+  useEffect(() => {
+    if (isMyActiveStep && !expanded) setExpanded(true)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // B08: 多人指派显示 — 根据 assigneeType 区分真人/Agent
   const multiAssignees = step.assignees || []
   const hasMultiAssignees = multiAssignees.length > 1
@@ -2454,8 +2468,8 @@ function StepCard({
           alert(`上传失败：${data.error || '未知错误'}`)
         }
       }
-      // 刷新步骤文件列表
-      setStepFilesLoaded(false)
+      // 刷新步骤文件列表 + 任务详情（含任务级文件列表）
+      loadStepFiles()
       onRefresh?.()
     } finally {
       setStepUploading(false)
@@ -2607,9 +2621,10 @@ function StepCard({
     }
   }
 
-  // B08: 扩展 isStepAssignee 包含多人指派
+  // B08: 扩展 isStepAssignee 包含多人指派 + assigneeId 直接字段 fallback
   const isStepAssignee = currentUserId && (
     step.assignee?.id === currentUserId ||
+    step.assigneeId === currentUserId ||
     multiAssignees.some(a => a.userId === currentUserId)
   )
   const isRejected = step.status === 'pending' && step.rejectedAt

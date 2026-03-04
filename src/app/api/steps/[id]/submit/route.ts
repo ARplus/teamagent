@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
@@ -6,6 +8,21 @@ import { processWorkflowAfterSubmit } from '@/lib/workflow-engine'
 import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
 import { generateSummary } from '@/lib/ai-summary'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
+
+// 统一认证：支持 Token 或 Session
+async function authenticate(req: NextRequest) {
+  // 先尝试 API Token
+  const tokenAuth = await authenticateRequest(req)
+  if (tokenAuth) return { userId: tokenAuth.user.id, user: tokenAuth.user }
+
+  // 尝试 Session（人类用户浏览器访问）
+  const session = await getServerSession(authOptions)
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+    if (user) return { userId: user.id, user }
+  }
+  return null
+}
 
 /**
  * POST /api/steps/[id]/submit
@@ -42,8 +59,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const tokenAuth = await authenticateRequest(req)
-    if (!tokenAuth) return NextResponse.json({ error: '需要 API Token' }, { status: 401 })
+    const auth = await authenticate(req)
+    if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
     const { result, summary, attachments } = await req.json()
 
@@ -60,14 +77,18 @@ export async function POST(
     })
 
     if (!step) return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
-    // B08: 权限检查 — assigneeId 或 StepAssignee 表中有记录
+    // B08: 权限检查 — assigneeId 或 StepAssignee 表中有记录 或 任务创建者
     const stepAssigneeRecord = await prisma.stepAssignee.findUnique({
-      where: { stepId_userId: { stepId: id, userId: tokenAuth.user.id } }
+      where: { stepId_userId: { stepId: id, userId: auth.userId } }
     }).catch(() => null)
-    if (step.assigneeId !== tokenAuth.user.id && !stepAssigneeRecord) {
+    const isTaskCreator = step.task.creatorId === auth.userId
+    if (step.assigneeId !== auth.userId && !stepAssigneeRecord && !isTaskCreator) {
       return NextResponse.json({ error: '你不是此步骤的负责人' }, { status: 403 })
     }
-    if (step.status !== 'in_progress') return NextResponse.json({ error: '步骤未在进行中' }, { status: 400 })
+    // 允许 pending 和 in_progress 状态提交（人类步骤可能停留在 pending）
+    if (step.status !== 'in_progress' && step.status !== 'pending') {
+      return NextResponse.json({ error: '步骤不在可提交状态' }, { status: 400 })
+    }
 
     const now = new Date()
 
@@ -161,8 +182,8 @@ export async function POST(
       })
 
       // 更新 Agent 状态
-      const agent = await prisma.agent.findUnique({ where: { userId: tokenAuth.user.id } })
-      if (agent) await prisma.agent.update({ where: { userId: tokenAuth.user.id }, data: { status: 'online' } })
+      const agent = await prisma.agent.findUnique({ where: { userId: auth.userId } })
+      if (agent) await prisma.agent.update({ where: { userId: auth.userId }, data: { status: 'online' } })
 
       // 通知所有被分配的 Agent（第一个 pending 步骤可以开始了）
       if (involvedUserIds.size > 0) {
@@ -229,7 +250,7 @@ export async function POST(
       } else {
         // "all" 模式：检查是否所有人都已提交
         const allSubmitted = allAssignees.every(a =>
-          a.status === 'submitted' || a.userId === tokenAuth.user.id
+          a.status === 'submitted' || a.userId === auth.userId
         )
         isStepComplete = allSubmitted
       }
@@ -240,7 +261,7 @@ export async function POST(
       const sub = await prisma.stepSubmission.create({
         data: {
           stepId: id,
-          submitterId: tokenAuth.user.id,
+          submitterId: auth.userId,
           result: resultText,
           summary: finalSummary || null,
           durationMs: agentDurationMs
@@ -250,11 +271,11 @@ export async function POST(
         await prisma.attachment.createMany({
           data: attachments.map((att: { name: string; url: string; type?: string }) => ({
             name: att.name, url: att.url, type: att.type || 'file',
-            submissionId: sub.id, uploaderId: tokenAuth.user.id
+            submissionId: sub.id, uploaderId: auth.userId
           }))
         })
       }
-      const done = allAssignees.filter(a => a.status === 'submitted' || a.userId === tokenAuth.user.id).length
+      const done = allAssignees.filter(a => a.status === 'submitted' || a.userId === auth.userId).length
       console.log(`[Submit] 多人步骤 ${id} 部分提交: ${done}/${allAssignees.length}`)
       return NextResponse.json({
         message: `已提交你的部分（${done}/${allAssignees.length}），等待其他成员完成`,
@@ -267,7 +288,7 @@ export async function POST(
       const sub = await tx.stepSubmission.create({
         data: {
           stepId: id,
-          submitterId: tokenAuth.user.id,
+          submitterId: auth.userId,
           result: resultText,
           summary: finalSummary || null,
           durationMs: agentDurationMs
@@ -306,7 +327,7 @@ export async function POST(
             url: att.url,
             type: att.type || 'file',
             submissionId: sub.id,
-            uploaderId: tokenAuth.user.id
+            uploaderId: auth.userId
           }))
         })
       }
@@ -315,8 +336,8 @@ export async function POST(
     })
 
     // 更新 Agent 状态
-    const agent = await prisma.agent.findUnique({ where: { userId: tokenAuth.user.id } })
-    if (agent) await prisma.agent.update({ where: { userId: tokenAuth.user.id }, data: { status: 'online' } })
+    const agent = await prisma.agent.findUnique({ where: { userId: auth.userId } })
+    if (agent) await prisma.agent.update({ where: { userId: auth.userId }, data: { status: 'online' } })
 
     const autoApproved = step.requiresApproval === false
 
@@ -327,7 +348,7 @@ export async function POST(
         stepId: id,
         title: step.title
       })
-      const submitterName = tokenAuth.user.name || tokenAuth.user.email
+      const submitterName = (auth.user as any).name || (auth.user as any).email
       const template = notificationTemplates.stepWaiting(step.title, step.task.title, submitterName)
       await createNotification({
         userId: step.task.creatorId,
@@ -337,7 +358,7 @@ export async function POST(
       })
     }
 
-    sendToUser(tokenAuth.user.id, {
+    sendToUser(auth.userId, {
       type: 'step:completed',
       taskId: step.task.id,
       stepId: id,
