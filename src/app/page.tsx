@@ -2259,14 +2259,24 @@ function StepCard({
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
   const hasAgent = !!step.assignee?.agent
-  // 自动展开：当前用户被分配到此步骤且步骤处于可操作状态
-  const isMyActiveStep = currentUserId && (step.status === 'in_progress' || step.status === 'pending') &&
-    (step.assignee?.id === currentUserId || step.assigneeId === currentUserId || (step.assignees || []).some(a => a.userId === currentUserId))
+  // B08: 多人指派（提前计算供后续使用）
+  const multiAssignees = step.assignees || []
+  // 当前用户在此步骤中的指派记录
+  const myAssigneeRecord = multiAssignees.find(a => a.userId === currentUserId)
+  // 🆕 能否在浏览器中提交？Agent 步骤由 Agent 通过 API 提交，人类步骤才在浏览器提交
+  const canSubmitInBrowser = (() => {
+    if (!currentUserId) return false
+    // 有 StepAssignee 记录 → 看 assigneeType
+    if (myAssigneeRecord) return myAssigneeRecord.assigneeType === 'human'
+    // 无 StepAssignee 记录（旧数据兼容）→ 直接 assignee + 无 Agent = 人类
+    const isDirectAssignee = step.assignee?.id === currentUserId || step.assigneeId === currentUserId
+    return isDirectAssignee && !hasAgent
+  })()
+  // 自动展开：当前用户是人类指派者且步骤处于可操作状态
+  const isMyActiveStep = canSubmitInBrowser && (step.status === 'in_progress' || step.status === 'pending')
   useEffect(() => {
     if (isMyActiveStep && !expanded) setExpanded(true)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  // B08: 多人指派显示 — 根据 assigneeType 区分真人/Agent
-  const multiAssignees = step.assignees || []
   const hasMultiAssignees = multiAssignees.length > 1
   const primaryAssigneeType = multiAssignees[0]?.assigneeType
   const assigneeName = hasMultiAssignees
@@ -2908,8 +2918,8 @@ function StepCard({
             </div>
           )}
 
-          {/* 步骤文件上传（被指派者或任务创建者可上传） */}
-          {isStepAssignee && (step.status === 'in_progress' || step.status === 'pending') && (
+          {/* 步骤文件上传（人类指派者可上传，Agent 步骤不显示） */}
+          {canSubmitInBrowser && (step.status === 'in_progress' || step.status === 'pending') && (
             <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-dashed border-slate-300">
               <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 rounded-lg px-2 py-1.5 transition-colors">
                 <span className="text-sm">📎</span>
@@ -2929,8 +2939,8 @@ function StepCard({
             </div>
           )}
 
-          {/* B08: 步骤执行人手动提交 — pending/in_progress 都可提交 */}
-          {isStepAssignee && (step.status === 'in_progress' || step.status === 'pending') && (
+          {/* B08: 步骤执行人手动提交 — 仅人类指派者可在浏览器提交 */}
+          {canSubmitInBrowser && (step.status === 'in_progress' || step.status === 'pending') && (
             <div className="mt-3 space-y-2">
               <textarea
                 value={humanSubmitText}
