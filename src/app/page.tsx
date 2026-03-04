@@ -901,16 +901,16 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                     </button>
                   </div>
 
-                  {/* 当前协作者 */}
-                  {(task.steps?.some(s => s.assignee)) && (
+                  {/* 当前协作者（只显示人类用户，过滤掉子Agent账号） */}
+                  {(task.steps?.some(s => s.assignee && !s.assignee.agent?.parentAgent)) && (
                     <div>
                       <div className="text-xs text-slate-400 mb-2 font-medium">当前协作者</div>
                       <div className="flex flex-wrap gap-2">
-                        {/* 去重显示已参与的人+Agent */}
+                        {/* 去重显示人类成员（排除子Agent的user账号） */}
                         {Array.from(
                           new Map(
                             task.steps
-                              ?.filter(s => s.assignee)
+                              ?.filter(s => s.assignee && !s.assignee.agent?.parentAgent)
                               .map(s => [s.assignee!.id, s.assignee!])
                           ).values()
                         ).map(assignee => (
@@ -920,7 +920,7 @@ function TaskDetail({ task, onRefresh, canApprove, onDelete, myAgent, currentUse
                             </div>
                             <div className="text-xs">
                               <div className="text-slate-700 font-medium">{assignee.name || '成员'}</div>
-                              {assignee.agent && (
+                              {assignee.agent && !assignee.agent.parentAgent && (
                                 <div className="text-slate-400">🤖 {assignee.agent.name}</div>
                               )}
                             </div>

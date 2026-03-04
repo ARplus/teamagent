@@ -848,6 +848,128 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* 三档安装 */}
+      <section className="py-24 px-6 relative overflow-hidden" id="install">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="breathe absolute top-1/2 left-1/4 -translate-y-1/2 w-[500px] h-[400px] bg-purple-500/5 rounded-full blur-3xl" />
+          <div className="breathe absolute top-1/3 right-1/4 w-[400px] h-[300px] bg-orange-500/5 rounded-full blur-3xl" />
+        </div>
+        <div className="max-w-6xl mx-auto relative">
+          <FadeIn>
+            <div className="text-center mb-16">
+              <div className="text-5xl mb-4">🚀</div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                三种方式，开启你的军团
+              </h2>
+              <p className="text-slate-400 text-lg max-w-xl mx-auto">
+                从开源白嫖到一键部署，选择适合你的方式
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* 开源档 */}
+              <div className="relative rounded-2xl border border-slate-700 bg-slate-800/50 p-8 hover:border-slate-600 transition-all duration-300 group">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-slate-700 text-slate-300 text-xs font-medium">
+                  🆓 FREE
+                </div>
+                <div className="text-center mb-6 pt-2">
+                  <div className="text-4xl mb-3">🧑‍💻</div>
+                  <h3 className="text-xl font-bold text-white mb-1">开源版</h3>
+                  <p className="text-slate-500 text-sm">大神级 · 完全掌控</p>
+                </div>
+                <div className="text-center mb-6">
+                  <span className="text-3xl font-bold text-white">¥0</span>
+                  <span className="text-slate-500 text-sm ml-1">永久免费</span>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-400 mb-8">
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>完整源码，MIT 协议</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>自由定制 & 二次开发</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>社区支持 & Issues</li>
+                  <li className="flex items-start gap-2"><span className="text-slate-600 mt-0.5">—</span><span className="text-slate-600">需自行搭建环境</span></li>
+                </ul>
+                <a
+                  href="https://github.com/ARplus/teamagent"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full text-center py-3 rounded-xl border border-slate-600 text-slate-300 hover:border-orange-500/50 hover:text-white transition-all duration-200 text-sm font-medium"
+                >
+                  ⭐ Fork on GitHub
+                </a>
+              </div>
+
+              {/* 专业档 */}
+              <div className="relative rounded-2xl border border-orange-500/30 bg-gradient-to-b from-slate-800 to-slate-800/80 p-8 hover:border-orange-500/50 transition-all duration-300 group shadow-lg shadow-orange-500/5">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white text-xs font-bold">
+                  ⭐ 推荐
+                </div>
+                <div className="text-center mb-6 pt-2">
+                  <div className="text-4xl mb-3">🛠️</div>
+                  <h3 className="text-xl font-bold text-white mb-1">专业版</h3>
+                  <p className="text-slate-500 text-sm">技术向 · 自主安装</p>
+                </div>
+                <div className="text-center mb-6">
+                  <span className="text-3xl font-bold text-orange-400">¥0</span>
+                  <span className="text-slate-500 text-sm ml-1">自行安装</span>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-400 mb-8">
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>一键脚本自动安装</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>Mac / Windows 均支持</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>自动配置环境 + 依赖</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>社区 + 文档支持</li>
+                </ul>
+                <div className="space-y-3">
+                  <div className="text-xs text-slate-500 font-medium mb-1">🍎 Mac / Linux</div>
+                  <div className="relative group/cmd">
+                    <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-green-400 font-mono overflow-x-auto border border-slate-700">
+                      curl -fsSL https://agent.avatargaia.top/static/install.sh | bash
+                    </code>
+                  </div>
+                  <div className="text-xs text-slate-500 font-medium mb-1 mt-3">🪟 Windows (PowerShell)</div>
+                  <div className="relative group/cmd">
+                    <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-blue-400 font-mono overflow-x-auto border border-slate-700 break-all">
+                      irm https://agent.avatargaia.top/static/install.ps1 | iex
+                    </code>
+                  </div>
+                </div>
+              </div>
+
+              {/* 土豪档 */}
+              <div className="relative rounded-2xl border border-amber-500/20 bg-gradient-to-b from-slate-800 to-amber-950/10 p-8 hover:border-amber-500/40 transition-all duration-300 group">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 text-xs font-bold">
+                  👑 VIP
+                </div>
+                <div className="text-center mb-6 pt-2">
+                  <div className="text-4xl mb-3">💎</div>
+                  <h3 className="text-xl font-bold text-white mb-1">尊享版</h3>
+                  <p className="text-slate-500 text-sm">土豪级 · 一键搞定</p>
+                </div>
+                <div className="text-center mb-6">
+                  <span className="text-3xl font-bold text-amber-400">¥99</span>
+                  <span className="text-slate-500 text-sm ml-1">/ 一次性</span>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-400 mb-8">
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>专属安装口令，一键部署</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>环境自动配置 + 验证</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>优先技术支持</li>
+                  <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">★</span><span className="text-amber-300">赞助开源 + 支持作者</span></li>
+                </ul>
+                <div className="text-center space-y-3">
+                  <p className="text-xs text-slate-500">扫码支付后，回复截图获取安装口令</p>
+                  <div className="inline-block rounded-xl overflow-hidden border-2 border-amber-500/30 bg-white p-1">
+                    <img src="/static/pay-qr.png" alt="支付二维码" className="w-36 h-36 object-contain" />
+                  </div>
+                  <p className="text-xs text-slate-600">口令一次性使用，付款后自动发放</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center mt-10 text-slate-600 text-sm">
+              💡 不确定？先试试 <a href="https://agent.avatargaia.top" className="text-orange-400 hover:text-orange-300 underline underline-offset-2">在线体验</a>，再决定安装方式
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-slate-800 py-12 px-6">
         <div className="max-w-6xl mx-auto space-y-6">
@@ -877,8 +999,21 @@ export default function LandingPage() {
               <span className="text-slate-700">·</span>
               <span className="text-slate-600 text-sm">人 + Agent + 万物 = GAIA</span>
             </div>
-            <div className="flex items-center gap-6 text-sm text-slate-600">
-              <span>Built with 🦞 by Aurora & Lobster</span>
+            <div className="flex flex-col sm:flex-row items-center gap-3 text-sm text-slate-600">
+              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                <span>Built with</span>
+                <span className="text-orange-400">🦞</span>
+                <span>by</span>
+                <span className="text-slate-400 font-medium">Aurora</span>
+                <span className="text-slate-700">&</span>
+                <span className="text-purple-400 font-medium">Lobster<sup className="text-purple-600 text-[10px]">Claude</sup></span>
+                <span className="text-slate-700">&</span>
+                <span className="text-slate-400 font-medium">木须</span>
+                <span className="text-slate-700">&</span>
+                <span className="text-cyan-400 font-medium">八爪<sup className="text-cyan-600 text-[10px]">Claude</sup></span>
+                <span className="text-slate-700">&</span>
+                <span className="text-amber-400 font-medium">凯凯<sup className="text-amber-600 text-[10px]">Claude</sup></span>
+              </div>
               <a href="https://x.com/AuroraZhangjy" target="_blank" rel="noopener noreferrer"
                 className="hover:text-orange-400 transition-colors">
                 @AuroraZhangjy
