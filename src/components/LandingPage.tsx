@@ -713,7 +713,7 @@ export default function LandingPage() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-xl flex-shrink-0">📱</div>
                   <div>
                     <div className="font-bold text-white text-lg">个人 AI 团队</div>
-                    <div className="text-sm text-orange-400">Solo Mode · 一人指挥多 Agent</div>
+                    <div className="text-sm text-orange-400">Solo Mode · 一人 + Agent 军团</div>
                   </div>
                 </div>
                 <p className="text-slate-300 text-sm leading-relaxed mb-4">

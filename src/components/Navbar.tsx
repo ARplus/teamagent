@@ -63,27 +63,25 @@ export function Navbar() {
 
           {/* 桌面端导航链接 */}
           {session && (
-            <div className="hidden md:flex items-center space-x-6">
-              <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
+            <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
+              <Link href="/" className="text-xs text-gray-600 hover:text-gray-900 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-gray-50 transition-colors">
                 📋 首页
               </Link>
-              <Link href="/tasks/new" className="text-sm text-gray-600 hover:text-gray-900">
+              <Link href="/tasks/new" className="text-xs text-gray-600 hover:text-gray-900 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-gray-50 transition-colors">
                 ➕ 创建任务
               </Link>
-              <Link href="/workspace" className="text-sm text-gray-600 hover:text-orange-600 flex items-center space-x-1">
-                <span>🏠</span>
-                <span>我的工作区</span>
+              <Link href="/workspace" className="text-xs text-gray-600 hover:text-orange-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-orange-50 transition-colors">
+                🏠 工作区
               </Link>
-              <Link href="/guide/usage" className="text-sm text-gray-600 hover:text-blue-600">
-                📖 使用指南
+              <Link href="/guide/usage" className="text-xs text-gray-600 hover:text-blue-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-blue-50 transition-colors">
+                📖 指南
               </Link>
-              <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
+              <Link href="/settings" className="text-xs text-gray-600 hover:text-gray-900 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-gray-50 transition-colors">
                 ⚙️ 设置
               </Link>
               {session?.user?.email === 'aurora@arplus.top' && (
-                <Link href="/admin" className="text-sm text-red-500 hover:text-red-700 flex items-center space-x-1">
-                  <span>🛡️</span>
-                  <span>管理</span>
+                <Link href="/admin" className="text-xs text-red-500 hover:text-red-700 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-red-50 transition-colors">
+                  🛡️ 管理
                 </Link>
               )}
             </div>

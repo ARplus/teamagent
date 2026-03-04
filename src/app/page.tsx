@@ -3386,7 +3386,7 @@ function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreate
                   <span>🤖</span>
                   <span className={`text-sm font-semibold ${mode === 'solo' ? 'text-orange-700' : 'text-slate-700'}`}>Solo</span>
                 </div>
-                <p className="text-xs text-slate-500">AI 团队执行</p>
+                <p className="text-xs text-slate-500">一人 + Agent 军团</p>
               </button>
               <button
                 type="button"

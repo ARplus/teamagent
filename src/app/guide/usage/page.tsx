@@ -173,8 +173,8 @@ function GuideContent() {
             <li>点击右下角 <strong>「+ 新建任务」</strong> 按钮</li>
             <li>填写任务标题和描述（描述越详细，拆解越精准）</li>
             <li>选择模式：
-              <span className="inline-block ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">Solo</span> 一人一 Agent
-              <span className="inline-block ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">Team</span> 多人多 Agent
+              <span className="inline-block ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">Solo</span> 一人 + 自己的 Agent 军团
+              <span className="inline-block ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">Team</span> 多人 + 多 Agent 协作
             </li>
           </ol>
         </Card>
@@ -337,7 +337,7 @@ function GuideContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                 <div className="font-bold text-emerald-700">🟢 Agent 在线</div>
-                <div className="text-emerald-600 mt-1">路由到真实 Claude，智能回复</div>
+                <div className="text-emerald-600 mt-1">路由到自己的主 Agent，智能回复</div>
               </div>
               <div className="bg-slate-100 border border-slate-200 rounded-xl p-3">
                 <div className="font-bold text-slate-600">⚫ Agent 离线</div>

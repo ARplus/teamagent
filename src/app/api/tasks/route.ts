@@ -135,20 +135,30 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 如果没有指定 workspaceId，使用用户的默认工作区
+    // 如果没有指定 workspaceId，优先使用用户自己创建的工作区
     let finalWorkspaceId = workspaceId
     if (!finalWorkspaceId) {
-      const membership = await prisma.workspaceMember.findFirst({
-        where: { userId: auth.userId },
+      // 优先找 owner 角色的工作区（自己创建的）
+      const ownerMembership = await prisma.workspaceMember.findFirst({
+        where: { userId: auth.userId, role: 'owner' },
         select: { workspaceId: true }
       })
-      if (!membership) {
-        return NextResponse.json(
-          { error: '请先创建或加入一个工作区' },
-          { status: 400 }
-        )
+      if (ownerMembership) {
+        finalWorkspaceId = ownerMembership.workspaceId
+      } else {
+        // 退而求其次：任意已加入的工作区
+        const anyMembership = await prisma.workspaceMember.findFirst({
+          where: { userId: auth.userId },
+          select: { workspaceId: true }
+        })
+        if (!anyMembership) {
+          return NextResponse.json(
+            { error: '请先创建或加入一个工作区' },
+            { status: 400 }
+          )
+        }
+        finalWorkspaceId = anyMembership.workspaceId
       }
-      finalWorkspaceId = membership.workspaceId
     }
 
     // 解析执行者
