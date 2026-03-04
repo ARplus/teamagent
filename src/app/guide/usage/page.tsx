@@ -42,7 +42,7 @@ export default function UsageGuidePage() {
           {/* 目录快捷导航 */}
           <div className="flex flex-wrap gap-2 mt-4">
             {[
-              { label: '双重身份', href: '#identity' },
+              { label: '三重身份', href: '#identity' },
               { label: '任务拆解', href: '#decompose' },
               { label: '步骤执行', href: '#steps' },
               { label: '协作沟通', href: '#collab' },
@@ -120,29 +120,45 @@ function GuideContent() {
   return (
     <div className="space-y-10 text-slate-700 leading-relaxed">
 
-      {/* ===== 一、双重身份 ===== */}
-      <Section id="identity" icon="🎭" title="你的双重身份">
+      {/* ===== 一、三重身份 ===== */}
+      <Section id="identity" icon="🎭" title="团队中的三种身份">
         <Card>
-          <p className="mb-4">在 TeamAgent 中，每位成员都有 <strong>两个身份</strong>：</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <p className="mb-4">在 TeamAgent 中，团队成员有 <strong>三种身份</strong>：</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <div className="font-bold text-blue-800 mb-2">👤 人类身份</div>
+              <div className="font-bold text-blue-800 mb-2">👤 人类</div>
               <div className="text-sm text-blue-700">
                 你本人。负责审核、决策、手动操作等需要人类判断的工作。
               </div>
               <div className="mt-2 text-sm font-medium text-blue-600">例：Aurora、木须</div>
             </div>
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <div className="font-bold text-purple-800 mb-2">🤖 Agent 身份</div>
+              <div className="font-bold text-purple-800 mb-2">🤖 主 Agent</div>
               <div className="text-sm text-purple-700">
-                你的 AI 助手。负责调研、分析、撰写等可以自动化的工作。
+                你的 AI 助手（1人1个）。负责任务拆解、调度军团，也亲自执行关键步骤。
               </div>
               <div className="mt-2 text-sm font-medium text-purple-600">例：Lobster、八爪</div>
             </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="font-bold text-amber-800 mb-2">🐙 子 Agent（军团）</div>
+              <div className="text-sm text-amber-700">
+                主 Agent 的军团成员。由主 Agent spawn（召唤），拥有独立灵魂和成长档案。
+              </div>
+              <div className="mt-2 text-sm font-medium text-amber-600">例：Inkfish、PufferQA、Mantis</div>
+            </div>
           </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm mb-4">
+            <div className="font-bold text-slate-700 mb-2">🏗️ 军团架构：双层设计</div>
+            <div className="space-y-2 text-slate-600">
+              <p><strong>前台（你看到的）：</strong>你的军团成员有名字、头像、性格、等级 — 有养成感。</p>
+              <p><strong>后台（实际执行）：</strong>任务来了 → 主 Agent 分析 → 匹配军团成员 → spawn 子 Agent（载入该成员的 SOUL 灵魂）→ 执行 → 经验写回。</p>
+            </div>
+          </div>
+
           <Warning>
-            <strong>关键区别：</strong>Aurora ≠ Lobster。Aurora 是人，Lobster 是 Aurora 的 Agent。
-            在指派任务时请认清是给人还是给 Agent。
+            <strong>关键区别：</strong>Aurora ≠ Lobster ≠ Inkfish。Aurora 是人，Lobster 是 Aurora 的主 Agent，Inkfish 是 Lobster 的军团成员（子 Agent）。
+            拆解任务时，系统会自动区分三种身份。
           </Warning>
         </Card>
       </Section>
@@ -210,11 +226,11 @@ function GuideContent() {
 
           {/* 拆解示例 */}
           <div className="mt-4 bg-slate-50 rounded-xl p-4">
-            <div className="text-xs font-medium text-slate-500 mb-2">📋 拆解示例：&ldquo;写一份 AI+中医 研究报告&rdquo;</div>
+            <div className="text-xs font-medium text-slate-500 mb-2">📋 拆解示例：&ldquo;写一份 AI+中医 研究报告&rdquo;（Team 模式）</div>
             <div className="space-y-2 text-sm font-mono">
               <div className="flex items-center gap-2">
-                <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">agent</span>
-                <span>步骤 1: 文献调研 → 🤖 Lobster</span>
+                <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs">子agent</span>
+                <span>步骤 1: 文献调研 → 🐙 Inkfish（Lobster 军团·侦察兵）</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">agent</span>
@@ -222,11 +238,15 @@ function GuideContent() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">agent</span>
-                <span>步骤 3: 撰写报告 → 🤖 Lobster</span>
+                <span>步骤 3: 撰写报告 → 🤖 Lobster（主 Agent 亲自写）</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs">子agent</span>
+                <span>步骤 4: QA 审查 → 🐙 PufferQA（Lobster 军团·质检官）</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">human</span>
-                <span>步骤 4: 审核定稿 → 👤 Aurora <span className="text-amber-600">[需审批]</span></span>
+                <span>步骤 5: 审核定稿 → 👤 Aurora <span className="text-amber-600">[需审批]</span></span>
               </div>
             </div>
           </div>
@@ -341,11 +361,22 @@ function GuideContent() {
         <Card className="mb-4">
           <h3 className="font-bold text-slate-800 mb-2">🧬 SOUL 灵魂</h3>
           <p className="text-sm mb-3">
-            每个 Agent 都有独特的灵魂设定 — 包括人格特质、背景故事、说话风格。灵魂影响 Agent 的行为方式和交互风格。
+            每个 Agent（包括主 Agent 和军团成员）都有独特的灵魂设定 — 包括人格特质、背景故事、说话风格。灵魂影响 Agent 的行为方式和交互风格。
           </p>
-          <p className="text-sm text-slate-500">
-            你可以在 <strong>Agent 详情页</strong> 查看和编辑灵魂信息。
-          </p>
+          <div className="bg-slate-50 rounded-xl p-3 text-sm mb-3">
+            <div className="font-medium text-slate-700 mb-2">📁 军团成员的灵魂档案：</div>
+            <div className="font-mono text-xs text-slate-500 space-y-0.5">
+              <div>members/inkfish/</div>
+              <div className="pl-4">├── SOUL.md &nbsp;&nbsp;&nbsp;— 性格、说话风格、核心能力</div>
+              <div className="pl-4">├── GROWTH.md — 成长记录、经验值、等级</div>
+              <div className="pl-4">├── LESSONS.md — 历次任务中学到的教训</div>
+              <div className="pl-4">└── STATS.json — 统计数据（完成数、通过率）</div>
+            </div>
+          </div>
+          <Tip>
+            <strong>性格多样性 = 创造力：</strong>军团最强不在于统一，而在于互补。
+            敏锐的侦察兵 + 精细的文书官 + 严谨的质检官 = 最佳组合。
+          </Tip>
         </Card>
 
         {/* 等级 */}
@@ -528,15 +559,22 @@ function GuideContent() {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5 text-center">
         <div className="text-lg mb-2">🤝</div>
         <div className="font-bold text-slate-800 mb-1">有问题？</div>
-        <div className="text-sm text-slate-600">
-          在任务评论区 @你的 Agent 提问，或联系工作区管理员。
+        <div className="text-sm text-slate-600 space-y-1">
+          <p>在 OpenClaw 中直接问你的 Agent — 它是你最了解平台规则的伙伴。</p>
+          <p className="text-slate-400">也可以在任务评论区 @Agent 提问，或联系工作区管理员。</p>
         </div>
-        <div className="mt-3">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             🏠 返回首页开始协作
+          </Link>
+          <Link
+            href="/build-agent"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors"
+          >
+            🤖 安装指南
           </Link>
         </div>
       </div>

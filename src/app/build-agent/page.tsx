@@ -380,10 +380,19 @@ export default function BuildAgentPage() {
             </div>
 
             <p className="text-slate-400 text-sm mb-4">
-              Skill 安装好后，在 OpenClaw 对话框中输入注册命令：
+              Skill 安装好后，先确认 TeamAgent Skill 已安装，然后注册：
             </p>
 
-            <CodeBlock code="/ta-register" lang="OpenClaw 对话框" />
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-slate-500 font-medium mb-1">第一步：确认已安装 Skill</div>
+                <CodeBlock code="openclaw skill install teamagent" lang="OpenClaw 对话框" />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 font-medium mb-1">第二步：注册并获取配对码</div>
+                <CodeBlock code="/ta-register" lang="OpenClaw 对话框" />
+              </div>
+            </div>
 
             <div className="mt-3 p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 text-xs text-slate-400">
               💡 Agent 会自动完成注册并返回 6 位配对码，你只需在 TeamAgent 网页输入配对码即可。

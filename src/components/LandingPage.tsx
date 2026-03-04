@@ -94,7 +94,7 @@ function OnboardingSection() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300 flex-shrink-0 mt-0.5">2</span>
-                  <span>点右上角「<strong className="text-slate-200">构建你的 Agent</strong>」</span>
+                  <span>点右上角「<strong className="text-slate-200">安装指南</strong>」</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300 flex-shrink-0 mt-0.5">3</span>
@@ -131,7 +131,7 @@ function OnboardingSection() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300 flex-shrink-0 mt-0.5">2</span>
-                  <span>点右上角「<strong className="text-slate-200">构建你的 Agent</strong>」</span>
+                  <span>点右上角「<strong className="text-slate-200">安装指南</strong>」</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300 flex-shrink-0 mt-0.5">3</span>
@@ -507,12 +507,15 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="flex items-center space-x-4">
+            <Link href="/guide/usage" className="text-slate-400 hover:text-white transition-colors duration-200 text-sm font-medium hidden sm:inline">
+              📖 使用指南
+            </Link>
             <Link href="/login" className="text-slate-400 hover:text-white transition-colors duration-200 text-sm font-medium">
               登录
             </Link>
             <Link href="/build-agent"
               className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105">
-              📖 安装指南
+              🛠️ 安装指南
             </Link>
           </div>
         </div>
