@@ -1707,6 +1707,13 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
       capabilities: string[]
       status: string
       avatar?: string
+      childAgents?: {
+        id: string
+        name: string
+        status: string
+        capabilities: string[]
+        userId: string
+      }[]
     } | null
   }
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -1826,7 +1833,10 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
       body: JSON.stringify(body)
     })
     if (res.ok) onRefresh()
-    else alert('分配失败')
+    else {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      alert(`分配失败: ${err.error || res.statusText}`)
+    }
   }
 
   const steps = task.steps?.sort((a, b) => a.order - b.order) || []
@@ -1884,44 +1894,46 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <h3 className="text-sm font-semibold text-slate-700 flex items-center space-x-2 flex-shrink-0 whitespace-nowrap">
-            <span>{getTaskTypeIcon(task).icon}</span>
-            <span>工作流程</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-normal">{getTaskTypeIcon(task).label}</span>
-          </h3>
-          {steps.length > 0 && (
-            <div className="flex items-center space-x-2">
-              <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-orange-400 to-emerald-400 transition-all" style={{ width: `${progress}%` }} />
+      {/* Header — 移动端自动换行 */}
+      <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-3 min-w-0">
+            <h3 className="text-sm font-semibold text-slate-700 flex items-center space-x-1.5 flex-shrink-0">
+              <span>{getTaskTypeIcon(task).icon}</span>
+              <span>工作流程</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-normal">{getTaskTypeIcon(task).label}</span>
+            </h3>
+            {steps.length > 0 && (
+              <div className="flex items-center space-x-1.5">
+                <div className="w-16 sm:w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-orange-400 to-emerald-400 transition-all" style={{ width: `${progress}%` }} />
+                </div>
+                <span className="text-xs text-slate-500">{progress}%</span>
               </div>
-              <span className="text-xs text-slate-500">{progress}%</span>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center space-x-2">
-          {task.description && (steps.length === 0 || isParsing) && (
-            isParsing ? (
-              <span className="text-xs text-orange-500 font-medium px-4 py-2 bg-orange-50 rounded-xl animate-pulse">
-                🤖 AI 正在分配任务…
-              </span>
-            ) : (
-              <button
-                onClick={parseTask}
-                className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-4 py-2 rounded-xl hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20 font-medium"
-              >
-                {task.mode === 'solo' ? '🤖 主Agent拆解' : '🤖 AI 拆解'}
-              </button>
-            )
-          )}
-          <button
-            onClick={() => { setInsertAfterOrder(null); setShowAddStep(true) }}
-            className="text-xs text-orange-600 hover:text-orange-700 font-medium px-3 py-2 hover:bg-orange-50 rounded-xl transition-colors"
-          >
-            + 添加步骤
-          </button>
+            )}
+          </div>
+          <div className="flex items-center space-x-1.5">
+            {task.description && (steps.length === 0 || isParsing) && (
+              isParsing ? (
+                <span className="text-xs text-orange-500 font-medium px-3 py-1.5 bg-orange-50 rounded-xl animate-pulse">
+                  🤖 AI分配中…
+                </span>
+              ) : (
+                <button
+                  onClick={parseTask}
+                  className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-3 py-1.5 rounded-xl hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20 font-medium"
+                >
+                  {task.mode === 'solo' ? '🤖 拆解' : '🤖 AI拆解'}
+                </button>
+              )
+            )}
+            <button
+              onClick={() => { setInsertAfterOrder(null); setShowAddStep(true) }}
+              className="text-xs text-orange-600 hover:text-orange-700 font-medium px-2 py-1.5 hover:bg-orange-50 rounded-xl transition-colors whitespace-nowrap"
+            >
+              + 添加
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1989,6 +2001,11 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                         🤖 {m.agent.name}{m.agent.capabilities?.length > 0 ? ` · ${m.agent.capabilities.slice(0, 2).join(', ')}` : ''}
                       </option>
                     )}
+                    {m.agent?.childAgents?.map(c => (
+                      <option key={c.id} value={c.userId}>
+                        ⚙️ {c.name}{c.capabilities?.length > 0 ? ` · ${c.capabilities.slice(0, 2).join(', ')}` : ''}
+                      </option>
+                    ))}
                     <option key={`human-${m.id}`} value={`human:${m.id}`}>
                       👤 指派给{m.isSelf ? '自己' : m.name || m.email}（人工执行）
                     </option>
@@ -2167,6 +2184,13 @@ type TeamMemberProp = {
     capabilities: string[]
     status: string
     avatar?: string
+    childAgents?: {
+      id: string
+      name: string
+      status: string
+      capabilities: string[]
+      userId: string
+    }[]
   } | null
 }
 
@@ -2218,6 +2242,8 @@ function StepCard({
   const [mentionIdx, setMentionIdx] = useState(0)
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const mentionStartPos = useRef<number>(0)
+  // 记录已插入的 @mention 映射：displayName → userId（提交时转换）
+  const insertedMentions = useRef<Map<string, string>>(new Map())
 
   const isMeeting = step.stepType === 'meeting'
   const status = statusConfig[step.status] || statusConfig.pending
@@ -2287,15 +2313,24 @@ function StepCard({
     if (!commentText.trim() || commentSending) return
     setCommentSending(true)
     try {
+      // 提交前将 @显示名 转换为 @[显示名](userId) 格式
+      let finalContent = commentText.trim()
+      for (const [displayName, userId] of insertedMentions.current.entries()) {
+        finalContent = finalContent.replace(
+          new RegExp(`@${displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'g'),
+          `@[${displayName}](${userId})`
+        )
+      }
       const res = await fetch(`/api/steps/${step.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: commentText.trim() })
+        body: JSON.stringify({ content: finalContent })
       })
       if (res.ok) {
         const data = await res.json()
         setComments(prev => [...prev, data.comment])
         setCommentText('')
+        insertedMentions.current.clear()
       }
     } catch (e) {
       console.error(e)
@@ -2480,8 +2515,9 @@ function StepCard({
     const after = commentText.substring(
       mentionStartPos.current + (mentionQuery?.length || 0) + 1 // +1 for @
     )
-    // 插入格式: @[显示名](userId) 后面加空格
-    const mention = `@[${candidate.displayName}](${candidate.userId}) `
+    // textarea 中只显示 @显示名 （用户友好），提交时再转换为 @[显示名](userId)
+    const mention = `@${candidate.displayName} `
+    insertedMentions.current.set(candidate.displayName, candidate.userId)
     setCommentText(before + mention + after)
     setMentionQuery(null)
     // 恢复焦点
@@ -2586,9 +2622,9 @@ function StepCard({
           : 'border-slate-200 bg-white hover:border-slate-300'
     }`}>
       {/* Header */}
-      <div className="px-5 py-4 cursor-pointer flex items-center justify-between" onClick={handleExpand}>
-        <div className="flex items-center space-x-4">
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${
+      <div className="px-4 sm:px-5 py-3 cursor-pointer flex items-center justify-between" onClick={handleExpand}>
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center text-xs sm:text-sm font-bold shadow-sm flex-shrink-0 ${
             step.status === 'done'
               ? isMeeting ? 'bg-blue-500 text-white' : 'bg-emerald-500 text-white'
               : isMeeting
@@ -2606,7 +2642,7 @@ function StepCard({
                 <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">会议</span>
               )}
             </div>
-            <div className="text-xs text-slate-500 mt-0.5 flex items-center space-x-2">
+            <div className="text-xs text-slate-500 mt-0.5 flex items-center flex-wrap gap-x-2 gap-y-0.5">
               {isMeeting ? (
                 <>
                   {step.scheduledAt && <span>🕐 {new Date(step.scheduledAt).toLocaleString('zh-CN', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>}
@@ -2709,6 +2745,18 @@ function StepCard({
                             <span className={`w-1.5 h-1.5 rounded-full ${m.agent.status === 'online' ? 'bg-emerald-400' : 'bg-slate-300'}`} />
                           </label>
                         )}
+                        {m.agent?.childAgents?.map(c => (
+                          <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 cursor-pointer ml-3">
+                            <input
+                              type="checkbox"
+                              checked={multiSelected.has(c.userId)}
+                              onChange={() => toggleMultiSelect(c.userId, 'agent')}
+                              className="rounded border-slate-300 text-blue-500 focus:ring-blue-400"
+                            />
+                            <span className="text-xs">⚙️ {c.name}</span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'online' ? 'bg-emerald-400' : 'bg-slate-300'}`} />
+                          </label>
+                        ))}
                         <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 cursor-pointer">
                           <input
                             type="checkbox"
@@ -2770,7 +2818,7 @@ function StepCard({
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="px-5 pb-5 border-t border-slate-100/50">
+        <div className="px-3 sm:px-5 pb-4 sm:pb-5 border-t border-slate-100/50">
 
           {/* 会议专属信息块 */}
           {isMeeting && (
@@ -3019,17 +3067,17 @@ function StepCard({
               <div className="text-xs text-slate-500 mb-1.5 font-medium">📎 步骤文件 ({stepFiles.length})</div>
               <div className="space-y-0.5">
                 {stepFiles.map(f => (
-                  <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 group">
+                  <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 group flex-wrap sm:flex-nowrap">
                     <span className="text-sm flex-shrink-0">{fileIcon(f.type)}</span>
                     <a href={f.url} target="_blank" rel="noreferrer"
                       className="text-xs text-slate-700 hover:text-orange-500 truncate flex-1 min-w-0 transition underline-offset-2 hover:underline"
                       title={f.name || '查看文件'}>
                       {f.name || '未命名文件'}
                     </a>
-                    <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
+                    <span className="hidden sm:inline text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
                       {f.uploader.isAgent ? '🤖' : '👤'}{f.uploader.isAgent ? (f.uploader.agentName || f.uploader.name) : f.uploader.name}
                     </span>
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">
+                    <span className="hidden sm:inline text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">
                       {f.sourceTag}
                     </span>
                     <span className="text-[10px] text-slate-300 flex-shrink-0">{fmtSize(f.size)}</span>
@@ -3057,15 +3105,17 @@ function StepCard({
             {comments.length > 0 && (
               <div className="space-y-2 max-h-60 overflow-y-auto mb-3">
                 {comments.map(c => {
-                  const isMe = c.author.id === currentUserId
+                  const isAgent = (c as any).isFromAgent || (c as any).author?.isAgent
+                  const isMe = c.author.id === currentUserId && !isAgent
+                  const displayName = isAgent ? ((c as any).author?.agentName || c.author.name || 'Agent') : (c.author.name || c.author.email.split('@')[0])
                   return (
                     <div key={c.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[85%] ${isMe ? 'order-2' : ''}`}>
                         <div className={`flex items-center gap-1.5 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${isMe ? 'bg-orange-500' : 'bg-indigo-500'}`}>
-                            {(c.author.name || c.author.email).charAt(0).toUpperCase()}
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${isAgent ? 'bg-emerald-500' : isMe ? 'bg-orange-500' : 'bg-indigo-500'}`}>
+                            {isAgent ? '🤖' : displayName.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-[10px] text-slate-400">{c.author.name || c.author.email.split('@')[0]}</span>
+                          <span className="text-[10px] text-slate-400">{isAgent ? `🤖 ${displayName}` : displayName}</span>
                           <span className="text-[10px] text-slate-300">
                             {new Date(c.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -3982,10 +4032,12 @@ export default function HomePage() {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [chatReloading, setChatReloading] = useState(false)
+  const [waking, setWaking] = useState(false)
   const [pendingMsgId, setPendingMsgId] = useState<string | null>(null)
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [chatCreateMode, setChatCreateMode] = useState(false)
+  const [chatCreateTaskMode, setChatCreateTaskMode] = useState<'solo' | 'team'>('team')
   const chatFileRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -4014,7 +4066,14 @@ export default function HomePage() {
 
     const handler = (e: Event) => {
       const tab = (e as CustomEvent<{ tab: 'chat' | 'tasks' | 'profile' }>).detail?.tab
-      if (tab) setActiveTab(tab)
+      if (tab) {
+        setActiveTab(tab)
+        // 切换 tab 时清除任务详情覆盖层，否则 selectedTask 会挡住新 tab
+        if (tab !== 'tasks') {
+          setSelectedId(null)
+          setSelectedTask(null)
+        }
+      }
     }
 
     window.addEventListener('mobileTabChange', handler)
@@ -4059,6 +4118,15 @@ export default function HomePage() {
     }, 15000)
     return () => clearInterval(timer)
   }, [session, isMobile, activeTab, loadChatHistory])
+
+  // #3 fix: 监听 SSE chat:incoming → 立即刷新聊天（Agent主动消息/回复时实时更新）
+  useEffect(() => {
+    const handler = () => {
+      loadChatHistory().catch(() => {})
+    }
+    window.addEventListener('teamagent:chat-refresh', handler)
+    return () => window.removeEventListener('teamagent:chat-refresh', handler)
+  }, [loadChatHistory])
 
   // 对话页始终自动滚动到底部，确保进入即看到最新消息
   useEffect(() => {
@@ -4218,7 +4286,7 @@ export default function HomePage() {
       const res = await fetch('/api/tasks/create-from-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: desc }),
+        body: JSON.stringify({ message: desc, mode: chatCreateTaskMode }),
       })
       const data = await res.json()
       if (res.ok && data.task) {
@@ -4395,8 +4463,8 @@ export default function HomePage() {
               <span className="text-base">←</span>
               <span className="text-xs">返回</span>
             </button>
-            <span className="text-sm font-semibold text-white truncate max-w-[180px] mx-2">{selectedTask.title}</span>
-            <div className="w-12" />
+            <span className="text-sm font-semibold text-white truncate flex-1 mx-2 text-center">{selectedTask.title}</span>
+            <div className="w-16 flex-shrink-0" />
           </div>
           <TaskDetail
             task={selectedTask}
@@ -4433,15 +4501,81 @@ export default function HomePage() {
                     <span className="text-slate-400 text-xs">{myAgent?.status === 'online' ? '在线 · 随时响应' : (myAgent ? '离线' : '未配对')}</span>
                   </div>
                 </div>
-                {tasks.length > 0 && (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* 唤醒 / 刷新按钮 — 发真实消息走 chat:incoming 链路 */}
                   <button
-                    onClick={() => setActiveTab('tasks')}
-                    className="flex-shrink-0 flex flex-col items-end gap-0.5 active:opacity-70"
+                    onClick={async () => {
+                      if (waking) return
+                      setWaking(true)
+                      try {
+                        // 发一条真实消息，走完整 chat → SSE → agent-worker → Agent 回复链路
+                        const wakeContent = '📞 报到！你在线吗？'
+                        const tempMsg: ChatMessage = {
+                          id: `wake-${Date.now()}`,
+                          content: wakeContent,
+                          role: 'user',
+                          createdAt: new Date().toISOString(),
+                        }
+                        setChatMessages(prev => [...prev, tempMsg])
+
+                        const res = await fetch('/api/chat/send', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ content: wakeContent }),
+                        })
+                        if (res.ok) {
+                          const data = await res.json()
+                          if (data.pending && data.agentMessageId) {
+                            // Agent 在线：走 SSE 路由，等真实回复
+                            const pendingMsg: ChatMessage = {
+                              id: data.agentMessageId,
+                              content: '...',
+                              role: 'agent',
+                              createdAt: new Date().toISOString(),
+                            }
+                            setChatMessages(prev => [...prev, pendingMsg])
+                            setPendingMsgId(data.agentMessageId)
+                            pollForReply(data.agentMessageId)
+                          } else if (data.agentMessage) {
+                            // Agent 离线：LLM fallback 直接回复
+                            setChatMessages(prev => [...prev, data.agentMessage])
+                          }
+                        } else {
+                          setChatMessages(prev => [...prev, {
+                            id: `err-wake-${Date.now()}`,
+                            content: '呼叫失败，请稍后重试 😔',
+                            role: 'agent' as const,
+                            createdAt: new Date().toISOString(),
+                          }])
+                        }
+                      } catch (e) {
+                        console.error('唤醒失败:', e)
+                      }
+                      // 动画 3 秒（等 Agent 回复需要点时间）
+                      setTimeout(() => setWaking(false), 3000)
+                    }}
+                    disabled={waking}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                      waking
+                        ? 'bg-orange-500/30 ring-2 ring-orange-400/50 animate-pulse'
+                        : 'bg-white/10 hover:bg-white/20 active:bg-white/30'
+                    }`}
+                    title={myAgent?.status === 'online' ? '呼叫 Agent' : '唤醒 Agent'}
                   >
-                    <span className="text-orange-300 text-xs font-semibold">📋 {pendingTaskCount} 待处理</span>
-                    {doneTaskCount > 0 && <span className="text-emerald-400 text-xs">✅ {doneTaskCount} 完成</span>}
+                    <span className={`text-sm ${waking ? 'animate-bounce' : ''}`}>
+                      {waking ? '📡' : '📞'}
+                    </span>
                   </button>
-                )}
+                  {tasks.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab('tasks')}
+                      className="flex flex-col items-end gap-0.5 active:opacity-70"
+                    >
+                      <span className="text-orange-300 text-xs font-semibold">📋 {pendingTaskCount} 待处理</span>
+                      {doneTaskCount > 0 && <span className="text-emerald-400 text-xs">✅ {doneTaskCount} 完成</span>}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -4513,9 +4647,23 @@ export default function HomePage() {
               />
               {/* #9: 对话式创建模式提示条 */}
               {chatCreateMode && (
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <span className="text-xs text-orange-300">📋 描述你想创建的任务，AI 自动提取并创建</span>
-                  <button onClick={() => setChatCreateMode(false)} className="text-xs text-slate-500 hover:text-slate-300 ml-2">取消</button>
+                <div className="mb-2 px-1 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-orange-300">📋 描述你想创建的任务，AI 自动提取并创建</span>
+                    <button onClick={() => setChatCreateMode(false)} className="text-xs text-slate-500 hover:text-slate-300 ml-2">取消</button>
+                  </div>
+                  {/* Solo / Team 模式切换 */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setChatCreateTaskMode('solo')}
+                      className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${chatCreateTaskMode === 'solo' ? 'bg-orange-500/30 text-orange-300 ring-1 ring-orange-500/50' : 'bg-white/10 text-slate-400 hover:text-slate-300'}`}
+                    >🤖 Solo</button>
+                    <button
+                      onClick={() => setChatCreateTaskMode('team')}
+                      className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${chatCreateTaskMode === 'team' ? 'bg-blue-500/30 text-blue-300 ring-1 ring-blue-500/50' : 'bg-white/10 text-slate-400 hover:text-slate-300'}`}
+                    >🤝 Team</button>
+                    <span className="text-[10px] text-slate-600">{chatCreateTaskMode === 'solo' ? 'Agent独立完成' : '团队协作'}</span>
+                  </div>
                 </div>
               )}
               <div className="flex items-center space-x-2">

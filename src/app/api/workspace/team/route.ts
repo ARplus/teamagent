@@ -127,6 +127,7 @@ export async function GET(req: NextRequest) {
           childAgents: (agent.childAgents || []).map((c: any) => ({
             id: c.id, name: c.name, status: c.status,
             capabilities: c.capabilities ? JSON.parse(c.capabilities) : [],
+            userId: c.userId,
             ownerName: c.user?.name,
           })),
         } : null
