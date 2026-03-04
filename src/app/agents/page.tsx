@@ -28,6 +28,9 @@ interface AgentData {
   userId?: string
   userName?: string | null
   userEmail?: string
+  soul: string | null          // 🆕 SOUL 人格核心
+  growthXP: number             // 🆕 经验值
+  growthLevel: number          // 🆕 等级 (1-5)
   stats: {
     doneSteps: number
     pendingSteps: number
@@ -92,6 +95,24 @@ function getStatusInfo(status: string): { dot: string; label: string } {
     offline: { dot: 'bg-slate-400',   label: '离线' },
   }
   return map[status] ?? map.offline
+}
+
+// ============ Growth Utils ============
+
+const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000]
+
+function getXPProgress(xp: number, level: number): number {
+  const cur = LEVEL_THRESHOLDS[level - 1] || 0
+  const next = LEVEL_THRESHOLDS[level]
+  if (next == null || level >= LEVEL_THRESHOLDS.length) return 100
+  const range = next - cur
+  if (range <= 0) return 100
+  return Math.min(100, Math.round(((xp - cur) / range) * 100))
+}
+
+function getLevelTitle(level: number): string {
+  const titles = ['新兵', '列兵', '精英', '老兵', '传说']
+  return titles[Math.min(level - 1, titles.length - 1)]
 }
 
 // ============ Commander Card ============
@@ -159,7 +180,7 @@ function MainAgentCard({ agent }: { agent: AgentData }) {
       {/* 总指挥 badge */}
       <div className="relative flex items-center justify-between mb-5">
         <span className="bg-white/20 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full font-semibold border border-white/20">
-          ⚡ 总指挥
+          ⚡ 总指挥 · Lv.{agent.growthLevel} {getLevelTitle(agent.growthLevel)}
         </span>
         {/* 信誉星 */}
         <div className="flex items-center space-x-1">
@@ -218,15 +239,20 @@ function MainAgentCard({ agent }: { agent: AgentData }) {
           <div className="text-white text-2xl font-bold">{agent.stats.pendingSteps}</div>
           <div className="text-white/60 text-xs mt-0.5">进行中</div>
         </div>
-        {agent.claimedAt && (
-          <>
-            <div className="w-px h-8 bg-white/20" />
-            <div className="text-center">
-              <div className="text-white text-xs font-semibold">{formatJoinDate(agent.claimedAt)}</div>
-              <div className="text-white/60 text-xs mt-0.5">入伍时间</div>
-            </div>
-          </>
-        )}
+        <div className="w-px h-8 bg-white/20" />
+        {/* 🆕 XP 进度 */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between text-white/60 text-xs mb-1">
+            <span>XP {agent.growthXP}</span>
+            <span>{getXPProgress(agent.growthXP, agent.growthLevel)}%</span>
+          </div>
+          <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-yellow-300 to-amber-400 rounded-full transition-all duration-500"
+              style={{ width: `${getXPProgress(agent.growthXP, agent.growthLevel)}%` }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -254,8 +280,20 @@ function SubAgentCard({ agent, onClick }: { agent: AgentData; onClick: () => voi
         <span className={`w-2 h-2 rounded-full mt-1 ${statusInfo.dot}`} />
       </div>
 
-      {/* 名字 */}
-      <h4 className="text-slate-900 font-bold text-xs truncate mb-1.5 leading-snug">{displayName}</h4>
+      {/* 名字 + 等级 */}
+      <div className="flex items-center gap-1 mb-0.5">
+        <h4 className="text-slate-900 font-bold text-xs truncate leading-snug">{displayName}</h4>
+        <span className="flex-shrink-0 text-[9px] font-bold text-orange-500 bg-orange-50 px-1 py-0.5 rounded">
+          Lv.{agent.growthLevel}
+        </span>
+      </div>
+      {/* 🆕 XP 进度条 */}
+      <div className="h-1 bg-slate-100 rounded-full overflow-hidden mb-1.5">
+        <div
+          className="h-full bg-gradient-to-r from-orange-400 to-rose-400 rounded-full transition-all duration-500"
+          style={{ width: `${getXPProgress(agent.growthXP, agent.growthLevel)}%` }}
+        />
+      </div>
 
       {/* 能力标签（2个，更小） */}
       {capabilities.length > 0 && (

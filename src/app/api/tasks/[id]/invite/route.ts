@@ -15,11 +15,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = await prisma.user.findUnique({ where: { email: session.user.email } })
   if (!user) return NextResponse.json({ error: '用户不存在' }, { status: 404 })
 
-  // 验证任务存在且属于当前用户的工作区
+  // 验证任务存在且当前用户是工作区成员（owner/admin/member 均可）
   const task = await prisma.task.findFirst({
     where: {
       id,
-      workspace: { members: { some: { userId: user.id, role: 'owner' } } }
+      workspace: { members: { some: { userId: user.id } } }
     },
     include: { workspace: true }
   })

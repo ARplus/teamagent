@@ -593,46 +593,74 @@ async function main() {
             }
             inFlightChatMsgIds.add(decomposeKey)
             try {
-              // 构建团队信息
+              // 🆕 构建团队信息（双身份：人类名 + Agent名 分开显示）
               const teamInfo = (teamMembers || []).map(m => {
+                const humanName = m.humanName || m.name
                 if (m.isAgent && m.agentName) {
                   const caps = m.capabilities?.length ? m.capabilities.join('、') : '通用'
-                  return `- 🤖 Agent「${m.agentName}」（${m.name}）— 能力：${caps}`
+                  const soulNote = m.soulSummary ? ` | 人格：${m.soulSummary.substring(0, 60)}` : ''
+                  const levelNote = m.level ? ` | Lv.${m.level}` : ''
+                  return `- 👤 人类「${humanName}」\n  └─ 🤖 Agent「${m.agentName}」— 能力：${caps}${soulNote}${levelNote}`
                 }
-                return `- 👤 ${m.name}${m.role === 'owner' ? '（团队负责人）' : ''}`
+                return `- 👤 人类「${humanName}」${m.role === 'owner' ? '（团队负责人）' : ''}（无Agent，只能人工执行）`
               }).join('\n')
 
-              // 构建拆解 prompt
+              // 🆕 标题兜底：taskTitle 空或过短时从 taskDescription 提炼
+              let refinedTitle = taskTitle || ''
+              if (!refinedTitle || refinedTitle.length < 2) {
+                const desc = (taskDescription || '').trim()
+                // 去掉口水前缀
+                const cleaned = desc.replace(/^(请帮我|我想要|需要|帮我|请|麻烦)/, '').trim()
+                refinedTitle = cleaned.length > 50 ? cleaned.substring(0, 50) : cleaned
+              }
+
+              // 构建拆解 prompt（含人类/Agent 严格区分规则）
               const decomposePrompt = [
                 `[TeamAgent Decompose Request]`,
                 `[taskId: ${dTaskId}]`,
                 ``,
-                `请将以下任务拆解为可执行步骤，返回 JSON 数组。`,
+                `请将以下任务拆解为可执行步骤，返回 JSON 对象。`,
                 ``,
-                `## 任务: ${taskTitle}`,
+                `## 任务: ${refinedTitle}`,
                 ``,
                 taskDescription || '(无详细描述)',
+                event.supplement ? `\n补充说明: ${event.supplement}` : '',
                 ``,
-                `## 团队成员`,
+                `## 团队成员（⚠️ 注意区分人类名和Agent名）`,
                 teamInfo || '(无团队信息)',
                 ``,
-                `## 输出格式`,
-                `返回 JSON 数组，每个元素: { "title": "步骤标题", "description": "详细描述",`,
-                `  "assignee": "成员名字（必须是上面列表中的人）",`,
-                `  "assigneeType": "agent 或 human",`,
-                `  "requiresApproval": true/false（关键产出设true）,`,
-                `  "parallelGroup": null 或 "组名"（可并行的设相同组名）,`,
-                `  "stepType": "task" }`,
+                `## 输出格式（JSON 对象，不是数组！）`,
+                `{`,
+                `  "taskTitle": "精炼后的任务标题（简洁、无口水前缀、2-50字）",`,
+                `  "steps": [`,
+                `    {`,
+                `      "title": "步骤标题",`,
+                `      "description": "详细描述",`,
+                `      "assignee": "成员名字（⚠️ Agent做→填Agent名如Lobster；人类做→填人类名如Aurora）",`,
+                `      "assigneeType": "agent 或 human（⚠️ 必须与assignee身份匹配）",`,
+                `      "requiresApproval": true,`,
+                `      "parallelGroup": null,`,
+                `      "stepType": "task"`,
+                `    }`,
+                `  ]`,
+                `}`,
                 ``,
-                `规则：`,
-                `1. assignee 必须是团队成员列表中的名字`,
+                `## ⚠️ 人类 vs Agent 身份严格区分（最重要的规则！）`,
+                `- 需要 Agent 自动执行 → assignee 填 **Agent名**（如 Lobster、八爪），assigneeType = "agent"`,
+                `- 需要人类亲自操作 → assignee 填 **人类名**（如 Aurora、木须），assigneeType = "human"`,
+                `- ⛔ 绝对禁止：把人类名填为 agent 类型，或把 Agent 名填为 human 类型`,
+                `- 关键词判断：涉及"本人/手动/你去/亲自" → human；涉及"自动/调研/分析/撰写" → agent`,
+                ``,
+                `## 其他规则`,
+                `1. assignee 必须是团队成员列表中出现过的名字`,
                 `2. 最少 2 步，最多 8 步`,
                 `3. 可并行的步骤设相同 parallelGroup`,
                 `4. 文档类任务至少 3 步（调研→撰写→审核）`,
                 `5. 不要创建"分配任务"之类的元步骤，直接创建具体执行步骤`,
                 `6. 简单任务（如设置提醒）不要过度拆分，1-2步即可`,
+                `7. taskTitle 要精炼、可读，去掉"请帮我""我想要"等口水前缀`,
                 ``,
-                `只输出 JSON 数组，不要其他文字。`,
+                `只输出 JSON 对象 { taskTitle, steps }，不要其他文字。`,
               ].join('\n')
 
               // 调用 OpenClaw 本地 Claude
@@ -641,31 +669,42 @@ async function main() {
 
               if (!replyText) throw new Error('OpenClaw 返回空')
 
-              // 解析 JSON
+              // 解析 JSON（支持 { taskTitle, steps } 对象格式和纯数组格式）
               let cleanJson = replyText.trim()
               // 去掉 markdown 代码块包裹
               if (cleanJson.startsWith('```')) {
                 cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
               }
-              // 尝试找到 JSON 数组
+              // 尝试找到 JSON 对象或数组
+              const objStart = cleanJson.indexOf('{')
               const arrStart = cleanJson.indexOf('[')
-              const arrEnd = cleanJson.lastIndexOf(']')
-              if (arrStart >= 0 && arrEnd > arrStart) {
-                cleanJson = cleanJson.slice(arrStart, arrEnd + 1)
+              if (objStart >= 0 && (arrStart < 0 || objStart < arrStart)) {
+                // 优先按对象解析 { taskTitle, steps }
+                const objEnd = cleanJson.lastIndexOf('}')
+                if (objEnd > objStart) cleanJson = cleanJson.slice(objStart, objEnd + 1)
+              } else if (arrStart >= 0) {
+                const arrEnd = cleanJson.lastIndexOf(']')
+                if (arrEnd > arrStart) cleanJson = cleanJson.slice(arrStart, arrEnd + 1)
               }
               const parsed = JSON.parse(cleanJson)
               const steps = Array.isArray(parsed) ? parsed : (parsed.steps || [])
+              // 🆕 提取 Agent 精炼后的标题
+              const agentTaskTitle = (!Array.isArray(parsed) && parsed.taskTitle) ? parsed.taskTitle : null
               if (!Array.isArray(steps) || steps.length === 0) {
                 throw new Error('拆解结果为空或格式错误')
               }
 
-              console.log(`   ✅ 本地拆解完成: ${steps.length} 个步骤`)
+              console.log(`   ✅ 本地拆解完成: ${steps.length} 个步骤${agentTaskTitle ? ` | 标题: "${agentTaskTitle}"` : ''}`)
               for (const s of steps) {
                 console.log(`      - ${s.title} → ${s.assignee || '未指定'} (${s.assigneeType || 'agent'})`)
               }
 
-              // 回写 Hub
-              const result = await client.request('POST', `/api/tasks/${dTaskId}/decompose-result`, { steps })
+              // 🆕 回写 Hub（含 taskTitle + reasoning）
+              const writebackPayload = { steps }
+              if (agentTaskTitle && agentTaskTitle.length >= 2 && agentTaskTitle.length <= 100) {
+                writebackPayload.taskTitle = agentTaskTitle
+              }
+              const result = await client.request('POST', `/api/tasks/${dTaskId}/decompose-result`, writebackPayload)
               console.log(`   ✅ 已回写到 Hub: ${result.message || 'OK'}`)
               markSeen(decomposeKey)
             } catch (e) {

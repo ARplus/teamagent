@@ -103,6 +103,22 @@ export default function ChatPage() {
     return () => clearInterval(interval)
   }, [session])
 
+  // #3 fix: 监听 SSE chat:incoming → 立即刷新（Agent主动消息实时更新）
+  useEffect(() => {
+    const handler = async () => {
+      try {
+        const res = await fetch('/api/chat/history?limit=50')
+        if (!res.ok) return
+        const data = await res.json()
+        const msgs: Message[] = data.messages || []
+        setMessages(msgs)
+        if (msgs.length > 0) latestMsgIdRef.current = msgs[msgs.length - 1].id
+      } catch (_) {}
+    }
+    window.addEventListener('teamagent:chat-refresh', handler)
+    return () => window.removeEventListener('teamagent:chat-refresh', handler)
+  }, [])
+
   const loadAll = async () => {
     try {
       const [agentRes, historyRes, statsRes] = await Promise.all([

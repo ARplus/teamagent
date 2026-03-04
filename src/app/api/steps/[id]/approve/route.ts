@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
 import { getNextStepsAfterCompletion, activateAndNotifySteps } from '@/lib/step-scheduling'
+import { applyXPChange, findAgentByUserId, XP_STEP_APPROVED_CLEAN, XP_STEP_APPROVED_DIRTY } from '@/lib/agent-growth'
 
 // POST /api/steps/[id]/approve - 人类审核通过
 export async function POST(
@@ -88,6 +89,28 @@ export async function POST(
       where: { stepId: id },
       data: { status: 'done' }
     })
+
+    // 🆕 Growth: 审核通过 → 奖励 XP
+    if (step.assigneeId) {
+      try {
+        const agentId = await findAgentByUserId(step.assigneeId)
+        if (agentId) {
+          const xp = (step.rejectionCount ?? 0) > 0 ? XP_STEP_APPROVED_DIRTY : XP_STEP_APPROVED_CLEAN
+          const result = await applyXPChange(agentId, xp, `approved:${step.title}`)
+          if (result.leveledUp) {
+            sendToUser(step.assigneeId, {
+              type: 'agent:level-up',
+              agentId,
+              newLevel: result.newLevel,
+              oldLevel: result.oldLevel,
+              totalXP: result.newXP,
+            })
+          }
+        }
+      } catch (e: any) {
+        console.warn('[Approve/Growth] XP 奖励失败:', e?.message)
+      }
+    }
 
     // 更新任务的总时间统计
     const allSteps = await prisma.taskStep.findMany({

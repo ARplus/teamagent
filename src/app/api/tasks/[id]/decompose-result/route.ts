@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // 2. 解析请求体
     const body = await req.json()
-    const { steps, reasoning } = body
+    const { steps, reasoning, taskTitle } = body
     if (!Array.isArray(steps) || steps.length === 0) {
       return NextResponse.json({ error: '步骤列表不能为空' }, { status: 400 })
     }
@@ -60,10 +60,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const cancelled = cancelDecomposeTimeout(taskId)
     console.log(`[DecomposeResult] taskId=${taskId} 收到 Agent 回写 (${steps.length} 步)${cancelled ? '，已取消超时' : ''}`)
 
-    // 7. 原子更新拆解状态
+    // 7. 原子更新拆解状态 + 可选标题回写
+    const updateData: any = { decomposeStatus: 'done', decomposeEngine: 'main-agent' }
+    // 🆕 A1: Agent 回写的 taskTitle（合法长度时覆盖原标题）
+    if (taskTitle && typeof taskTitle === 'string' && taskTitle.length >= 2 && taskTitle.length <= 100) {
+      updateData.title = taskTitle
+      console.log(`[DecomposeResult] 回写任务标题: "${taskTitle}"`)
+    }
     await prisma.task.update({
       where: { id: taskId },
-      data: { decomposeStatus: 'done', decomposeEngine: 'main-agent' }
+      data: updateData,
     })
 
     // 8. 创建步骤 + 通知

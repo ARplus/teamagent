@@ -62,39 +62,58 @@ async function callLLM(prompt) {
 }
 
 // ====== 生成拆解步骤 ======
-async function generateDecomposeSteps(taskDescription, teamMembers) {
-  const teamInfo = teamMembers.map(m => 
-    `- ${m.agentName || m.name}（${m.capabilities?.join('、') || '通用'}）`
-  ).join('\n')
+async function generateDecomposeSteps(taskDescription, teamMembers, taskTitle) {
+  // 🆕 双身份团队信息：人类名 + Agent名 分开显示
+  const teamInfo = teamMembers.map(m => {
+    const humanName = m.humanName || m.name
+    if (m.isAgent && m.agentName) {
+      const caps = m.capabilities?.length ? m.capabilities.join('、') : '通用'
+      const soulNote = m.soulSummary ? ` | 人格：${m.soulSummary.substring(0, 60)}` : ''
+      const levelNote = m.level ? ` | Lv.${m.level}` : ''
+      return `- 👤 人类「${humanName}」\n  └─ 🤖 Agent「${m.agentName}」— 能力：${caps}${soulNote}${levelNote}`
+    }
+    return `- 👤 人类「${humanName}」${m.role === 'owner' ? '（团队负责人）' : ''}（无Agent，只能人工执行）`
+  }).join('\n')
 
   const prompt = `你是 TeamAgent 主协调 Agent。请将以下任务拆解为具体步骤，并分配给最合适的团队成员。
 
-## 任务描述
+## 任务${taskTitle ? `: ${taskTitle}` : ''}
 ${taskDescription}
 
-## 可用团队成员及能力
+## 团队成员（⚠️ 注意区分人类名和Agent名）
 ${teamInfo}
 
-## 输出格式（JSON 数组）
-[
-  {
-    "title": "步骤标题",
-    "description": "详细说明",
-    "assignee": "团队成员名字（必须是上面列出的成员之一）",
-    "requiresApproval": true,
-    "parallelGroup": null,
-    "inputs": ["输入依赖"],
-    "outputs": ["产出物，有文件写文件名如 报告.md"],
-    "skills": ["需要的技能"],
-    "stepType": "task"
-  }
-]
+## 输出格式（JSON 对象，不是数组！）
+{
+  "taskTitle": "精炼后的任务标题（简洁、无口水前缀、2-50字）",
+  "steps": [
+    {
+      "title": "步骤标题",
+      "description": "详细说明",
+      "assignee": "成员名字（⚠️ Agent做→填Agent名；人类做→填人类名）",
+      "assigneeType": "agent 或 human（⚠️ 必须与assignee身份匹配）",
+      "requiresApproval": true,
+      "parallelGroup": null,
+      "inputs": ["输入依赖"],
+      "outputs": ["产出物，有文件写文件名如 报告.md"],
+      "skills": ["需要的技能"],
+      "stepType": "task"
+    }
+  ]
+}
 
-## 拆解规则
+## ⚠️ 人类 vs Agent 身份严格区分（最重要的规则！）
+- 需要 Agent 自动执行 → assignee 填 **Agent名**（如 Lobster、八爪），assigneeType = "agent"
+- 需要人类亲自操作 → assignee 填 **人类名**（如 Aurora、木须），assigneeType = "human"
+- ⛔ 绝对禁止：把人类名填为 agent 类型，或把 Agent 名填为 human 类型
+- 关键词判断：涉及"本人/手动/你去/亲自" → human；涉及"自动/调研/分析/撰写" → agent
+
+## 其他拆解规则
 - requiresApproval: 关键决策、最终产出设 true；常规执行设 false
 - parallelGroup: 可同时执行的步骤设相同字符串（如"调研"），顺序执行设 null
-- assignee: 必须是团队成员列表中的名字，选最合适的
+- assignee: 必须是团队成员列表中出现过的名字，选最合适的
 - 最少 2 步，逻辑清晰，每步独立可执行
+- taskTitle: 精炼、可读，去掉"请帮我""我想要"等口水前缀
 
 ## ⚠️ Agent 军团注册任务（必须遵守）
 当任务涉及"组建 Agent 军团"、"注册 Agent 成员"、"创建子 Agent"时，**必须**拆成以下两步，缺一不可：
@@ -111,12 +130,16 @@ ${teamInfo}
 
 **原因**：仅 API 注册是"纸面军团"——OpenClaw 中不存在的 Agent 无法被 sessions_spawn 调度执行任何真实任务。
 
-只输出 JSON 数组，不要其他内容。`
+只输出 JSON 对象 { taskTitle, steps }，不要其他文字。`
 
   const raw = await callLLM(prompt)
   try {
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : (parsed.steps || [])
+    // 🆕 支持 { taskTitle, steps } 对象格式和纯数组格式
+    if (Array.isArray(parsed)) {
+      return { taskTitle: null, steps: parsed }
+    }
+    return { taskTitle: parsed.taskTitle || null, steps: parsed.steps || [] }
   } catch (e) {
     throw new Error('LLM 返回格式错误: ' + raw.substring(0, 200))
   }
@@ -150,19 +173,21 @@ async function executeDecomposeStep(step) {
 
     // 3. 调用 LLM 生成步骤
     console.log('\n🤖 分析任务，生成拆解方案...')
-    const steps = await generateDecomposeSteps(taskDescription, teamMembers)
-    console.log(`✅ 生成了 ${steps.length} 个步骤:`)
+    const result = await generateDecomposeSteps(taskDescription, teamMembers, step.task?.title)
+    const steps = result.steps || []
+    const taskTitleRefined = result.taskTitle
+    console.log(`✅ 生成了 ${steps.length} 个步骤${taskTitleRefined ? ` | 标题: "${taskTitleRefined}"` : ''}:`)
     steps.forEach((s, i) => {
       const parallel = s.parallelGroup ? ` [并行:${s.parallelGroup}]` : ''
       const approval = s.requiresApproval ? ' [需审批]' : ' [自动通过]'
-      console.log(`   ${i+1}. [${s.assignee}]${parallel}${approval} ${s.title}`)
+      console.log(`   ${i+1}. [${s.assignee}] (${s.assigneeType || 'agent'})${parallel}${approval} ${s.title}`)
     })
 
     // 4. 提交结果
     console.log('\n📤 提交拆解结果...')
     const summary = `已拆解为 ${steps.length} 个步骤，` +
       `分配给 ${[...new Set(steps.map(s => s.assignee).filter(Boolean))].join('、')}`
-    
+
     await client.submitStep(step.id, JSON.stringify(steps), { summary })
     await client.goOnline()
     console.log('✅ 提交成功！子步骤已自动创建，相关 Agent 已收到通知')

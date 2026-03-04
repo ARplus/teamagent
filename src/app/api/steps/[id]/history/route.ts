@@ -43,7 +43,7 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
       include: {
         submitter: {
-          select: { id: true, name: true, email: true }
+          select: { id: true, name: true, email: true, agent: { select: { name: true } } }
         },
         attachments: true
       }
@@ -71,7 +71,12 @@ export async function GET(
       status: s.status,
       createdAt: s.createdAt,
       durationMs: s.durationMs,
-      submitter: s.submitter,
+      // 🆕 如果提交者是 Agent，优先用 Agent 名字
+      submitter: {
+        id: s.submitter.id,
+        name: (s.submitter as any).agent?.name || s.submitter.name,
+        email: s.submitter.email,
+      },
       reviewedAt: s.reviewedAt,
       reviewedBy: s.reviewedBy ? reviewerMap.get(s.reviewedBy) : null,
       reviewNote: s.reviewNote,

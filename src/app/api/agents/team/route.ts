@@ -60,6 +60,9 @@ export async function GET(req: NextRequest) {
         reputation: agent.reputation,
         claimedAt: agent.claimedAt,
         isMainAgent: true,
+        soul: agent.soul,              // 🆕 军团成长
+        growthXP: agent.growthXP,      // 🆕
+        growthLevel: agent.growthLevel, // 🆕
         stats: { doneSteps, pendingSteps }
       }
     }
@@ -106,6 +109,9 @@ export async function GET(req: NextRequest) {
             userId: a.user!.id,
             userName: a.user!.name,
             userEmail: a.user!.email,
+            soul: a.soul,              // 🆕 军团成长
+            growthXP: a.growthXP,      // 🆕
+            growthLevel: a.growthLevel, // 🆕
             stats: { doneSteps, pendingSteps }
           }
         })

@@ -16,7 +16,7 @@ export type TeamAgentEvent =
   | { type: 'workflow:changed'; taskId: string; change: string }
   | { type: 'chat:incoming'; msgId: string; content: string; senderName?: string }
   | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
-  | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorName: string; content: string }
+  | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorId: string; authorName: string; content: string }
   | { type: 'task:evaluating'; taskId: string; title: string; agentName: string }
   | { type: 'task:evaluated'; taskId: string; title: string; count: number; reviewerName?: string }
   // B04: AI 后台拆解完成
@@ -24,6 +24,8 @@ export type TeamAgentEvent =
   // F06: Agent 主动呼叫
   | { type: 'agent:calling'; callId: string; priority: 'urgent' | 'normal' | 'low'; title: string; content: string; agentName: string; taskId?: string; stepId?: string }
   | { type: 'agent:call-responded'; callId: string; action: string; message?: string; respondedBy: string }
+  // 🆕 军团成长：Agent 升级
+  | { type: 'agent:level-up'; agentId: string; newLevel: number; oldLevel: number; totalXP: number }
   | { type: 'ping' }
 
 interface UseAgentEventsOptions {

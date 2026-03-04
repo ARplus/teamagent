@@ -33,7 +33,7 @@ async function fetchWorkspaceTeam(workspaceId: string) {
       user: {
         select: {
           id: true, name: true, nickname: true,
-          agent: { select: { id: true, name: true, capabilities: true, isMainAgent: true, status: true, parentAgentId: true } }
+          agent: { select: { id: true, name: true, capabilities: true, isMainAgent: true, status: true, parentAgentId: true, soul: true, growthLevel: true } }
         }
       }
     }
@@ -58,11 +58,16 @@ function buildTeamContext(members: Awaited<ReturnType<typeof fetchWorkspaceTeam>
         try { caps = JSON.parse(agent.capabilities) } catch { caps = [] }
       }
       return {
-        name: m.user.nickname || m.user.name || '未知',
+        // 🆕 双身份：人类名 + Agent 名分开，让主 Agent 能正确区分
+        humanName: m.user.nickname || m.user.name || '未知',
+        name: m.user.nickname || m.user.name || '未知',  // 保持向后兼容
         isAgent: !!agent,
         agentName: agent?.name,
         capabilities: caps,
         role: m.role,
+        // 🆕 SOUL 注入：主 Agent 拆解时看到人格摘要和等级
+        soulSummary: agent?.soul ? agent.soul.substring(0, 200) : undefined,
+        level: agent?.growthLevel || undefined,
       }
     })
 }
@@ -106,36 +111,43 @@ async function createStepsFromParseResult(
     const assigneeNames = step.assignees || (step.assignee ? [step.assignee] : [])
 
     for (const assigneeName of assigneeNames) {
-      // 先精确匹配人名
-      const humanMatch = members.find(m =>
-        m.user.nickname === assigneeName || m.user.name === assigneeName
-      )
-      if (humanMatch) {
-        assigneeId = humanMatch.user.id
-        if (!step.assigneeType) {
-          resolvedAssigneeType = humanMatch.user.agent ? 'agent' : 'human'
-        }
-        break
-      }
-      // 再匹配 Agent 名字
+      // 先精确匹配 Agent 名字（如 Lobster、八爪）
       const agentMatch = members.find(m =>
-        (m.user.agent as any)?.name?.includes(assigneeName) ||
-        assigneeName.includes((m.user.agent as any)?.name || '')
+        (m.user.agent as any)?.name === assigneeName
       )
       if (agentMatch) {
         assigneeId = agentMatch.user.id
         if (!step.assigneeType) resolvedAssigneeType = 'agent'
         break
       }
-      // 最后模糊匹配
+      // 再精确匹配人名（如 Aurora、木须）
+      const humanMatch = members.find(m =>
+        m.user.nickname === assigneeName || m.user.name === assigneeName
+      )
+      if (humanMatch) {
+        assigneeId = humanMatch.user.id
+        // 🆕 Fix: 匹配到人名 → 默认 human（不再因 user 有 Agent 就变 agent）
+        if (!step.assigneeType) resolvedAssigneeType = 'human'
+        break
+      }
+      // 模糊匹配 Agent 名字（包含关系）
+      const agentFuzzy = members.find(m => {
+        const aName = (m.user.agent as any)?.name || ''
+        return aName && (aName.includes(assigneeName) || assigneeName.includes(aName))
+      })
+      if (agentFuzzy) {
+        assigneeId = agentFuzzy.user.id
+        if (!step.assigneeType) resolvedAssigneeType = 'agent'
+        break
+      }
+      // 最后模糊匹配人名
       const fuzzy = members.find(m =>
         m.user.name?.includes(assigneeName) || assigneeName.includes(m.user.name || '')
       )
       if (fuzzy) {
         assigneeId = fuzzy.user.id
-        if (!step.assigneeType) {
-          resolvedAssigneeType = fuzzy.user.agent ? 'agent' : 'human'
-        }
+        // 🆕 Fix: 模糊匹配人名 → 默认 human
+        if (!step.assigneeType) resolvedAssigneeType = 'human'
         break
       }
     }

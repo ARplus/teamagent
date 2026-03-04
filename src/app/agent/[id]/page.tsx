@@ -17,6 +17,9 @@ interface AgentData {
   reputation: number | null
   claimedAt: string | null
   user: { id: string; name: string | null; email: string } | null
+  soul: string | null          // 🆕 SOUL 人格核心
+  growthXP: number             // 🆕 经验值
+  growthLevel: number          // 🆕 等级 (1-5)
 }
 
 interface Stats {
@@ -95,6 +98,24 @@ const stepStatusMap: Record<string, { icon: string; label: string; color: string
   waiting_approval:  { icon: '⏳', label: '待审批',   color: 'text-amber-600' },
   in_progress:       { icon: '🔄', label: '进行中',   color: 'text-blue-600' },
   pending:           { icon: '⏸️', label: '等待中',   color: 'text-slate-500' },
+}
+
+// ============ Growth Utils ============
+
+const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000]
+
+function getXPProgress(xp: number, level: number): number {
+  const cur = LEVEL_THRESHOLDS[level - 1] || 0
+  const next = LEVEL_THRESHOLDS[level]
+  if (next == null || level >= LEVEL_THRESHOLDS.length) return 100
+  const range = next - cur
+  if (range <= 0) return 100
+  return Math.min(100, Math.round(((xp - cur) / range) * 100))
+}
+
+function getLevelTitle(level: number): string {
+  const titles = ['新兵', '列兵', '精英', '老兵', '传说']
+  return titles[Math.min(level - 1, titles.length - 1)]
 }
 
 // 渐变色池
@@ -353,6 +374,26 @@ export default function AgentProfileByIdPage() {
                     </div>
                   )}
 
+                  {/* 🆕 等级 + XP 进度条 */}
+                  <div className="flex items-center gap-3 mb-3 justify-center sm:justify-start">
+                    <span className="bg-white/25 backdrop-blur text-white text-sm px-3 py-1 rounded-full font-bold border border-white/20">
+                      🎖️ Lv.{agent.growthLevel} {getLevelTitle(agent.growthLevel)}
+                    </span>
+                    <span className="text-white/80 text-sm">{agent.growthXP} XP</span>
+                  </div>
+                  <div className="w-full max-w-xs mb-3 mx-auto sm:mx-0">
+                    <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-yellow-300 to-amber-400 rounded-full transition-all duration-500"
+                        style={{ width: `${getXPProgress(agent.growthXP, agent.growthLevel)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-white/50 text-xs mt-1">
+                      <span>Lv.{agent.growthLevel}</span>
+                      <span>{agent.growthLevel < 5 ? `Lv.${agent.growthLevel + 1}` : 'MAX'}</span>
+                    </div>
+                  </div>
+
                   {/* 信誉分 */}
                   {agent.reputation !== null && agent.reputation !== undefined && (
                     <div className="flex items-center justify-center sm:justify-start space-x-2 mb-3">
@@ -395,9 +436,9 @@ export default function AgentProfileByIdPage() {
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center">
-              <div className="text-3xl mb-1">⭐</div>
-              <div className="text-2xl font-bold text-slate-900">{(agent.reputation ?? 0).toFixed(1)}</div>
-              <div className="text-xs text-slate-500 mt-1">信誉分</div>
+              <div className="text-3xl mb-1">🎖️</div>
+              <div className="text-2xl font-bold text-slate-900">Lv.{agent.growthLevel}</div>
+              <div className="text-xs text-slate-500 mt-1">{getLevelTitle(agent.growthLevel)}</div>
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center">
@@ -437,6 +478,21 @@ export default function AgentProfileByIdPage() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* 🆕 SOUL 人格核心 */}
+          {agent.soul && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-700 flex items-center space-x-2">
+                  <span>🧬</span>
+                  <span>人格核心 (SOUL)</span>
+                </h3>
+              </div>
+              <div className="px-6 py-4 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                {agent.soul}
               </div>
             </div>
           )}

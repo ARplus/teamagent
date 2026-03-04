@@ -79,10 +79,23 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
           onTaskUpdate?.()
           break
 
-        case 'step:mentioned':
-          addToast('warning', '📣 有人@你', `${event.authorName}: ${(event as any).content?.substring(0, 50) || '提到了你'}`)
+        case 'step:mentioned': {
+          // 如果当前用户就是评论作者 → 不弹通知（Agent 通过 agent-worker 处理）
+          const currentUserId = (session?.user as any)?.id
+          if (currentUserId && (event as any).authorId === currentUserId) {
+            onTaskUpdate?.()
+            break
+          }
+          // 清理 @[DisplayName](userId) → @DisplayName
+          const rawContent = (event as any).content || ''
+          const cleanContent = rawContent.replace(/@\[[^\]]+\]\([^)]+\)/g, (m: string) => {
+            const name = m.match(/@\[([^\]]+)\]/)?.[1] || ''
+            return `@${name}`
+          }).substring(0, 50)
+          addToast('warning', '📣 有人@你', `${event.authorName}: ${cleanContent || '提到了你'}`)
           onTaskUpdate?.()
           break
+        }
 
         // B04: AI 后台拆解完成，自动刷新步骤列表
         case 'task:parsed':
@@ -98,6 +111,22 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
 
         case 'task:evaluated':
           addToast('success', '🏆 评分完成', `${(event as any).reviewerName || '评审官'} 已为 ${(event as any).count} 位成员评分`)
+          onTaskUpdate?.()
+          break
+
+        // #3: Agent 主动发消息 / 人类发消息后 Agent 回复 → 通知前端刷新聊天
+        case 'chat:incoming':
+          // 只有 Agent 发的消息才弹通知（fromAgent=true），人类自己发的不弹
+          if ((event as any).fromAgent) {
+            addToast('info', '💬 新消息', (event as any).content?.substring(0, 60) || '收到新消息')
+          }
+          // 无论谁发的都刷新聊天页面
+          window.dispatchEvent(new CustomEvent('teamagent:chat-refresh'))
+          break
+
+        // 🆕 军团成长：Agent 升级庆祝
+        case 'agent:level-up':
+          addToast('success', '🎖️ 等级提升！', `恭喜升到 Lv.${(event as any).newLevel}！继续加油！`)
           onTaskUpdate?.()
           break
 

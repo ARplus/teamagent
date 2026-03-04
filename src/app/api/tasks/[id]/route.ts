@@ -63,7 +63,16 @@ export async function GET(
                 } }
               }
             },
-            attachments: { select: { id: true, name: true, url: true, type: true } }
+            attachments: { select: { id: true, name: true, url: true, type: true } },
+            // 🆕 最新提交记录（含提交者名字）
+            submissions: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                submitter: { select: { id: true, name: true, email: true, agent: { select: { name: true } } } }
+              }
+            }
           },
           orderBy: { order: 'asc' }
         },
@@ -99,8 +108,19 @@ export async function GET(
     // 规则：任务创建者 OR 步骤被分配给当前用户（无论工作区）
     const isTaskCreator = viewerUserId != null && viewerUserId === task.creatorId
 
-    const stepsWithApprover = task.steps.map(s => ({
+    const stepsWithApprover = task.steps.map(s => {
+      const submissions = (s as any).submissions || []
+      const rawSubmitter = submissions[0]?.submitter ?? null
+      // 🆕 如果提交者是 Agent，优先用 Agent 名字
+      const lastSubmitter = rawSubmitter ? {
+        id: rawSubmitter.id,
+        name: rawSubmitter.agent?.name || rawSubmitter.name,
+        email: rawSubmitter.email,
+      } : null
+      return {
       ...s,
+      submissions: undefined, // 不传 submissions 数组到前端（前端用 history API 拿完整列表）
+      lastSubmitter,          // 🆕 最新提交者名字（Agent 优先）
       approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null,
       // 服务端算好，前端直接用
       // 规则：任务创建者 OR 步骤 assignee OR StepAssignee 成员
@@ -111,7 +131,7 @@ export async function GET(
            // B08: 多人指派中的成员也有审批权限
            || ((s as any).assignees?.some((a: any) => a.user?.id === viewerUserId) ?? false))
         : null,
-    }))
+    }})
 
     return NextResponse.json({
       ...task,

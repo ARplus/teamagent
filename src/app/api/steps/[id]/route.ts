@@ -80,9 +80,15 @@ export async function PATCH(
       return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
     }
 
-    // 只有任务创建者或步骤负责人可以更新
-    if (step.task.creatorId !== auth.userId && step.assigneeId !== auth.userId) {
-      return NextResponse.json({ error: '无权限更新此步骤' }, { status: 403 })
+    // 权限：任务创建者、步骤负责人、或同工作区成员均可更新
+    const isCreatorOrAssignee = step.task.creatorId === auth.userId || step.assigneeId === auth.userId
+    if (!isCreatorOrAssignee) {
+      const isMember = await prisma.workspaceMember.findFirst({
+        where: { workspaceId: step.task.workspaceId, userId: auth.userId }
+      })
+      if (!isMember) {
+        return NextResponse.json({ error: '无权限更新此步骤（非工作区成员）' }, { status: 403 })
+      }
     }
 
     const data = await req.json()

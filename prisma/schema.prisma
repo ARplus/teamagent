@@ -85,6 +85,11 @@ model Agent {
   workHistory     String?  // JSON: 工作历史统计
   reputation      Float?   @default(0)  // 信誉分 (0-5)
 
+  // 🆕 军团成长系统 (Phase 0)
+  soul            String?           // SOUL.md 内容（人格核心、说话风格、能力描述）
+  growthXP        Int      @default(0)   // 成长经验值
+  growthLevel     Int      @default(1)   // 当前等级 (1-5)
+
   // 🆕 Claim 后临时存原始 Token，Agent 轮询取走即删
   pendingApiToken String?
 

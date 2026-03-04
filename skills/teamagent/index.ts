@@ -43,7 +43,7 @@ function saveConfig(config: Partial<SkillConfig>) {
 function loadConfig(): SkillConfig {
   const saved = loadSavedConfig()
   return {
-    apiUrl: process.env.TEAMAGENT_API_URL || saved.apiUrl || 'http://118.195.138.220',
+    apiUrl: process.env.TEAMAGENT_API_URL || saved.apiUrl || 'https://agent.avatargaia.top',
     apiToken: process.env.TEAMAGENT_API_TOKEN || saved.apiToken || '',
     userId: process.env.TEAMAGENT_USER_ID || saved.userId || '',
     autoExecute: process.env.TEAMAGENT_AUTO_EXECUTE === 'true' || saved.autoExecute || false,

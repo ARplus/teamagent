@@ -41,12 +41,15 @@ export async function GET(
       return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
     }
 
-    // 查询评论
+    // 查询评论（包含 author 关联的 Agent 信息）
     const comments = await prisma.stepComment.findMany({
       where: { stepId: id },
       include: {
         author: {
-          select: { id: true, name: true, email: true, avatar: true }
+          select: {
+            id: true, name: true, email: true, avatar: true,
+            agent: { select: { id: true, name: true } }
+          }
         },
         attachments: {
           select: { id: true, name: true, url: true, type: true, size: true }
@@ -56,18 +59,25 @@ export async function GET(
     })
 
     return NextResponse.json({
-      comments: comments.map(c => ({
-        id: c.id,
-        content: c.content,
-        createdAt: c.createdAt.toISOString(),
-        author: {
-          id: c.author.id,
-          name: c.author.name,
-          email: c.author.email,
-          avatar: c.author.avatar
-        },
-        attachments: c.attachments
-      }))
+      comments: comments.map(c => {
+        const agent = (c.author as any).agent
+        const fromAgent = (c as any).isFromAgent
+        return {
+          id: c.id,
+          content: c.content,
+          isFromAgent: fromAgent || false,
+          createdAt: c.createdAt.toISOString(),
+          author: {
+            id: c.author.id,
+            name: fromAgent && agent ? agent.name : c.author.name,
+            email: c.author.email,
+            avatar: c.author.avatar,
+            isAgent: fromAgent || false,
+            ...(agent ? { agentName: agent.name } : {})
+          },
+          attachments: c.attachments
+        }
+      })
     })
   } catch (error) {
     console.error('获取评论失败:', error)
@@ -91,11 +101,18 @@ export async function POST(
     // 双重鉴权
     let userId: string | null = null
     let userName: string = '未知用户'
+    let isFromAgent = false
 
     const tokenAuth = await authenticateRequest(req)
     if (tokenAuth) {
       userId = tokenAuth.user.id
-      userName = tokenAuth.user.name || tokenAuth.user.email
+      isFromAgent = true
+      // Agent 通过 token 认证，查找 Agent 名字
+      const agent = await prisma.agent.findFirst({
+        where: { userId: tokenAuth.user.id },
+        select: { name: true }
+      })
+      userName = agent?.name || tokenAuth.user.name || tokenAuth.user.email
     } else {
       const session = await getServerSession(authOptions)
       if (session?.user?.email) {
@@ -125,7 +142,8 @@ export async function POST(
       data: {
         content: content.trim(),
         stepId: id,
-        authorId: userId
+        authorId: userId,
+        isFromAgent,
       },
       include: {
         author: {
@@ -157,11 +175,30 @@ export async function POST(
     // F02: 解析 @mentions — 格式: @[显示名](userId)
     const mentionRegex = /@\[([^\]]+)\]\(([a-zA-Z0-9_-]+)\)/g
     const mentionedUserIds = new Set<string>()
+    const mentionedAgentSelf = new Set<string>() // 人类@自己的Agent（userId相同但实体不同）
     let match
     while ((match = mentionRegex.exec(content)) !== null) {
+      const displayName = match[1]
       const mentionedId = match[2]
-      if (mentionedId !== userId) { // 不通知自己
+      if (mentionedId !== userId) {
+        // 不同用户：正常通知
         mentionedUserIds.add(mentionedId)
+      } else {
+        // 同 userId：检查是否在 @自己的 Agent（人类和 Agent 共享 userId）
+        // 如果 displayName 是 Agent 名字而非人类名字，仍需通知 agent-worker
+        mentionedAgentSelf.add(displayName)
+      }
+    }
+
+    // 检查"自己@自己的Agent"场景：查 DB 确认是否有同名 Agent
+    if (mentionedAgentSelf.size > 0) {
+      const myAgent = await prisma.agent.findFirst({
+        where: { userId },
+        select: { name: true }
+      })
+      if (myAgent && mentionedAgentSelf.has(myAgent.name)) {
+        // 人类在 @自己的 Agent — 放行，agent-worker 需要收到通知
+        mentionedUserIds.add(userId)
       }
     }
 
@@ -204,6 +241,7 @@ export async function POST(
       taskId: step.taskId,
       stepId: id,
       commentId: comment.id,
+      authorId: userId,
       authorName: userName,
       content: content.trim().substring(0, 100)
     }

@@ -116,21 +116,21 @@ export default function MacOSInstallGuidePage() {
             <h2 className="text-lg font-semibold text-orange-800 mb-3">🗺️ 安装全流程速查</h2>
             <div className="space-y-2">
               {[
-                '打开终端（Terminal）',
-                '安装 Homebrew 包管理器',
+                '打开 MacOS 终端',
+                '安装 Homebrew',
                 '安装 / 升级 Node.js 到 v22+',
                 '安装 OpenClaw',
                 '配置网关',
-                '选择 AI 模型并填入 API Key',
+                '选择 AI 模型',
+                '填入 API Key',
                 '配置使用环境',
-                '配置技能与钩子',
-                '重启网关',
+                '配置技能（Skills）和钩子（Hooks）',
+                '重启网关服务',
                 '选择入门模式',
-                '配置处理',
-                '选择重置范围',
-                '打开 Web UI 开始使用',
-                'openclaw skill install teamagent（安装协作技能包）',
-                '在 OpenClaw 运行 /ta-register → 输入配对码 → 完成！',
+                '配置处理 & 选择重置范围',
+                '打开 Web UI 开始使用！',
+                '安装 TeamAgent Skill（协作技能包）',
+                '注册并配对到 TeamAgent → 完成！',
               ].map((step, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <span className="bg-orange-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
@@ -484,11 +484,26 @@ source ~/.zshrc`}</CodeBlock>
                 <li className="flex items-center gap-2"><span className="text-emerald-500">✓</span> 主 Agent 自动拆解任务，分配给团队</li>
               </ul>
             </div>
+            <div className="mt-3 border-2 border-orange-300 bg-orange-50 rounded-xl p-4">
+              <p className="font-semibold text-orange-800 mb-2">📦 直接下载 Skill 安装包</p>
+              <p className="text-sm text-slate-600 mb-3">如果命令安装失败或无法访问 ClawHub，可以直接下载安装包：</p>
+              <a
+                href="/downloads/teamagent-client-skill.zip"
+                download
+                className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                ⬇️ 下载 TeamAgent Skill (ZIP)
+              </a>
+              <div className="mt-3 text-sm text-slate-500 space-y-1">
+                <p>下载后解压到 Agent 的 Skill 目录：</p>
+                <CodeBlock>{`# 解压到 OpenClaw skills 目录
+unzip teamagent-client-skill.zip -d ~/.openclaw/workspace/skills/teamagent/`}</CodeBlock>
+              </div>
+            </div>
             <div className="mt-3 border border-slate-200 rounded-xl p-4">
               <p className="font-semibold text-slate-800 mb-2">💡 其他安装方式</p>
               <ul className="space-y-2 text-sm text-slate-600">
                 <li><strong>ClawHub 搜索：</strong>在 OpenClaw 控制界面 → Skills → 搜索 &quot;teamagent&quot; → 一键安装</li>
-                <li><strong>手动安装：</strong>从 GitHub 下载 <code className="bg-slate-200 px-1 rounded">teamagent-client-skill.zip</code>，解压到 <code className="bg-slate-200 px-1 rounded">~/.openclaw/skills/</code> 目录</li>
               </ul>
             </div>
           </section>

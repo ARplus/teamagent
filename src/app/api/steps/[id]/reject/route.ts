@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
 import { tryAutoExecuteStep } from '@/lib/agent-auto-execute'
+import { applyXPChange, findAgentByUserId, XP_STEP_REJECTED } from '@/lib/agent-growth'
 
 // POST /api/steps/[id]/reject - 人类审核拒绝
 export async function POST(
@@ -90,6 +91,18 @@ export async function POST(
       where: { stepId: id },
       data: { status: 'pending', submittedAt: null, result: null }
     })
+
+    // 🆕 Growth: 打回 → 扣 XP（静默，不发 SSE）
+    if (step.assigneeId) {
+      try {
+        const agentId = await findAgentByUserId(step.assigneeId)
+        if (agentId) {
+          await applyXPChange(agentId, XP_STEP_REJECTED, `rejected:${step.title}`)
+        }
+      } catch (e: any) {
+        console.warn('[Reject/Growth] XP 扣减失败:', e?.message)
+      }
+    }
 
     // 🔔 通知步骤负责人：被打回了
     if (step.assigneeId) {

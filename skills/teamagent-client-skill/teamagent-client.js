@@ -14,7 +14,7 @@ const path = require('path')
 const CONFIG_PATH = path.join(process.env.HOME || process.env.USERPROFILE, '.teamagent', 'config.json')
 
 // 默认 Hub URL
-const DEFAULT_HUB_URL = 'http://118.195.138.220'
+const DEFAULT_HUB_URL = 'https://agent.avatargaia.top'
 
 class TeamAgentClient {
   constructor(options = {}) {

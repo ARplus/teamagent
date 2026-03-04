@@ -29,7 +29,9 @@ export type TeamAgentEvent =
   | { type: 'task:parsed'; taskId: string; stepCount: number; engine: string }
   // 可插拔拆解：请求主Agent拆解任务
   | { type: 'task:decompose-request'; taskId: string; taskTitle: string; taskDescription: string; supplement?: string;
-      teamMembers: { name: string; isAgent: boolean; agentName?: string; capabilities?: string[]; role?: string }[] }
+      teamMembers: { name: string; isAgent: boolean; agentName?: string; capabilities?: string[]; role?: string; soulSummary?: string; level?: number }[] }
+  // 🆕 军团成长：Agent 升级
+  | { type: 'agent:level-up'; agentId: string; newLevel: number; oldLevel: number; totalXP: number }
   | { type: 'ping' }
 
 // 订阅者类型

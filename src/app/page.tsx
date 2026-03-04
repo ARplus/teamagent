@@ -89,6 +89,7 @@ interface TaskStep {
   appealedAt?: string | null
   appealResolvedAt?: string | null
   approvedByUser?: { id: string; name: string | null; email: string } | null
+  lastSubmitter?: { id: string; name: string | null; email: string } | null
   // 审批设置
   requiresApproval?: boolean   // false = Agent 提交后自动通过
   // 会议专用
@@ -2007,7 +2008,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
                       </option>
                     ))}
                     <option key={`human-${m.id}`} value={`human:${m.id}`}>
-                      👤 指派给{m.isSelf ? '自己' : m.name || m.email}（人工执行）
+                      👤 指派给{m.name || m.email}{m.isSelf ? '（我）' : ''}（人工执行）
                     </option>
                   </optgroup>
                 ))}
@@ -2764,7 +2765,7 @@ function StepCard({
                             onChange={() => toggleMultiSelect(`human:${m.id}`, 'human')}
                             className="rounded border-slate-300 text-blue-500 focus:ring-blue-400"
                           />
-                          <span className="text-xs">👤 {m.isSelf ? '自己' : m.name || m.email}</span>
+                          <span className="text-xs">👤 {m.name || m.email}{m.isSelf ? '（我）' : ''}</span>
                         </label>
                       </div>
                     ))}
@@ -2937,7 +2938,7 @@ function StepCard({
           {(step.completedAt || step.approvedAt || step.rejectedAt) && (
             <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
               {step.completedAt && (
-                <span>📤 提交 {new Date(step.completedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                <span>📤 提交{step.lastSubmitter ? ` · ${step.lastSubmitter.name || step.lastSubmitter.email}` : ''} {new Date(step.completedAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
               )}
               {step.approvedAt && (
                 <span className="text-emerald-600">
@@ -3286,6 +3287,9 @@ function HistoryItem({ submission, defaultOpen }: { submission: Submission; defa
           <span className={`px-2 py-0.5 rounded-full font-medium ${statusStyle[submission.status]}`}>
             {submission.status === 'pending' ? '待审' : submission.status === 'approved' ? '通过' : '打回'}
           </span>
+          {submission.submitter?.name && (
+            <span className="text-slate-600 font-medium">{submission.submitter.name}</span>
+          )}
           <span className="text-slate-500">{formatTime(submission.createdAt)}</span>
         </div>
         <span className={`text-slate-400 text-xs transition-transform ${open ? 'rotate-180' : ''}`}>▼</span>

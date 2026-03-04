@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
+import { applyXPChange, findAgentByUserId, XP_EVAL_MULTIPLIER } from '@/lib/agent-growth'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const ANTHROPIC_API_URL = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages'
@@ -377,6 +378,28 @@ ${memberLines}`
         }
       })
       evaluations.push(ev)
+    }
+
+    // 🆕 Growth: 评分奖励 XP
+    for (const ev of evaluations) {
+      try {
+        const agentId = await findAgentByUserId(ev.memberId)
+        if (agentId) {
+          const bonusXP = Math.round(ev.overallScore * XP_EVAL_MULTIPLIER)
+          const result = await applyXPChange(agentId, bonusXP, `eval:${task.title}:score=${ev.overallScore}`)
+          if (result.leveledUp) {
+            sendToUser(ev.memberId, {
+              type: 'agent:level-up',
+              agentId,
+              newLevel: result.newLevel,
+              oldLevel: result.oldLevel,
+              totalXP: result.newXP,
+            })
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[Evaluate/Growth] XP 奖励失败 (${ev.memberId}):`, e?.message)
+      }
     }
 
     // 通知任务创建者：评分完成

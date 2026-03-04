@@ -94,6 +94,9 @@ export async function GET(
         reputation: agent.reputation,
         claimedAt: agent.claimedAt,
         user: agent.user,
+        soul: agent.soul,              // 🆕 军团成长
+        growthXP: agent.growthXP,      // 🆕
+        growthLevel: agent.growthLevel, // 🆕
       },
       stats: {
         totalSteps,

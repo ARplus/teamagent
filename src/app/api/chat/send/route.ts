@@ -63,13 +63,15 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // 推送 chat:incoming 事件给 agent-worker
+      // 推送 chat:incoming 事件给 agent-worker（包含附件信息）
+      const parsedMeta = metadata ? (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) : null
       sendToUser(user.id, {
         type: 'chat:incoming',
         msgId: agentMessage.id,
         content: content.trim(),
         agentId: agent.id,
-      })
+        ...(parsedMeta?.attachments?.length ? { attachments: parsedMeta.attachments } : {}),
+      } as any)
 
       return NextResponse.json({
         userMessageId: userMessage.id,
