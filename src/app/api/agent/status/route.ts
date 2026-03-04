@@ -41,11 +41,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Agent 不存在' }, { status: 404 })
     }
 
+    // 根据 updatedAt 判断真实状态：超过 5 分钟无心跳视为离线
+    let effectiveStatus = agent.status
+    if (agent.updatedAt && (agent.status === 'online' || agent.status === 'working')) {
+      const diff = Date.now() - new Date(agent.updatedAt).getTime()
+      const TIMEOUT_MS = 5 * 60 * 1000 // 5分钟
+      if (diff > TIMEOUT_MS) {
+        effectiveStatus = 'offline'
+        // 异步更新数据库（不阻塞响应）
+        prisma.agent.update({
+          where: { id: agent.id },
+          data: { status: 'offline' }
+        }).catch(() => {})
+      }
+    }
+
     return NextResponse.json({
       id: agent.id,
       name: agent.name,
       avatar: agent.avatar,
-      status: agent.status,
+      status: effectiveStatus,
       updatedAt: agent.updatedAt
     })
 

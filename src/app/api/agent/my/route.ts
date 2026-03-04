@@ -23,11 +23,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '未配对 Agent' }, { status: 404 })
     }
 
+    // 根据 updatedAt 判断真实状态：超过 5 分钟无活动视为离线
+    let effectiveStatus = user.agent.status
+    if (user.agent.updatedAt && (user.agent.status === 'online' || user.agent.status === 'working')) {
+      const diff = Date.now() - new Date(user.agent.updatedAt).getTime()
+      if (diff > 5 * 60 * 1000) {
+        effectiveStatus = 'offline'
+        prisma.agent.update({ where: { id: user.agent.id }, data: { status: 'offline' } }).catch(() => {})
+      }
+    }
+
     return NextResponse.json({
       id: user.agent.id,
       name: user.agent.name,
       avatar: user.agent.avatar,
-      status: user.agent.status,
+      status: effectiveStatus,
       capabilities: user.agent.capabilities ? JSON.parse(user.agent.capabilities) : [],
     })
   } catch (error) {

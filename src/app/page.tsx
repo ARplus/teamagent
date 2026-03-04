@@ -2220,6 +2220,7 @@ function StepCard({
   const assignDropdownRef = useRef<HTMLDivElement>(null)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; openUp: boolean }>({ top: 0, left: 0, openUp: false })
   const [humanCompleting, setHumanCompleting] = useState(false)
+  const [humanSubmitText, setHumanSubmitText] = useState('')
   const [stepUploading, setStepUploading] = useState(false)
   // 申诉相关状态
   const [showAppealForm, setShowAppealForm] = useState(false)
@@ -2416,17 +2417,21 @@ function StepCard({
     return () => document.removeEventListener('mousedown', handler)
   }, [editingAssignee, multiSelected, savingAssignee, onAssign, step.id, completionMode])
 
-  // B08: 人类手动完成
+  // B08: 人类手动完成（支持输入文本）
   const handleHumanComplete = async () => {
     setHumanCompleting(true)
     try {
+      const resultText = humanSubmitText.trim() || '✅ 人工确认完成'
+      const summaryText = humanSubmitText.trim() ? humanSubmitText.trim().slice(0, 100) : '手动完成'
       const res = await fetch(`/api/steps/${step.id}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ result: '✅ 人工确认完成', summary: '手动完成' })
+        body: JSON.stringify({ result: resultText, summary: summaryText })
       })
-      if (res.ok) onRefresh?.()
-      else {
+      if (res.ok) {
+        setHumanSubmitText('')
+        onRefresh?.()
+      } else {
         const data = await res.json()
         alert(data.error || '提交失败')
       }
@@ -2910,15 +2915,22 @@ function StepCard({
             </div>
           )}
 
-          {/* B08: 纯人类步骤 - 手动完成按钮 */}
+          {/* B08: 纯人类步骤 - 文本提交 + 完成按钮 */}
           {isHumanStep && isStepAssignee && step.status === 'in_progress' && (
-            <div className="mt-3">
+            <div className="mt-3 space-y-2">
+              <textarea
+                value={humanSubmitText}
+                onChange={e => setHumanSubmitText(e.target.value)}
+                placeholder="写下你的完成内容或说明（选填，也可直接点完成）..."
+                rows={3}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400"
+              />
               <button
                 onClick={handleHumanComplete}
                 disabled={humanCompleting}
                 className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl text-sm font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 shadow-lg shadow-emerald-500/20"
               >
-                {humanCompleting ? '⏳ 提交中...' : '✅ 手动完成'}
+                {humanCompleting ? '⏳ 提交中...' : '✅ 提交完成'}
               </button>
             </div>
           )}

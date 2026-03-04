@@ -70,16 +70,20 @@ export default function ChatPage() {
     }
   }, [session])
 
-  // 滚动到底部 — 首次用 auto，后续用 smooth
+  // 滚动到底部 — 首次加延迟确保移动端布局完成，后续用 smooth
   useEffect(() => {
     if (messages.length === 0) return
     const el = messagesEndRef.current
     if (!el) return
     if (isFirstLoad.current) {
-      el.scrollIntoView()
-      isFirstLoad.current = false
+      // 移动端首次加载需等布局稳定后再滚动
+      const scrollToBottom = () => {
+        el.scrollIntoView({ block: 'end' })
+        isFirstLoad.current = false
+      }
+      requestAnimationFrame(() => setTimeout(scrollToBottom, 150))
     } else {
-      el.scrollIntoView({ behavior: 'smooth' })
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }
   }, [messages, typing])
 
