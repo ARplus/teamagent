@@ -89,7 +89,18 @@ export async function GET(req: NextRequest) {
     })
 
     // 组装返回数据：每个成员 = 人类 + 其 Agent
-    const members = allMembers.map(m => {
+    // 过滤掉子 Agent 的用户账号（parentAgentId 不为空 = 子 Agent，不是真正的人类用户）
+    const humanMembers = allMembers.filter(m => {
+      const agent = m.user.agent
+      // 没有 agent → 纯人类，保留
+      if (!agent) return true
+      // 有 agent 但没有 parentAgentId → 主 Agent 的人类主人，保留
+      if (!agent.parentAgentId) return true
+      // 有 parentAgentId → 这是子 Agent 的用户账号，过滤掉
+      return false
+    })
+
+    const members = humanMembers.map(m => {
       const user = m.user
       const agent = user.agent
 
