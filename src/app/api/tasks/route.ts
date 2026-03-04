@@ -6,6 +6,7 @@ import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
 import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
 import { parseTaskWithAI } from '@/lib/ai-parse'
+import { orchestrateDecompose } from '@/lib/decompose-orchestrator'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -296,159 +297,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 🆕 Team 模式：任务创建后自动触发 AI 拆解（Claude → 千问降级）
+    // 🆕 Team 模式：可插拔拆解（main-agent 优先，hub-llm 降级）
     // fire-and-forget，不阻塞任务创建响应
     if (task.mode === 'team' && task.description && prebuiltSteps.length === 0) {
-      ;(async () => {
-        try {
-          // B04: 先获取工作区成员，注入 AI 上下文实现智能分配
-          const workspaceMembers = await prisma.workspaceMember.findMany({
-            where: { workspaceId: finalWorkspaceId },
-            include: {
-              user: {
-                select: {
-                  id: true, name: true, nickname: true,
-                  agent: { select: { name: true, capabilities: true } }
-                }
-              }
-            }
-          })
-
-          const teamMembers = workspaceMembers.map(m => {
-            const agent = m.user.agent as any
-            let caps: string[] = []
-            if (agent?.capabilities) {
-              try { caps = JSON.parse(agent.capabilities) } catch { caps = [] }
-            }
-            return {
-              name: m.user.nickname || m.user.name || '未知',
-              isAgent: !!agent,
-              agentName: agent?.name,
-              capabilities: caps,
-              role: m.role,
-            }
-          })
-
-          console.log(`[Task/Create] B04 自动拆解：团队 ${teamMembers.length} 人，引擎优先 Claude`)
-          const parseResult = await parseTaskWithAI(task.description!, teamMembers)
-          if (!parseResult.success || !parseResult.steps) {
-            console.warn(`[Task/Create] 自动拆解失败 [engine=${parseResult.engine}]:`, parseResult.error)
-            return
-          }
-          console.log(`[Task/Create] 拆解成功 [engine=${parseResult.engine}]: ${parseResult.steps.length} 步`)
-
-          function matchByCapabilities(title: string, desc: string): string | null {
-            const haystack = `${title} ${desc}`.toLowerCase()
-            let best: { userId: string; score: number } | null = null
-            for (const m of workspaceMembers) {
-              const rawCaps: string = (m.user.agent as any)?.capabilities || '[]'
-              let caps: string[] = []
-              try { caps = JSON.parse(rawCaps) } catch { caps = [] }
-              if (!Array.isArray(caps) || caps.length === 0) continue
-              let score = 0
-              for (const cap of caps) {
-                if (haystack.includes(cap.toLowerCase())) score += 2
-              }
-              const agentName = ((m.user.agent as any)?.name || '').toLowerCase()
-              if (agentName && haystack.includes(agentName.replace(/[^\u4e00-\u9fa5a-z]/g, ''))) score += 3
-              if (score > 0 && (!best || score > best.score)) best = { userId: m.user.id, score }
-            }
-            return best?.userId ?? null
-          }
-
-          const createdSteps: any[] = []
-          let order = 0
-          for (const step of parseResult.steps) {
-            order++
-            let assigneeId: string | null = null
-            let resolvedAssigneeType: 'agent' | 'human' = step.assigneeType || 'agent'
-            for (const assigneeName of (step.assignees || [])) {
-              // 先精确匹配人名（优先人类身份）
-              const humanMatch = workspaceMembers.find(m =>
-                m.user.nickname === assigneeName || m.user.name === assigneeName
-              )
-              if (humanMatch) {
-                assigneeId = humanMatch.user.id
-                // 如果AI没指定type，根据匹配逻辑判断：匹配到人名 + 该人有agent → 看AI意图
-                // 如果AI说human就是human，否则看该用户是否有agent来决定
-                if (!step.assigneeType) {
-                  resolvedAssigneeType = humanMatch.user.agent ? 'agent' : 'human'
-                }
-                break
-              }
-              // 再匹配 Agent 名字
-              const agentMatch = workspaceMembers.find(m =>
-                (m.user.agent as any)?.name?.includes(assigneeName) ||
-                assigneeName.includes((m.user.agent as any)?.name || '')
-              )
-              if (agentMatch) {
-                assigneeId = agentMatch.user.id
-                if (!step.assigneeType) resolvedAssigneeType = 'agent'
-                break
-              }
-              // 最后模糊匹配
-              const fuzzy = workspaceMembers.find(m =>
-                m.user.name?.includes(assigneeName) || assigneeName.includes(m.user.name || '')
-              )
-              if (fuzzy) {
-                assigneeId = fuzzy.user.id
-                if (!step.assigneeType) {
-                  resolvedAssigneeType = fuzzy.user.agent ? 'agent' : 'human'
-                }
-                break
-              }
-            }
-            if (!assigneeId) assigneeId = matchByCapabilities(step.title, step.description || '')
-
-            const created = await prisma.taskStep.create({
-              data: {
-                title: step.title, description: step.description,
-                order, taskId: task.id, assigneeId,
-                assigneeNames: JSON.stringify(step.assignees || []),
-                inputs: JSON.stringify(step.inputs || []),
-                outputs: JSON.stringify(step.outputs || []),
-                skills: JSON.stringify(step.skills || []),
-                requiresApproval: step.requiresApproval !== false,
-                parallelGroup: step.parallelGroup || null,
-                status: 'pending', agentStatus: assigneeId ? 'pending' : null,
-                stepType: step.stepType || 'task',
-                agenda: step.agenda || null,
-                participants: (step.participants?.length ?? 0) > 0 ? JSON.stringify(step.participants) : null,
-              },
-              include: { assignee: { select: { id: true, name: true } } }
-            })
-            // B08: 同步创建 StepAssignee 记录（根据 AI 输出或匹配结果决定 human/agent）
-            if (assigneeId) {
-              await prisma.stepAssignee.create({
-                data: { stepId: created.id, userId: assigneeId, isPrimary: true, assigneeType: resolvedAssigneeType }
-              }).catch(() => {})
-            }
-            createdSteps.push(created)
-          }
-
-          // 通知所有相关 Agent
-          const involvedUserIds = new Set<string>()
-          for (const s of createdSteps) if (s.assigneeId) involvedUserIds.add(s.assigneeId)
-          if (involvedUserIds.size > 0) {
-            const userIds = Array.from(involvedUserIds)
-            sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
-            // 通知所有可以立即开始的步骤 + 触发 Agent 自动执行
-            const startable = getStartableSteps(createdSteps as any[])
-            await activateAndNotifySteps(task.id, startable as any[])
-          }
-          // 🔔 通知任务创建者：拆解完成，前端自动刷新步骤列表
-          sendToUser(auth.userId, {
-            type: 'task:parsed',
-            taskId: task.id,
-            stepCount: createdSteps.length,
-            engine: parseResult.engine || 'unknown',
-          })
-
-          console.log(`[Task/Create] Team 自动拆解完成：${createdSteps.length} 步，taskId=${task.id}，已通知创建者刷新`)
-        } catch (e: any) {
-          console.warn('[Task/Create] Team 自动拆解失败:', e?.message)
-        }
-      })()
+      orchestrateDecompose({
+        taskId: task.id,
+        title: task.title,
+        description: task.description!,
+        supplement: task.supplement,
+        workspaceId: finalWorkspaceId,
+        creatorId: auth.userId,
+      }).catch(e => console.warn('[Task/Create] orchestrateDecompose:', e?.message))
     }
 
     return NextResponse.json({

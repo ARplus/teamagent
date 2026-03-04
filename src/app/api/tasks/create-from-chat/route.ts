@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
     if (!user) return NextResponse.json({ error: '用户不存在' }, { status: 404 })
 
-    const { message } = await req.json()
+    const { message, mode: userMode } = await req.json()
     if (!message?.trim()) {
       return NextResponse.json({ error: '请描述你想创建的任务' }, { status: 400 })
     }
@@ -114,6 +114,10 @@ export async function POST(req: NextRequest) {
     // 1. LLM 提取任务信息
     console.log(`[CreateFromChat] 提取任务: "${message.substring(0, 50)}..."`)
     const extracted = await extractTaskFromChat(message.trim())
+    // 用户明确指定 mode 时覆盖 LLM 推断
+    if (userMode === 'solo' || userMode === 'team') {
+      extracted.mode = userMode
+    }
     console.log(`[CreateFromChat] 提取结果: ${extracted.title} (${extracted.mode})`)
 
     // 2. 获取用户的工作区
@@ -176,51 +180,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Team 模式：调用 parseTaskWithAI 自动拆解
+    // 6. Team 模式：可插拔拆解（main-agent 优先，hub-llm 降级）
     if (extracted.mode === 'team' && extracted.description) {
-      const { parseTaskWithAI } = await import('@/lib/ai-parse')
-      ;(async () => {
-        try {
-          const workspaceMembers = await prisma.workspaceMember.findMany({
-            where: { workspaceId: membership.workspaceId },
-            include: { user: { select: { id: true, name: true, nickname: true, agent: { select: { name: true, capabilities: true } } } } }
-          })
-          const teamMembers = workspaceMembers.map(m => {
-            const agent = m.user.agent as any
-            let caps: string[] = []
-            if (agent?.capabilities) { try { caps = JSON.parse(agent.capabilities) } catch { caps = [] } }
-            return { name: m.user.nickname || m.user.name || '未知', isAgent: !!agent, agentName: agent?.name, capabilities: caps, role: m.role }
-          })
-          const parseResult = await parseTaskWithAI(task.description!, teamMembers)
-          if (parseResult.success && parseResult.steps) {
-            for (let i = 0; i < parseResult.steps.length; i++) {
-              const s = parseResult.steps[i]
-              let assigneeId: string | null = null
-              const firstAssignee = s.assignees?.[0]
-              if (firstAssignee) {
-                const match = workspaceMembers.find(m => {
-                  const agent = m.user.agent as any
-                  return (agent?.name === firstAssignee) || m.user.nickname === firstAssignee || m.user.name === firstAssignee
-                })
-                if (match) assigneeId = match.userId
-              }
-              await prisma.taskStep.create({
-                data: {
-                  title: s.title, description: s.description || null,
-                  order: s.order ?? (i + 1), taskId: task.id,
-                  stepType: s.stepType || 'execute', assigneeId,
-                  parallelGroup: s.parallelGroup || null,
-                  requiresApproval: s.requiresApproval ?? false,
-                  status: 'pending', agentStatus: 'pending',
-                }
-              })
-            }
-            sendToUser(user.id, { type: 'task:parsed', taskId: task.id, stepCount: parseResult.steps.length, engine: parseResult.engine || 'claude' })
-          }
-        } catch (e) {
-          console.warn('[CreateFromChat] Team 拆解失败:', e)
-        }
-      })()
+      const { orchestrateDecompose } = await import('@/lib/decompose-orchestrator')
+      orchestrateDecompose({
+        taskId: task.id,
+        title: task.title,
+        description: task.description!,
+        supplement: task.supplement,
+        workspaceId: membership.workspaceId,
+        creatorId: user.id,
+      }).catch(e => console.warn('[CreateFromChat] orchestrateDecompose:', e?.message))
     }
 
     return NextResponse.json({

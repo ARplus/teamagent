@@ -119,6 +119,9 @@ model Workspace {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // 工作区配置 JSON: { decomposerType: "hub-llm" | "main-agent" }
+  settings    String?
+
   // 关联
   members     WorkspaceMember[]
   tasks       Task[]
@@ -187,6 +190,10 @@ model Task {
 
   // F04: 补充说明（任务开始后追加的内容）
   supplement        String?  // 补充说明文本（Markdown）
+
+  // 可插拔拆解状态
+  decomposeStatus   String?  // null | "pending" | "fallback" | "done"
+  decomposeEngine   String?  // "main-agent" | "hub-claude" | "hub-qwen"
 
   // 任务完成总结
   autoSummary       String?  // 系统自动生成的完成摘要
@@ -514,6 +521,7 @@ model StepAssignee {
 model StepComment {
   id          String   @id @default(cuid())
   content     String   // 评论内容
+  isFromAgent Boolean  @default(false) // true = Agent 通过 API Token 发的评论
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

@@ -21,12 +21,15 @@ export type TeamAgentEvent =
   | { type: 'step:commented'; taskId: string; stepId: string; commentId: string; authorName: string }
   | { type: 'task:evaluating'; taskId: string; title: string; agentName: string }
   | { type: 'task:evaluated'; taskId: string; title: string; count: number; reviewerName?: string }
-  | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorName: string; content: string }
+  | { type: 'step:mentioned'; taskId: string; stepId: string; commentId: string; authorId: string; authorName: string; content: string }
   // F06: Agent 主动呼叫
   | { type: 'agent:calling'; callId: string; priority: 'urgent' | 'normal' | 'low'; title: string; content: string; agentName: string; taskId?: string; stepId?: string }
   | { type: 'agent:call-responded'; callId: string; action: string; message?: string; respondedBy: string }
   // B04: AI 后台拆解完成
   | { type: 'task:parsed'; taskId: string; stepCount: number; engine: string }
+  // 可插拔拆解：请求主Agent拆解任务
+  | { type: 'task:decompose-request'; taskId: string; taskTitle: string; taskDescription: string; supplement?: string;
+      teamMembers: { name: string; isAgent: boolean; agentName?: string; capabilities?: string[]; role?: string }[] }
   | { type: 'ping' }
 
 // 订阅者类型

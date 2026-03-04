@@ -461,11 +461,32 @@ async function main() {
           const { type, stepId, taskId, title, stepType, taskDescription } = event
 
           if (type === 'chat:incoming') {
-            const { msgId, content, senderName } = event
+            const { msgId, content, senderName, attachments, fromAgent } = event
             if (!msgId) return
+            // Agent 主动发送的消息不要回复（防止自己回复自己的循环）
+            if (fromAgent) {
+              console.log(`   ⏭️ [SSE] 跳过 Agent 主动消息 (fromAgent=true, msgId=${msgId})`)
+              return
+            }
             if (isDuplicate(msgId) || inFlightChatMsgIds.has(msgId)) return
 
             inFlightChatMsgIds.add(msgId)
+
+            // 构建含附件描述的完整消息
+            let fullContent = content || ''
+            if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+              const attDesc = attachments.map(a => {
+                const isImg = a.type && a.type.startsWith('image/')
+                return isImg
+                  ? `[图片: ${a.name || '图片'}](${a.url})`
+                  : `[附件: ${a.name || '文件'}](${a.url})`
+              }).join('\n')
+              fullContent = fullContent
+                ? `${fullContent}\n\n用户同时发送了以下附件：\n${attDesc}`
+                : `用户发送了以下附件：\n${attDesc}`
+              console.log(`   📎 包含 ${attachments.length} 个附件`)
+            }
+
             console.log(`\n💬 [SSE] chat:incoming → msgId=${msgId}, from=${senderName || '用户'}`)
 
             const MAX_RETRIES = 1
@@ -473,7 +494,7 @@ async function main() {
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
               try {
                 if (attempt > 0) console.log(`   🔄 重试第 ${attempt} 次...`)
-                const replyText = await injectToOpenClawSession(content, senderName || '用户', msgId)
+                const replyText = await injectToOpenClawSession(fullContent, senderName || '用户', msgId)
                 if (!replyText || replyText === 'NO_REPLY') {
                   throw new Error('empty reply from main session')
                 }
@@ -505,6 +526,160 @@ async function main() {
             }
 
             inFlightChatMsgIds.delete(msgId)
+            return
+          }
+
+          // ── @mention 通知：有人在步骤评论中 @了本 Agent ──
+          if (type === 'step:mentioned') {
+            const { stepId, taskId, commentId, authorName, content: mentionContent } = event
+            console.log(`\n📢 [SSE] step:mentioned → stepId=${stepId}, from=${authorName}`)
+            console.log(`   内容: ${mentionContent || '(无内容)'}`)
+
+            // 去重：同一条评论不重复处理
+            const mentionKey = `mention-${commentId}`
+            if (isDuplicate(mentionKey) || inFlightChatMsgIds.has(mentionKey)) {
+              console.log(`   ⏭️ 已处理过，跳过`)
+              return
+            }
+            inFlightChatMsgIds.add(mentionKey)
+
+            try {
+              // 注入到 OpenClaw session 让 Agent 思考并回复
+              const prompt = [
+                `[TeamAgent @Mention — 有人在任务讨论中提到了你]`,
+                `[stepId: ${stepId}]`,
+                '',
+                `${authorName} 说: "${mentionContent || '(提及了你)'}"`,
+                '',
+                '请针对这条 @提及回复。中文、简洁、专业。',
+                '只返回回复文本，不要调用任何工具，不要返回 NO_REPLY。',
+              ].join('\n')
+
+              const replyText = await injectToOpenClawSession(prompt, authorName, mentionKey)
+
+              if (replyText && replyText !== 'NO_REPLY') {
+                // 把 Agent 的回复作为评论发回步骤讨论
+                await client.request('POST', `/api/steps/${stepId}/comments`, {
+                  content: replyText
+                })
+                console.log(`   ✅ Agent 已回复 @mention (stepId=${stepId})`)
+              } else {
+                // 如果 OpenClaw 没有返回有效回复，发一条兜底
+                await client.request('POST', `/api/steps/${stepId}/comments`, {
+                  content: `收到 @${authorName} 的消息，我来看看！`
+                })
+                console.log(`   ⚠️ OpenClaw 无有效回复，已发兜底消息`)
+              }
+
+              markSeen(mentionKey)
+            } catch (e) {
+              console.error(`   ❌ 处理 @mention 失败:`, e.message)
+              // 失败也标记为已处理，避免无限重试
+              markSeen(mentionKey)
+            }
+
+            inFlightChatMsgIds.delete(mentionKey)
+            return
+          }
+
+          // ── task:decompose-request（可插拔拆解：主Agent本地拆解）──
+          if (type === 'task:decompose-request') {
+            const { taskId: dTaskId, taskTitle, taskDescription, teamMembers } = event
+            console.log(`\n🧩 [SSE] decompose-request → "${taskTitle}" (taskId=${dTaskId})`)
+            const decomposeKey = `decompose-${dTaskId}`
+            if (isDuplicate(decomposeKey) || inFlightChatMsgIds.has(decomposeKey)) {
+              console.log('   ⏭️ 已处理过，跳过')
+              return
+            }
+            inFlightChatMsgIds.add(decomposeKey)
+            try {
+              // 构建团队信息
+              const teamInfo = (teamMembers || []).map(m => {
+                if (m.isAgent && m.agentName) {
+                  const caps = m.capabilities?.length ? m.capabilities.join('、') : '通用'
+                  return `- 🤖 Agent「${m.agentName}」（${m.name}）— 能力：${caps}`
+                }
+                return `- 👤 ${m.name}${m.role === 'owner' ? '（团队负责人）' : ''}`
+              }).join('\n')
+
+              // 构建拆解 prompt
+              const decomposePrompt = [
+                `[TeamAgent Decompose Request]`,
+                `[taskId: ${dTaskId}]`,
+                ``,
+                `请将以下任务拆解为可执行步骤，返回 JSON 数组。`,
+                ``,
+                `## 任务: ${taskTitle}`,
+                ``,
+                taskDescription || '(无详细描述)',
+                ``,
+                `## 团队成员`,
+                teamInfo || '(无团队信息)',
+                ``,
+                `## 输出格式`,
+                `返回 JSON 数组，每个元素: { "title": "步骤标题", "description": "详细描述",`,
+                `  "assignee": "成员名字（必须是上面列表中的人）",`,
+                `  "assigneeType": "agent 或 human",`,
+                `  "requiresApproval": true/false（关键产出设true）,`,
+                `  "parallelGroup": null 或 "组名"（可并行的设相同组名）,`,
+                `  "stepType": "task" }`,
+                ``,
+                `规则：`,
+                `1. assignee 必须是团队成员列表中的名字`,
+                `2. 最少 2 步，最多 8 步`,
+                `3. 可并行的步骤设相同 parallelGroup`,
+                `4. 文档类任务至少 3 步（调研→撰写→审核）`,
+                `5. 不要创建"分配任务"之类的元步骤，直接创建具体执行步骤`,
+                `6. 简单任务（如设置提醒）不要过度拆分，1-2步即可`,
+                ``,
+                `只输出 JSON 数组，不要其他文字。`,
+              ].join('\n')
+
+              // 调用 OpenClaw 本地 Claude
+              console.log('   🔄 调用 OpenClaw 本地拆解...')
+              const replyText = await injectToOpenClawSession(decomposePrompt, 'system', decomposeKey)
+
+              if (!replyText) throw new Error('OpenClaw 返回空')
+
+              // 解析 JSON
+              let cleanJson = replyText.trim()
+              // 去掉 markdown 代码块包裹
+              if (cleanJson.startsWith('```')) {
+                cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+              }
+              // 尝试找到 JSON 数组
+              const arrStart = cleanJson.indexOf('[')
+              const arrEnd = cleanJson.lastIndexOf(']')
+              if (arrStart >= 0 && arrEnd > arrStart) {
+                cleanJson = cleanJson.slice(arrStart, arrEnd + 1)
+              }
+              const parsed = JSON.parse(cleanJson)
+              const steps = Array.isArray(parsed) ? parsed : (parsed.steps || [])
+              if (!Array.isArray(steps) || steps.length === 0) {
+                throw new Error('拆解结果为空或格式错误')
+              }
+
+              console.log(`   ✅ 本地拆解完成: ${steps.length} 个步骤`)
+              for (const s of steps) {
+                console.log(`      - ${s.title} → ${s.assignee || '未指定'} (${s.assigneeType || 'agent'})`)
+              }
+
+              // 回写 Hub
+              const result = await client.request('POST', `/api/tasks/${dTaskId}/decompose-result`, { steps })
+              console.log(`   ✅ 已回写到 Hub: ${result.message || 'OK'}`)
+              markSeen(decomposeKey)
+            } catch (e) {
+              console.error(`   ❌ decompose-request 处理失败:`, e.message)
+              markSeen(decomposeKey) // 标记已处理，Hub 超时会自动降级到 hub-llm
+            }
+            inFlightChatMsgIds.delete(decomposeKey)
+            return
+          }
+
+          // ── step:commented 通知（仅日志，不自动回复）──
+          if (type === 'step:commented') {
+            const { stepId, authorName } = event
+            console.log(`\n💬 [SSE] step:commented → stepId=${stepId}, from=${authorName || '未知'}`)
             return
           }
 
