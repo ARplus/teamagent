@@ -14,29 +14,48 @@ const ACTIVITY_FEED = [
   { agent: 'Atlas', action: '提交「技术可行性分析」', status: '待审阅', human: 'David', done: false, time: '43分钟前' },
 ]
 
-function useFadeIn() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true) },
-      { threshold: 0.15 }
+// 共享 IntersectionObserver（性能优化：1 个 observer 管理所有 FadeIn）
+const fadeObserverCallbacks = new WeakMap<Element, () => void>()
+let sharedObserver: IntersectionObserver | null = null
+function getSharedObserver() {
+  if (typeof window === 'undefined') return null
+  if (!sharedObserver) {
+    sharedObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const cb = fadeObserverCallbacks.get(entry.target)
+            cb?.()
+            sharedObserver?.unobserve(entry.target)
+            fadeObserverCallbacks.delete(entry.target)
+          }
+        })
+      },
+      { threshold: 0.1 }
     )
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [])
-  return { ref, visible }
+  }
+  return sharedObserver
 }
 
 function FadeIn({ children, delay = 0, className = '' }: {
   children: React.ReactNode; delay?: number; className?: string
 }) {
-  const { ref, visible } = useFadeIn()
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    const obs = getSharedObserver()
+    if (!el || !obs) return
+    fadeObserverCallbacks.set(el, () => setVisible(true))
+    obs.observe(el)
+    return () => { obs.unobserve(el); fadeObserverCallbacks.delete(el) }
+  }, [])
   return (
     <div ref={ref} className={className} style={{
       opacity: visible ? 1 : 0,
-      transform: visible ? 'translateY(0)' : 'translateY(24px)',
-      transition: `opacity 0.7s ease ${delay}ms, transform 0.7s ease ${delay}ms`
+      transform: visible ? 'translateY(0)' : 'translateY(20px)',
+      transition: `opacity 0.5s ease ${delay}ms, transform 0.5s ease ${delay}ms`,
+      willChange: visible ? 'auto' : 'opacity, transform',
     }}>
       {children}
     </div>
@@ -155,14 +174,23 @@ function OnboardingSection() {
             </div>
 
             <div className="space-y-3">
-              {/* Step 1: 复制命令 */}
+              {/* Step 1: 安装 + 注册 */}
               <div className="bg-gradient-to-r from-slate-900 to-slate-800/50 border border-slate-700 rounded-2xl p-5">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-xs font-black">1</div>
                   <span className="font-semibold text-white">复制命令，在 Agent 那里运行</span>
                 </div>
-                <CopyCommand cmd="openclaw skill install teamagent" />
-                <p className="text-xs text-slate-600 mt-2 ml-10">Agent 会自动安装 TeamAgent 技能包，联网注册，生成配对码</p>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-[10px] text-slate-500 ml-10 mb-1">① 安装技能包</p>
+                    <CopyCommand cmd="openclaw skill install teamagent" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-500 ml-10 mb-1">② 注册并获取配对码</p>
+                    <CopyCommand cmd="/ta-register" />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 mt-2 ml-10">先安装技能包，再注册即可生成 6 位配对码</p>
               </div>
 
               {/* Step 2: Agent 通知你 */}
@@ -524,7 +552,7 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative min-h-screen flex items-center justify-center px-6 pt-20">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="breathe absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-orange-500/8 rounded-full blur-3xl" />
+          <div className="breathe absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-orange-500/8 rounded-full blur-3xl" style={{ willChange: 'transform' }} />
           <div className="absolute top-1/2 left-1/4 w-[500px] h-[500px] bg-rose-500/6 rounded-full blur-3xl"
             style={{ animation: 'breathe 5s ease-in-out infinite 1s' }} />
           <div className="absolute top-1/4 right-1/4 w-[350px] h-[350px] bg-amber-500/6 rounded-full blur-3xl"
@@ -810,7 +838,7 @@ export default function LandingPage() {
       {/* GAIA 愿景 */}
       <section className="py-28 px-6 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="breathe absolute bottom-0 left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-orange-500/6 rounded-full blur-3xl" />
+          <div className="breathe absolute bottom-0 left-1/2 -translate-x-1/2 w-[500px] h-[400px] bg-orange-500/6 rounded-full blur-3xl" style={{ willChange: 'transform' }} />
         </div>
         <div className="max-w-3xl mx-auto text-center relative">
           <FadeIn>
@@ -854,8 +882,8 @@ export default function LandingPage() {
       {/* 三档安装 */}
       <section className="py-24 px-6 relative overflow-hidden" id="install">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="breathe absolute top-1/2 left-1/4 -translate-y-1/2 w-[500px] h-[400px] bg-purple-500/5 rounded-full blur-3xl" />
-          <div className="breathe absolute top-1/3 right-1/4 w-[400px] h-[300px] bg-orange-500/5 rounded-full blur-3xl" />
+          <div className="breathe absolute top-1/2 left-1/4 -translate-y-1/2 w-[400px] h-[300px] bg-purple-500/5 rounded-full blur-3xl" style={{ willChange: 'transform' }} />
+          <div className="breathe absolute top-1/3 right-1/4 w-[300px] h-[250px] bg-orange-500/5 rounded-full blur-3xl" style={{ willChange: 'transform' }} />
         </div>
         <div className="max-w-6xl mx-auto relative">
           <FadeIn>
@@ -953,7 +981,7 @@ export default function LandingPage() {
                 <ul className="space-y-3 text-sm text-slate-400 mb-8">
                   <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>专属安装口令，一键部署</li>
                   <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>环境自动配置 + 验证</li>
-                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>优先技术支持</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>内含千问 Max 百万 token（3月有效）</li>
                   <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">★</span><span className="text-amber-300">赞助开源 + 支持作者</span></li>
                 </ul>
                 <div className="text-center space-y-3">
