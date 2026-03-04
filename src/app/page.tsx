@@ -2914,8 +2914,8 @@ function StepCard({
             </div>
           )}
 
-          {/* B08: 步骤执行人手动提交 — 人类步骤或手动接管 Agent 步骤 */}
-          {isStepAssignee && step.status === 'in_progress' && (
+          {/* B08: 步骤执行人手动提交 — pending/in_progress 都可提交 */}
+          {isStepAssignee && (step.status === 'in_progress' || step.status === 'pending') && (
             <div className="mt-3 space-y-2">
               <textarea
                 value={humanSubmitText}
