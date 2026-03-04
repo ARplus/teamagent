@@ -111,10 +111,21 @@ export async function GET(
     const stepsWithApprover = task.steps.map(s => {
       const submissions = (s as any).submissions || []
       const rawSubmitter = submissions[0]?.submitter ?? null
-      // 🆕 如果提交者是 Agent，优先用 Agent 名字
+      // 根据 StepAssignee.assigneeType 决定显示人名还是 Agent 名
+      let submitterName = rawSubmitter?.name || rawSubmitter?.email
+      if (rawSubmitter) {
+        const assigneeRecord = ((s as any).assignees || []).find((a: any) => a.userId === rawSubmitter.id)
+        if (assigneeRecord?.assigneeType === 'human') {
+          // 人类提交 → 用人名
+          submitterName = rawSubmitter.name || rawSubmitter.email
+        } else if (rawSubmitter.agent?.name) {
+          // Agent 提交 → 用 Agent 名
+          submitterName = rawSubmitter.agent.name
+        }
+      }
       const lastSubmitter = rawSubmitter ? {
         id: rawSubmitter.id,
-        name: rawSubmitter.agent?.name || rawSubmitter.name,
+        name: submitterName,
         email: rawSubmitter.email,
       } : null
       return {
