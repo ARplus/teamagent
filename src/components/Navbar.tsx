@@ -36,7 +36,7 @@ export function Navbar() {
       const res = await fetch('/api/agent/status')
       if (res.ok) {
         const data = await res.json()
-        setAgentStatus(data.status || 'online')
+        setAgentStatus(data.status || 'offline')
         setAgentName(data.name || 'Lobster')
       }
     } catch (e) {

@@ -458,7 +458,7 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(true)
   const [showPairing, setShowPairing] = useState(false)
   const [showCreateSub, setShowCreateSub] = useState(false)
-  const [liveStatus, setLiveStatus] = useState('online')
+  const [liveStatus, setLiveStatus] = useState('offline')
 
   // Editable fields
   const [nameValue, setNameValue] = useState('')
@@ -470,7 +470,7 @@ export default function WorkspacePage() {
   }, [session, status])
 
   useEffect(() => {
-    fetch('/api/agent/status').then(r => r.json()).then(d => setLiveStatus(d.status || 'online')).catch(() => {})
+    fetch('/api/agent/status').then(r => r.json()).then(d => setLiveStatus(d.status || 'offline')).catch(() => {})
   }, [])
 
   // Auto-refresh on focus + polling

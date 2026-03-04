@@ -3,6 +3,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
+// 🔧 Agent 状态超时检查：超过 5 分钟无心跳视为离线
+const AGENT_TIMEOUT_MS = 5 * 60 * 1000
+function getEffectiveStatus(status: string, updatedAt: Date | null): string {
+  if (updatedAt && (status === 'online' || status === 'working')) {
+    const diff = Date.now() - new Date(updatedAt).getTime()
+    if (diff > AGENT_TIMEOUT_MS) return 'offline'
+  }
+  return status
+}
+
 // GET /api/agents/team — 获取司令官 + 主Agent + 子Agent们
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -55,7 +65,7 @@ export async function GET(req: NextRequest) {
         name: agent.name,
         personality: agent.personality,
         avatar: agent.avatar,
-        status: agent.status,
+        status: getEffectiveStatus(agent.status, agent.updatedAt),
         capabilities: agent.capabilities,
         reputation: agent.reputation,
         claimedAt: agent.claimedAt,
@@ -101,7 +111,7 @@ export async function GET(req: NextRequest) {
             name: a.name,
             personality: a.personality,
             avatar: a.avatar,
-            status: a.status,
+            status: getEffectiveStatus(a.status, a.updatedAt),
             capabilities: a.capabilities,
             reputation: a.reputation,
             claimedAt: a.claimedAt,

@@ -24,6 +24,16 @@ async function authenticate(req: NextRequest) {
   return null
 }
 
+// 🔧 Agent 状态超时检查：超过 5 分钟无心跳视为离线
+const AGENT_TIMEOUT_MS = 5 * 60 * 1000
+function getEffectiveStatus(status: string, updatedAt: Date | null): string {
+  if (updatedAt && (status === 'online' || status === 'working')) {
+    const diff = Date.now() - new Date(updatedAt).getTime()
+    if (diff > AGENT_TIMEOUT_MS) return 'offline'
+  }
+  return status
+}
+
 // GET /api/workspace/team — 获取当前用户的完整协作网络
 // 返回工作区内所有人类成员 + 他们的 Agent（分组展示）
 // 用于：步骤分配下拉、任务拆解时的 availableTeam、工作区页面
@@ -77,9 +87,10 @@ export async function GET(req: NextRequest) {
                 status: true,
                 avatar: true,
                 personality: true,
+                updatedAt: true,
                 parentAgentId: true,
                 parentAgent: { select: { id: true, name: true, user: { select: { id: true, name: true } } } },
-                childAgents: { select: { id: true, name: true, status: true, capabilities: true, userId: true, user: { select: { id: true, name: true } } } },
+                childAgents: { select: { id: true, name: true, status: true, updatedAt: true, capabilities: true, userId: true, user: { select: { id: true, name: true } } } },
               }
             }
           }
@@ -119,13 +130,14 @@ export async function GET(req: NextRequest) {
           name: agent.name,
           isMainAgent: agent.isMainAgent,
           capabilities: agent.capabilities ? JSON.parse(agent.capabilities) : [],
-          status: agent.status,
+          status: getEffectiveStatus(agent.status, agent.updatedAt),
           avatar: agent.avatar,
           personality: agent.personality,
           parentAgentId: agent.parentAgentId,
           parentAgent: agent.parentAgent ? { id: agent.parentAgent.id, name: agent.parentAgent.name, ownerName: agent.parentAgent.user?.name } : null,
           childAgents: (agent.childAgents || []).map((c: any) => ({
-            id: c.id, name: c.name, status: c.status,
+            id: c.id, name: c.name,
+            status: getEffectiveStatus(c.status, c.updatedAt),
             capabilities: c.capabilities ? JSON.parse(c.capabilities) : [],
             userId: c.userId,
             ownerName: c.user?.name,
