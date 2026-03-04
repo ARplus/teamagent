@@ -215,10 +215,17 @@ export async function POST(req: NextRequest) {
             agentStatus: s.assigneeId ? 'pending' : null,
           }
         })
-        // B08: 同步创建 StepAssignee 记录
+        // B08: 同步创建 StepAssignee 记录（自动检测 human/agent）
         if (s.assigneeId) {
+          let detectedType: 'agent' | 'human' = 'agent'
+          if (s.assigneeType) {
+            detectedType = s.assigneeType  // 明确指定的优先
+          } else {
+            const assigneeAgent = await prisma.agent.findUnique({ where: { userId: s.assigneeId }, select: { id: true } })
+            if (!assigneeAgent) detectedType = 'human'  // 无 Agent → 纯人类
+          }
           await prisma.stepAssignee.create({
-            data: { stepId: createdStep.id, userId: s.assigneeId, isPrimary: true, assigneeType: 'agent' }
+            data: { stepId: createdStep.id, userId: s.assigneeId, isPrimary: true, assigneeType: detectedType }
           }).catch(() => {})
         }
         prebuiltSteps.push(createdStep)

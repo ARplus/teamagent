@@ -2914,8 +2914,8 @@ function StepCard({
             </div>
           )}
 
-          {/* B08: 纯人类步骤 - 文本提交 + 完成按钮 */}
-          {isHumanStep && isStepAssignee && step.status === 'in_progress' && (
+          {/* B08: 步骤执行人手动提交 — 人类步骤或手动接管 Agent 步骤 */}
+          {isStepAssignee && step.status === 'in_progress' && (
             <div className="mt-3 space-y-2">
               <textarea
                 value={humanSubmitText}
