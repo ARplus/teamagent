@@ -74,6 +74,9 @@ export function Navbar() {
                 <span>🏠</span>
                 <span>我的工作区</span>
               </Link>
+              <Link href="/guide/usage" className="text-sm text-gray-600 hover:text-blue-600">
+                📖 使用指南
+              </Link>
               <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
                 ⚙️ 设置
               </Link>
@@ -180,6 +183,9 @@ export function Navbar() {
               >
                 <span>⊕</span><span>配对 Agent</span>
               </button>
+              <Link href="/guide/usage" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                <span>📖</span><span>使用指南</span>
+              </Link>
               <Link href="/settings" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
                 <span>⚙️</span><span>设置</span>
               </Link>
