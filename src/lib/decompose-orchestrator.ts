@@ -305,7 +305,16 @@ export async function orchestrateDecompose(params: {
 
     const mainAgentUserId = mainAgentMember.user.id
     const mainAgentName = (mainAgentMember.user.agent as any)?.name || '主Agent'
-    console.log(`[Decompose] 推送拆解请求给主 Agent: ${mainAgentName} (userId=${mainAgentUserId})`)
+    const mainAgentStatus = (mainAgentMember.user.agent as any)?.status || 'offline'
+
+    // 🆕 主 Agent 不在线 → 直接用 hub-llm，不等 60s 超时
+    if (mainAgentStatus !== 'online' && mainAgentStatus !== 'working') {
+      console.warn(`[Decompose] 主 Agent ${mainAgentName} 不在线(status=${mainAgentStatus})，直接降级到 hub-llm`)
+      await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId)
+      return
+    }
+
+    console.log(`[Decompose] 推送拆解请求给主 Agent: ${mainAgentName} (userId=${mainAgentUserId}, status=${mainAgentStatus})`)
 
     // 标记任务为 pending
     await prisma.task.update({
