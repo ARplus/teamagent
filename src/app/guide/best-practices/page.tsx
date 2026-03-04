@@ -74,10 +74,12 @@ export default function BestPracticesPage() {
               </thead>
               <tbody className="divide-y divide-white/10">
                 {[
-                  ['参与方', '单人 + 单 Agent', '多人 / 多 Agent 跨工作区'],
-                  ['典型场景', '个人任务、验证实验、草稿起草', '跨组织协作、客户项目、多专业分工'],
-                  ['审批链', '任务创建者审批所有步骤', '步骤级：Agent 主人审批；任务级：创建者验收'],
-                  ['适合谁', '独自作战的个体', '需要借力他人专长的项目'],
+                  ['定位', '一人公司 / 超级个体', '公司办公 / 项目协作'],
+                  ['参与方', '一人 + 自己的 Agent 军团', '多人各带 Agent，跨工作区协作'],
+                  ['核心价值', '流程化批量产出，一人顶一个团队', '每人的 Agent 操作各自电脑，带着各自知识库协同'],
+                  ['典型场景', '论文写作、每日简报、自媒体发稿、PPT/视频生成、数据分析', '公司项目管理、跨部门协作、客户交付、多专业分工'],
+                  ['审批链', '你审批所有步骤（你是唯一老板）', '步骤级：Agent 主人审批；任务级：创建者验收'],
+                  ['适合谁', '自由职业者、内容创作者、独立开发者、研究人员', '需要多人带各自 Agent 完成复杂项目的团队'],
                 ].map(([dim, solo, team]) => (
                   <tr key={dim} className="hover:bg-white/5">
                     <td className="py-3 px-4 text-white/70 font-medium">{dim}</td>
@@ -91,7 +93,7 @@ export default function BestPracticesPage() {
 
           <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
             <p className="text-purple-200">
-              💡 <strong>一句话判断：</strong>如果完成这件事需要另一个人类的判断力或专业能力，就用 Team 模式。
+              💡 <strong>一句话判断：</strong>一个人能搞定所有决策？用 Solo，让 Agent 军团帮你批量产出。需要别人的专业判断？用 Team，各带 Agent 协同作战。
             </p>
           </div>
         </section>
@@ -105,20 +107,29 @@ export default function BestPracticesPage() {
 
           <div className="space-y-6">
             <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-              <h3 className="font-semibold text-purple-300 mb-3">2.1 什么时候用 Solo</h3>
-              <ul className="space-y-2 text-white/80">
+              <h3 className="font-semibold text-purple-300 mb-3">2.1 Solo 的核心理念</h3>
+              <p className="text-white/60 text-sm mb-4">
+                Solo 模式让你一个人 + Agent 军团 = 一支完整团队。你只负责决策和审批，Agent 军团负责执行和产出。
+              </p>
+              <h4 className="text-white/50 text-xs uppercase tracking-wider mb-3">典型应用场景</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {[
-                  '个人独立完成的任务（调研、写作、代码验证等）',
-                  '不需要跨工作区协调的事项',
-                  '测试 Agent 能力的实验性任务',
-                  '有明确验收标准、不需要外部专业判断的交付',
+                  { icon: '📝', title: '论文 / 报告写作', desc: '从文献调研→大纲→初稿→排版，全流程自动化' },
+                  { icon: '📰', title: '每日简报发布', desc: '自动抓取信息源、摘要整理、排版发布，日更无压力' },
+                  { icon: '✍️', title: '自媒体写稿发稿', desc: '选题→撰写→配图→多平台分发，内容工厂模式' },
+                  { icon: '📊', title: 'PPT / 视频生成', desc: '输入主题，自动生成演示文稿或短视频脚本' },
+                  { icon: '📈', title: '数据分析报告', desc: '自动采集数据、清洗分析、可视化输出' },
+                  { icon: '💻', title: '独立开发 / 测试', desc: '代码编写→测试→文档→部署，全栈自动化' },
                 ].map(item => (
-                  <li key={item} className="flex items-start gap-2">
-                    <span className="text-purple-400 mt-0.5">•</span>
-                    <span>{item}</span>
-                  </li>
+                  <div key={item.title} className="bg-black/20 rounded-lg p-3 flex gap-3">
+                    <span className="text-xl">{item.icon}</span>
+                    <div>
+                      <p className="text-white/90 text-sm font-medium">{item.title}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{item.desc}</p>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-xl p-6">
@@ -169,6 +180,38 @@ export default function BestPracticesPage() {
           </h2>
 
           <div className="space-y-6">
+            {/* Core concept */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+              <h3 className="font-semibold text-blue-300 mb-3">3.1 Team 的核心理念</h3>
+              <p className="text-white/60 text-sm mb-4">
+                Team 模式下，每个人带着自己的 Agent 加入协作。你的 Agent 运行在你的电脑上，拥有你的知识库和工具权限，代表你完成分配到的任务步骤。
+              </p>
+              <h4 className="text-white/50 text-xs uppercase tracking-wider mb-3">典型应用场景</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  { icon: '🏢', title: '公司项目管理', desc: '产品经理发任务，设计/开发/测试各带 Agent 并行推进' },
+                  { icon: '🤝', title: '跨部门协作', desc: '市场+技术+运营，各自 Agent 处理本职部分，自动汇总' },
+                  { icon: '📋', title: '客户交付项目', desc: '甲方创建需求，乙方各成员 Agent 分工执行，甲方验收' },
+                  { icon: '🔬', title: '研究课题协作', desc: '导师分配子课题，每个研究员的 Agent 独立调研后汇总' },
+                ].map(item => (
+                  <div key={item.title} className="bg-black/20 rounded-lg p-3 flex gap-3">
+                    <span className="text-xl">{item.icon}</span>
+                    <div>
+                      <p className="text-white/90 text-sm font-medium">{item.title}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Key difference */}
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+              <p className="text-blue-200 text-sm">
+                🔑 <strong>Team 的关键：</strong>每个人的 Agent 操作各自的电脑、携带各自的知识库。不是一个 Agent 干所有事，而是一群 Agent 各司其职，人类负责审批和决策。
+              </p>
+            </div>
+
             {/* Two-level approval */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
               <h3 className="font-semibold text-blue-300 mb-4">3.3 两级审批模型（核心！）</h3>
@@ -366,22 +409,27 @@ export default function BestPracticesPage() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-6">
-              <h3 className="text-purple-300 font-semibold mb-4 text-center">Solo 模式</h3>
-              <div className="font-mono text-sm text-white/70 text-center space-y-2">
-                <p>你 → 创建任务 → Agent 执行</p>
-                <p className="text-purple-400">↕ 审批 ↕</p>
-                <p>你 ← 步骤提交 ← Agent 完成</p>
+              <h3 className="text-purple-300 font-semibold mb-2 text-center">🤖 Solo 模式</h3>
+              <p className="text-white/40 text-xs text-center mb-4">一人公司 · 超级个体</p>
+              <div className="text-sm text-white/70 space-y-2">
+                <p>👤 你：创建任务 → 描述需求</p>
+                <p>🤖 Agent 军团：自动拆解 → 分工执行</p>
+                <p className="text-purple-400">↕ 你审批每个步骤 ↕</p>
+                <p>📦 产出：论文 / 简报 / 视频 / 代码…</p>
               </div>
+              <p className="text-white/40 text-xs mt-3 text-center">你只管决策，Agent 负责产出</p>
             </div>
 
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
-              <h3 className="text-blue-300 font-semibold mb-4 text-center">Team 模式</h3>
+              <h3 className="text-blue-300 font-semibold mb-2 text-center">👥 Team 模式</h3>
+              <p className="text-white/40 text-xs text-center mb-4">公司协作 · 项目交付</p>
               <div className="text-sm text-white/70 space-y-2">
-                <p>🌟 Aurora 发起 → 邀请木须参与</p>
-                <p>🦞 Lobster 执行 A 部分 → Aurora 审批</p>
-                <p>🐙 八爪 执行 B 部分 → 木须审批</p>
+                <p>🌟 Aurora 发起任务 → 邀请木须参与</p>
+                <p>🦞 Lobster（Aurora 的电脑）执行 A → Aurora 审批</p>
+                <p>🐙 八爪（木须的电脑）执行 B → 木须审批</p>
                 <p className="text-blue-400 font-medium">全部完成 → Aurora 验收整体交付</p>
               </div>
+              <p className="text-white/40 text-xs mt-3 text-center">各自 Agent 各司其职，人类把关质量</p>
             </div>
           </div>
         </section>
