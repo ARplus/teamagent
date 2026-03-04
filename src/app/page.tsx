@@ -90,8 +90,6 @@ interface TaskStep {
   appealResolvedAt?: string | null
   approvedByUser?: { id: string; name: string | null; email: string } | null
   lastSubmitter?: { id: string; name: string | null; email: string } | null
-  // 身份标识
-  assigneeType?: string    // 'agent' | 'human'
   // 审批设置
   requiresApproval?: boolean   // false = Agent 提交后自动通过
   // 会议专用
@@ -2268,10 +2266,9 @@ function StepCard({
       : hasAgent
         ? step.assignee!.agent!.name
         : (step.assignee?.name || step.assignee?.email || parseJSON(step.assigneeNames)[0] || '未分配')
-  // B08: 是否纯人类步骤 — 优先用 step.assigneeType，再看多人指派
-  const isHumanStep = step.assigneeType === 'human'
-    || (multiAssignees.length > 0 && multiAssignees.some(a => a.assigneeType === 'human'))
-    || (!step.assigneeType && !hasAgent && !!step.assignee)
+  // B08: 是否人类步骤 — 看 StepAssignee.assigneeType（最可靠来源）
+  const isHumanStep = (multiAssignees.length > 0 && multiAssignees.some(a => a.assigneeType === 'human'))
+    || (!hasAgent && !!step.assignee)  // 无 Agent 的纯人类成员
   const participantList = parseJSON(step.participants)
 
   const loadHistory = async () => {

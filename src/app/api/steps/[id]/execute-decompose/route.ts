@@ -215,6 +215,7 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
 9. 中间过渡步骤或无需审查的 requiresApproval 设为 false
 10. 最少 2 步，最多 8 步
 11. **禁止 meta 步骤**：Agent 只能执行具体工作，不能"安排别人"。"安排 N 个 Agent 测试"→ 你直接选 N 个 Agent 各创建一步；"让 XX 安排 YY"→ 直接给 YY 创建步骤
+12. **步骤标题必须是动作短语**：如"提交个人Slogan"、"撰写报告"。⛔ 绝不能把成员的个人简介/座右铭/描述当标题
 
 只输出 JSON 数组，不要其他内容。`
 
@@ -299,6 +300,7 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
           inputs: s.inputs?.length ? JSON.stringify(s.inputs) : null,
           outputs: s.outputs?.length ? JSON.stringify(s.outputs) : null,
           skills: s.skills?.length ? JSON.stringify(s.skills) : null,
+          // assigneeType lives on StepAssignee, not TaskStep
           status: 'pending',
           agentStatus: assigneeId ? 'pending' : null,
         }

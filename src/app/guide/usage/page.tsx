@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: '📖 使用指南 | TeamAgent',
-  description: 'TeamAgent 用户使用指南：任务创建、AI拆解、人类/Agent协作、灵魂成长系统完整说明。',
+  description: 'TeamAgent 用户使用指南：任务创建、AI指派、人类/Agent协作、灵魂成长系统完整说明。',
 }
 
 export default function UsageGuidePage() {
@@ -43,7 +43,7 @@ export default function UsageGuidePage() {
           <div className="flex flex-wrap gap-2 mt-4">
             {[
               { label: '三重身份', href: '#identity' },
-              { label: '任务拆解', href: '#decompose' },
+              { label: '任务指派', href: '#decompose' },
               { label: '步骤执行', href: '#steps' },
               { label: '协作沟通', href: '#collab' },
               { label: '灵魂成长', href: '#growth' },
@@ -164,7 +164,7 @@ function GuideContent() {
       </Section>
 
       {/* ===== 二、任务创建与拆解 ===== */}
-      <Section id="decompose" icon="🔀" title="任务创建与 AI 拆解">
+      <Section id="decompose" icon="🔀" title="任务创建与 AI 指派">
 
         {/* 创建任务 */}
         <Card className="mb-4">
@@ -181,10 +181,10 @@ function GuideContent() {
 
         {/* AI 拆解 */}
         <Card className="mb-4">
-          <h3 className="font-bold text-slate-800 mb-3">🤖 AI 自动拆解</h3>
+          <h3 className="font-bold text-slate-800 mb-3">🤖 AI 自动任务指派</h3>
           <p className="text-sm mb-3">
-            创建任务后，点击 <strong>「AI 拆解」</strong> 或 <strong>「主 Agent 拆解」</strong>，
-            系统会自动将任务拆解为多个可执行步骤，并智能分配给最合适的成员。
+            创建任务后，系统会自动将任务拆解为多个可执行步骤，并智能分配给最合适的成员。
+            <strong>主 Agent 在线时由主 Agent 指派</strong>，离线时由系统 Agent 指派。
           </p>
           <Tip>
             <strong>标题自动精炼：</strong>AI 会把口语化标题精炼为正式标题。
@@ -350,6 +350,35 @@ function GuideContent() {
           <Card>
             <h3 className="font-bold text-slate-800 mb-2">💭 步骤评论</h3>
             <p className="text-sm">每个步骤下方都有评论区，团队成员可以在这里讨论、提问、补充信息。所有评论对任务参与者可见。</p>
+          </Card>
+
+          {/* 评分 */}
+          <Card>
+            <h3 className="font-bold text-slate-800 mb-2">⭐ 任务评分</h3>
+            <p className="text-sm mb-3">
+              任务完成后，系统 Agent 会自动对任务执行质量进行评分，从多个维度给出综合评价：
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
+                <div className="font-medium text-blue-700">完成质量</div>
+                <div className="text-blue-500 text-xs">步骤产出是否达标</div>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center">
+                <div className="font-medium text-emerald-700">执行效率</div>
+                <div className="text-emerald-500 text-xs">耗时与响应速度</div>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 text-center">
+                <div className="font-medium text-purple-700">协作表现</div>
+                <div className="text-purple-500 text-xs">团队配合与沟通</div>
+              </div>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 text-center">
+                <div className="font-medium text-orange-700">综合评分</div>
+                <div className="text-orange-500 text-xs">加权总分（影响成长 XP）</div>
+              </div>
+            </div>
+            <Tip>
+              评分结果会影响 Agent 的<strong>成长经验值（XP）</strong>，高分任务让 Agent 升级更快。
+            </Tip>
           </Card>
         </div>
       </Section>
@@ -536,7 +565,7 @@ function GuideContent() {
               <tbody>
                 {[
                   { op: '新建任务', loc: '右下角 ➕ 按钮 / 侧边栏顶部' },
-                  { op: 'AI 拆解', loc: '任务详情页 →「AI 拆解」按钮' },
+                  { op: 'AI 指派', loc: '任务详情页 → 主Agent在线自动指派' },
                   { op: '查看我的步骤', loc: '首页左侧任务列表' },
                   { op: '和 Agent 对话', loc: '底部导航 →「对话」' },
                   { op: '查看 Agent 详情', loc: '团队页 → 点击 Agent 头像' },
