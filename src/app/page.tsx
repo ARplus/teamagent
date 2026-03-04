@@ -2669,15 +2669,15 @@ function StepCard({
                     <>
                       {multiAssignees.slice(0, 3).map(a => (
                         <span key={a.userId} className="inline-flex items-center gap-0.5 text-xs">
-                          {a.user?.agent ? '🤖' : '👤'}
-                          <span>{a.user?.agent?.name || a.user?.name || '?'}</span>
+                          {a.assigneeType === 'human' ? '👤' : a.user?.agent ? '🤖' : '👤'}
+                          <span>{a.assigneeType === 'human' ? (a.user?.name || '?') : (a.user?.agent?.name || a.user?.name || '?')}</span>
                         </span>
                       ))}
                       {multiAssignees.length > 3 && <span className="text-xs text-slate-400">+{multiAssignees.length - 3}</span>}
                       {step.completionMode === 'any' && <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">任一</span>}
                     </>
                   ) : (
-                    <span>{hasAgent ? '🤖' : '👤'} {assigneeName}</span>
+                    <span>{primaryAssigneeType === 'human' ? '👤' : hasAgent ? '🤖' : '👤'} {assigneeName}</span>
                   )}
                   {agents && agents.length > 0 && (
                     <button
