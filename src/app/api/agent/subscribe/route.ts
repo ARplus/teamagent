@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
-import { addSubscriber, removeSubscriber, startHeartbeat } from '@/lib/events'
+import { addSubscriber, removeSubscriber, startHeartbeat, startScheduledTicker } from '@/lib/events'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -86,6 +86,8 @@ export async function GET(req: NextRequest) {
 
   // 确保心跳已启动
   startHeartbeat()
+  // 确保定时任务调度器已启动
+  startScheduledTicker()
 
   // 断点续传：读取 Last-Event-ID 或 since 参数
   const lastEventId = req.headers.get('last-event-id') || req.nextUrl.searchParams.get('since')

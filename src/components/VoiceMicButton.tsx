@@ -7,7 +7,8 @@ interface VoiceMicButtonProps {
   append?: boolean          // true = 追加到现有内容，false = 替换
   placeholder?: string      // 录音时的提示（可选）
   className?: string
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'lg'
+  variant?: 'light' | 'dark'
 }
 
 export function VoiceMicButton({
@@ -15,9 +16,10 @@ export function VoiceMicButton({
   append = false,
   className = '',
   size = 'md',
+  variant = 'light',
 }: VoiceMicButtonProps) {
   const [listening, setListening] = useState(false)
-  const [supported, setSupported] = useState(true)
+  const [supported, setSupported] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<any>(null)
   // Stable ref so recognition callback always uses latest onResult
@@ -31,6 +33,7 @@ export function VoiceMicButton({
       setSupported(false)
       return
     }
+    setSupported(true)
     const recognition = new SpeechRecognition()
     recognition.lang = 'zh-CN'
     recognition.interimResults = false
@@ -67,12 +70,16 @@ export function VoiceMicButton({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (!supported) return null
-
   const isSecure = typeof window !== 'undefined' &&
     (window.location.protocol === 'https:' || window.location.hostname === 'localhost')
 
   const toggle = () => {
+    // 不支持 Web Speech API → 提示用键盘语音
+    if (!supported) {
+      setError('请点击键盘上的 🎤 语音按钮')
+      setTimeout(() => setError(null), 4000)
+      return
+    }
     if (!isSecure) {
       setError('需要 HTTPS 才能使用语音 🔒')
       setTimeout(() => setError(null), 4000)
@@ -97,7 +104,13 @@ export function VoiceMicButton({
 
   const btnSize = size === 'sm'
     ? 'w-7 h-7 text-sm'
-    : 'w-9 h-9 text-base'
+    : size === 'lg'
+      ? 'w-10 h-10 text-lg'
+      : 'w-9 h-9 text-base'
+
+  const idleStyle = variant === 'dark'
+    ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white hover:from-orange-400 hover:to-rose-400 hover:scale-105 shadow-md shadow-orange-500/30'
+    : 'bg-slate-100 text-slate-500 hover:bg-orange-100 hover:text-orange-600 hover:scale-105'
 
   return (
     <div className={`relative flex items-center ${className}`}>
@@ -110,14 +123,18 @@ export function VoiceMicButton({
           transition-all duration-200 shrink-0
           ${listening
             ? 'bg-red-500 text-white shadow-lg shadow-red-500/40 scale-110 animate-pulse'
-            : 'bg-slate-100 text-slate-500 hover:bg-orange-100 hover:text-orange-600 hover:scale-105'
+            : idleStyle
           }
         `}
       >
         {listening ? '⏹' : '🎤'}
       </button>
       {error && (
-        <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-xs text-red-500 bg-white border border-red-200 rounded px-2 py-0.5 whitespace-nowrap shadow z-10">
+        <span className={`absolute top-full left-1/2 -translate-x-1/2 mt-1 text-xs whitespace-nowrap shadow z-10 rounded px-2 py-0.5 ${
+          variant === 'dark'
+            ? 'text-red-400 bg-slate-800 border border-red-500/50'
+            : 'text-red-500 bg-white border border-red-200'
+        }`}>
           {error}
         </span>
       )}

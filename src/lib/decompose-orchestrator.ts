@@ -73,12 +73,15 @@ function buildTeamContext(members: Awaited<ReturnType<typeof fetchWorkspaceTeam>
 }
 
 // ── name → userId 匹配 + Step 创建（从 tasks/route.ts 提取）──
+// autoActivate: true = 激活步骤+触发 Agent 自动执行（主 Agent 拆解时用）
+//               false = 只创建步骤，不激活，等人类审核（千问 fallback 时用）
 async function createStepsFromParseResult(
   taskId: string,
   steps: any[],
   members: Awaited<ReturnType<typeof fetchWorkspaceTeam>>,
   creatorId: string,
   engine: string,
+  autoActivate: boolean = true,
 ) {
   // 能力匹配兜底
   function matchByCapabilities(title: string, desc: string): string | null {
@@ -153,11 +156,21 @@ async function createStepsFromParseResult(
     }
     if (!assigneeId) assigneeId = matchByCapabilities(step.title, step.description || '')
 
+    // 🆕 Fix: 只存匹配到真实成员的名字，防止千问幻觉名字（如"探索星辰大海"）显示在 UI
+    const resolvedName = assigneeId
+      ? (() => {
+          const m = members.find(m2 => m2.user.id === assigneeId)
+          if (!m) return assigneeNames
+          const agentName = (m.user.agent as any)?.name
+          return agentName ? [agentName] : [m.user.nickname || m.user.name || assigneeNames[0]]
+        })()
+      : []
+
     const created = await prisma.taskStep.create({
       data: {
         title: step.title, description: step.description,
         order, taskId, assigneeId,
-        assigneeNames: JSON.stringify(assigneeNames),
+        assigneeNames: resolvedName.length > 0 ? JSON.stringify(resolvedName) : null,
         inputs: JSON.stringify(step.inputs || []),
         outputs: JSON.stringify(step.outputs || []),
         skills: JSON.stringify(step.skills || []),
@@ -179,42 +192,53 @@ async function createStepsFromParseResult(
     createdSteps.push(created)
   }
 
-  // 通知所有相关用户 + 激活第一批步骤
+  // 通知相关用户
   const involvedUserIds = new Set<string>()
   for (const s of createdSteps) if (s.assigneeId) involvedUserIds.add(s.assigneeId)
-  if (involvedUserIds.size > 0) {
-    const task = await prisma.task.findUnique({ where: { id: taskId }, select: { title: true } })
-    sendToUsers(Array.from(involvedUserIds), { type: 'task:created', taskId, title: task?.title || '' })
-    const startable = getStartableSteps(createdSteps as any[])
-    await activateAndNotifySteps(taskId, startable as any[])
+
+  if (autoActivate) {
+    // 主 Agent 拆解：激活步骤 + 触发 Agent 自动执行
+    if (involvedUserIds.size > 0) {
+      const task = await prisma.task.findUnique({ where: { id: taskId }, select: { title: true } })
+      sendToUsers(Array.from(involvedUserIds), { type: 'task:created', taskId, title: task?.title || '' })
+      const startable = getStartableSteps(createdSteps as any[])
+      await activateAndNotifySteps(taskId, startable as any[])
+    }
+  } else {
+    // 千问 fallback：只通知创建者有新步骤，不激活、不自动执行
+    console.log(`[Decompose] 千问 fallback 模式：${createdSteps.length} 个步骤已创建，等待人工审核后激活`)
   }
+
   // 通知创建者拆解完成
   sendToUser(creatorId, {
     type: 'task:parsed',
     taskId,
     stepCount: createdSteps.length,
     engine,
-  })
+    autoActivated: autoActivate,
+  } as any)
 
   return createdSteps
 }
 
 // ── Hub LLM 拆解路径（现有逻辑封装）──
+// autoActivate: 是否激活步骤（主动调用时 true，fallback 降级时 false）
 async function executeHubLlmDecompose(
   taskId: string, description: string,
   members: Awaited<ReturnType<typeof fetchWorkspaceTeam>>,
   teamContext: ReturnType<typeof buildTeamContext>,
   creatorId: string,
+  autoActivate: boolean = true,
 ) {
   const parseResult = await parseTaskWithAI(description, teamContext)
   if (!parseResult.success || !parseResult.steps) {
     console.warn(`[Decompose/Hub] 拆解失败 [engine=${parseResult.engine}]:`, parseResult.error)
     return null
   }
-  console.log(`[Decompose/Hub] 拆解成功 [engine=${parseResult.engine}]: ${parseResult.steps.length} 步`)
+  console.log(`[Decompose/Hub] 拆解成功 [engine=${parseResult.engine}]: ${parseResult.steps.length} 步 | autoActivate=${autoActivate}`)
 
   const createdSteps = await createStepsFromParseResult(
-    taskId, parseResult.steps, members, creatorId, parseResult.engine || 'hub-unknown'
+    taskId, parseResult.steps, members, creatorId, parseResult.engine || 'hub-unknown', autoActivate
   )
 
   await prisma.task.update({
@@ -245,11 +269,12 @@ async function handleDecomposeFallback(
       where: { id: taskId },
       data: { decomposeStatus: 'fallback' }
     })
-    console.log(`[Decompose/Fallback] 主 Agent 60s 未响应，降级到 Hub LLM`)
+    console.log(`[Decompose/Fallback] 主 Agent 60s 未响应，降级到 Hub LLM（不自动执行，等人工审核）`)
 
     const members = await fetchWorkspaceTeam(workspaceId)
     const teamContext = buildTeamContext(members)
-    await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId)
+    // ⚠️ autoActivate=false：千问降级只创建步骤，不激活、不自动执行
+    await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId, false)
   } catch (e: any) {
     console.error(`[Decompose/Fallback] 降级拆解也失败了:`, e?.message)
   } finally {
@@ -298,8 +323,8 @@ export async function orchestrateDecompose(params: {
     })
 
     if (!mainAgentMember) {
-      console.warn(`[Decompose] 工作区无主 Agent，降级到 hub-llm`)
-      await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId)
+      console.warn(`[Decompose] 工作区无主 Agent，降级到 hub-llm（不自动执行）`)
+      await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId, false)
       return
     }
 
@@ -307,10 +332,10 @@ export async function orchestrateDecompose(params: {
     const mainAgentName = (mainAgentMember.user.agent as any)?.name || '主Agent'
     const mainAgentStatus = (mainAgentMember.user.agent as any)?.status || 'offline'
 
-    // 🆕 主 Agent 不在线 → 直接用 hub-llm，不等 60s 超时
+    // 🆕 主 Agent 不在线 → 直接用 hub-llm，不等 60s 超时（不自动执行）
     if (mainAgentStatus !== 'online' && mainAgentStatus !== 'working') {
-      console.warn(`[Decompose] 主 Agent ${mainAgentName} 不在线(status=${mainAgentStatus})，直接降级到 hub-llm`)
-      await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId)
+      console.warn(`[Decompose] 主 Agent ${mainAgentName} 不在线(status=${mainAgentStatus})，直接降级到 hub-llm（不自动执行）`)
+      await executeHubLlmDecompose(taskId, description, members, teamContext, creatorId, false)
       return
     }
 

@@ -73,6 +73,9 @@ export function Navbar() {
               <Link href="/workspace" className="text-xs text-gray-600 hover:text-orange-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-orange-50 transition-colors">
                 🏠 工作区
               </Link>
+              <Link href="/scheduled" className="text-xs text-gray-600 hover:text-orange-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-orange-50 transition-colors">
+                ⏰ 定时任务
+              </Link>
               <Link href="/guide/usage" className="text-xs text-gray-600 hover:text-blue-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-blue-50 transition-colors">
                 📖 指南
               </Link>

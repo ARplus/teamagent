@@ -11,7 +11,7 @@ export default function LoginPage() {
 
   // 已登录的话直接去首页
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/')
+    if (status === 'authenticated') router.replace('/chat')
   }, [status, router])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,13 +28,13 @@ export default function LoginPage() {
         email,
         password,
         redirect: false,
-        callbackUrl: '/'
+        callbackUrl: '/chat'
       })
 
       if (result?.error) {
         setError(result.error)
       } else {
-        router.push('/')
+        router.push('/chat')
         router.refresh()
       }
     } catch (err) {

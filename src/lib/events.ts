@@ -32,6 +32,8 @@ export type TeamAgentEvent =
       teamMembers: { name: string; isAgent: boolean; agentName?: string; capabilities?: string[]; role?: string; soulSummary?: string; level?: number }[] }
   // 🆕 军团成长：Agent 升级
   | { type: 'agent:level-up'; agentId: string; newLevel: number; oldLevel: number; totalXP: number }
+  // 定时任务
+  | { type: 'scheduled:triggered'; templateId: string; taskId: string; instanceNumber: number }
   | { type: 'ping' }
 
 // 订阅者类型
@@ -189,9 +191,67 @@ export function stopHeartbeat() {
 export function getStats() {
   const userSet = new Set<string>()
   subscribers.forEach(sub => userSet.add(sub.userId))
-  
+
   return {
     totalConnections: subscribers.size,
     uniqueUsers: userSet.size
+  }
+}
+
+// ─── 定时任务调度器 ─────────────────────────────────────
+// 每 60 秒扫描 nextRunAt <= now 的模板并触发执行
+
+const SCHEDULED_TICK_INTERVAL = 60000  // 60 秒
+let scheduledTickTimer: NodeJS.Timeout | null = null
+let tickRunning = false  // 防并发
+
+async function scheduledTick() {
+  if (tickRunning) return
+  tickRunning = true
+  try {
+    // 动态 import 避免循环依赖（events ← scheduled-executor ← step-scheduling ← events）
+    const { prisma } = await import('./db')
+    const now = new Date()
+    const dueTemplates = await prisma.scheduledTemplate.findMany({
+      where: { enabled: true, nextRunAt: { lte: now } },
+      select: { id: true, title: true },
+    })
+    if (dueTemplates.length === 0) {
+      tickRunning = false
+      return
+    }
+    console.log(`[ScheduledTick] 发现 ${dueTemplates.length} 个到期模板`)
+    const { executeScheduledTemplate } = await import('./scheduled-executor')
+    for (const t of dueTemplates) {
+      try {
+        const result = await executeScheduledTemplate(t.id)
+        if (result.success) {
+          console.log(`[ScheduledTick] ✅ "${t.title}" → Task ${result.taskId}`)
+        } else {
+          console.warn(`[ScheduledTick] ⚠️ "${t.title}" 失败: ${result.error}`)
+        }
+      } catch (e: any) {
+        console.error(`[ScheduledTick] ❌ "${t.title}" 异常:`, e?.message)
+      }
+    }
+  } catch (e) {
+    console.error('[ScheduledTick] tick 异常:', e)
+  } finally {
+    tickRunning = false
+  }
+}
+
+export function startScheduledTicker() {
+  if (!scheduledTickTimer) {
+    scheduledTickTimer = setInterval(scheduledTick, SCHEDULED_TICK_INTERVAL)
+    console.log('[ScheduledTick] 定时任务调度器已启动（60s 间隔）')
+  }
+}
+
+export function stopScheduledTicker() {
+  if (scheduledTickTimer) {
+    clearInterval(scheduledTickTimer)
+    scheduledTickTimer = null
+    console.log('[ScheduledTick] 定时任务调度器已停止')
   }
 }

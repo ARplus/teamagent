@@ -8,6 +8,7 @@ import { NotificationBell } from '@/components/NotificationBell'
 import { Navbar } from '@/components/Navbar'
 import LandingPage from '@/components/LandingPage'
 import { PairingModal } from '@/components/PairingModal'
+import { ScheduleModal } from '@/components/ScheduleModal'
 import { VoiceMicButton } from '@/components/VoiceMicButton'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -123,6 +124,12 @@ interface Task {
   evaluations?: TaskEvaluation[]
   // F04: 编辑元数据
   viewerIsCreator?: boolean
+  // 拆解状态
+  decomposeStatus?: string | null   // null | "pending" | "fallback" | "done"
+  decomposeEngine?: string | null   // "main-agent" | "hub-claude" | "hub-qwen"
+  // 定时任务
+  templateId?: string | null
+  instanceNumber?: number | null
 }
 
 interface TaskEvaluation {
@@ -570,6 +577,11 @@ function TaskItem({ task, selected, onClick, currentUserId }: { task: Task; sele
             <span className={`font-medium truncate ${selected ? 'text-white' : 'text-slate-200'}`}>
               {task.title}
             </span>
+            {task.templateId && task.instanceNumber && (
+              <span className="text-xs bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded-full shrink-0">
+                ⏰ #{task.instanceNumber}
+              </span>
+            )}
           </div>
           <div className={`text-xs mt-1 flex items-center space-x-2 ${selected ? 'text-orange-100' : 'text-slate-500'}`}>
             {stepsTotal > 0 && <span>{stepsDone}/{stepsTotal} 步骤</span>}
@@ -1586,6 +1598,7 @@ function SummaryCard({ task, onRefresh }: { task: Task; onRefresh: () => void })
   const [comment, setComment] = useState(task.creatorComment || '')
   const [editing, setEditing] = useState(!task.creatorComment)
   const [saving, setSaving] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
 
   if (task.status !== 'done') return null
 
@@ -1677,6 +1690,26 @@ function SummaryCard({ task, onRefresh }: { task: Task; onRefresh: () => void })
           </div>
         )}
       </div>
+
+      {/* 保存为定时任务 */}
+      {!task.templateId && (
+        <button
+          onClick={() => setShowScheduleModal(true)}
+          className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white text-xs font-medium hover:from-orange-600 hover:to-rose-600 transition-all flex items-center justify-center space-x-1.5"
+        >
+          <span>🔄</span>
+          <span>保存为定时任务</span>
+        </button>
+      )}
+
+      {showScheduleModal && (
+        <ScheduleModal
+          taskId={task.id}
+          taskTitle={task.title}
+          onClose={() => setShowScheduleModal(false)}
+          onCreated={onRefresh}
+        />
+      )}
     </div>
   )
 }
@@ -1852,20 +1885,26 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   const currentIndex = steps.findIndex(s => s.status !== 'done')
   const progress = steps.length > 0 ? Math.round((steps.filter(s => s.status === 'done').length / steps.length) * 100) : 0
 
-  // B04: 自动检测后台 AI 拆解状态 —— team模式+有描述+0步骤+创建时间<120s → 认为正在后台拆解
+  // B04: 自动检测后台 AI 拆解状态 —— 有描述+0步骤+创建时间<120s → 认为正在后台拆解
   useEffect(() => {
-    if (task.mode === 'team' && task.description && steps.length === 0) {
+    if (task.description && steps.length === 0) {
+      // decomposeStatus 是 pending/fallback → 确认正在拆解
+      if (task.decomposeStatus === 'pending' || task.decomposeStatus === 'fallback') {
+        setAutoParsing(true)
+        const timer = setTimeout(() => setAutoParsing(false), 120_000)
+        return () => clearTimeout(timer)
+      }
+      // 兜底：新任务创建 <120s 且无步骤 → 可能正在拆解
       const ageMs = Date.now() - new Date(task.createdAt).getTime()
       if (ageMs < 120_000) {
         setAutoParsing(true)
-        // 超时 120s 后自动取消（防止永远卡在 loading）
         const timer = setTimeout(() => setAutoParsing(false), Math.max(120_000 - ageMs, 5000))
         return () => clearTimeout(timer)
       }
     }
     // steps 已有 → 拆解完成，清除 autoParsing
     if (steps.length > 0) setAutoParsing(false)
-  }, [task.mode, task.description, task.createdAt, steps.length])
+  }, [task.mode, task.description, task.createdAt, steps.length, task.decomposeStatus])
 
   // B04: autoParsing 期间每 5 秒轮询检查步骤是否已生成（SSE 后备方案）
   useEffect(() => {
@@ -1924,15 +1963,21 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
           <div className="flex items-center space-x-1.5">
             {task.description && (steps.length === 0 || isParsing) && (
               isParsing ? (
-                <span className="text-xs text-orange-500 font-medium px-3 py-1.5 bg-orange-50 rounded-xl animate-pulse">
-                  🤖 AI分配中…
+                <span className="text-xs text-orange-500 font-medium px-3 py-1.5 bg-orange-50 rounded-xl animate-pulse flex items-center space-x-1">
+                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  <span>{task.decomposeEngine ? (
+                    task.decomposeEngine.startsWith('hub-') ? `${task.decomposeEngine.replace('hub-', '').replace('qwen', '千问').replace('claude', 'Claude')} 拆解中…`
+                    : `${task.decomposeEngine} 拆解中…`
+                  ) : task.decomposeStatus === 'pending' ? '主Agent 拆解中…'
+                    : task.decomposeStatus === 'fallback' ? '千问 LLM 拆解中…'
+                    : '🤖 AI 拆解中…'}</span>
                 </span>
               ) : (
                 <button
                   onClick={parseTask}
                   className="text-xs bg-gradient-to-r from-orange-500 to-rose-500 text-white px-3 py-1.5 rounded-xl hover:from-orange-400 hover:to-rose-400 shadow-md shadow-orange-500/20 font-medium"
                 >
-                  {task.mode === 'solo' ? '🤖 拆解' : '🤖 AI拆解'}
+                  🤖 AI拆解
                 </button>
               )
             )}

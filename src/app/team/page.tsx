@@ -590,7 +590,7 @@ export default function TeamPage() {
           <div className="lg:w-72 flex-shrink-0 space-y-4">
             {/* Main Agent card */}
             {mainAgent
-              ? <a href="/?t=chat" title="和主Agent对话"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>
+              ? <a href="/chat" title="和主Agent对话"><MainAgentCard agent={mainAgent} liveStatus={liveStatus} /></a>
               : (
                 <div className="bg-slate-800 md:bg-white rounded-2xl border border-dashed border-slate-600 md:border-slate-200 p-6 text-center">
                   <div className="text-3xl mb-2">🤖</div>

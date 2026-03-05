@@ -271,7 +271,9 @@ export async function POST(req: NextRequest) {
             }
           }
         })
-        const mainMember = allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
+        // Solo: 优先找创建者自己的主 Agent，兜底任意主 Agent
+        const mainMember = allMembers.find(m => m.user.id === auth.userId && (m.user.agent as any)?.isMainAgent)
+          || allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
 
         if (mainMember) {
           const mainAgentUserId = mainMember.user.id

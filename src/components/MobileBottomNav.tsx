@@ -59,8 +59,7 @@ export function MobileBottomNav() {
         </Link>
 
         <Link
-          href="/"
-          onClick={() => window.dispatchEvent(new CustomEvent('mobileTabChange', { detail: { tab: 'chat' } }))}
+          href="/chat"
           className="flex flex-col items-center gap-1 -mt-4"
         >
           <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg ${activeTab === 'chat' ? 'bg-orange-500 shadow-orange-500/40 scale-105' : 'bg-slate-700 shadow-slate-900/60'}`}>

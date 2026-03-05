@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
-import { getStartableSteps } from '@/lib/step-scheduling'
+import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const ANTHROPIC_API_URL = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages'
@@ -147,6 +147,8 @@ export async function POST(
     })
 
     // 3. 构建增强版团队描述（包含人类 + 归属链）
+    // Solo 模式：只展示创建者自己的 Agent，不暴露工作区其他成员
+    const isSolo = task.mode === 'solo'
     const creatorName = task.creator?.nickname || task.creator?.name || '未知'
     const teamLines: string[] = []
 
@@ -155,6 +157,9 @@ export async function POST(
       const agent = user.agent as any
       const humanName = user.nickname || user.name || '未知'
       const isCreator = user.id === task.creatorId
+
+      // Solo 模式下只展示创建者自己的 Agent 和人类身份
+      if (isSolo && !isCreator) continue
 
       if (agent && agent.isMainAgent) {
         // 人类 + 主Agent + 子Agent 组
@@ -245,10 +250,15 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
     console.log(`[ExecuteDecompose] LLM 返回 ${parsedSteps.length} 个步骤`)
 
     // 6. assignee 名字 → userId 映射（支持 Agent 名字和人类名字）
+    // Solo 模式：只允许匹配创建者自己的 Agent/人类身份
+    const allowedMembers = isSolo
+      ? members.filter(m => m.user.id === task.creatorId)
+      : members
+
     function findUserByName(name: string): string | null {
       if (!name) return null
       // 先找 Agent 名字匹配
-      const agentMatch = members.find(m => {
+      const agentMatch = allowedMembers.find(m => {
         const a = m.user.agent as any
         if (!a) return false
         return a.name === name || a.name?.includes(name) || name.includes(a.name || '')
@@ -256,7 +266,7 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
       if (agentMatch) return agentMatch.user.id
 
       // 再找子 Agent 名字匹配（子Agent 的 user 也是 member）
-      for (const m of members) {
+      for (const m of allowedMembers) {
         const a = m.user.agent as any
         if (!a?.childAgents) continue
         for (const child of a.childAgents) {
@@ -267,7 +277,7 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
       }
 
       // 最后找人类名字匹配
-      const humanMatch = members.find(m =>
+      const humanMatch = allowedMembers.find(m =>
         m.user.name === name || m.user.nickname === name ||
         (m.user.name && name.includes(m.user.name)) ||
         (m.user.nickname && name.includes(m.user.nickname))
@@ -294,7 +304,8 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
           taskId: task.id,
           stepType: s.stepType || 'task',
           assigneeId,
-          assigneeNames: s.assignee ? JSON.stringify([s.assignee]) : null,
+          // 🆕 Fix: 只存真实匹配到的名字，不存 LLM 幻觉名
+          assigneeNames: assigneeId && s.assignee ? JSON.stringify([s.assignee]) : null,
           requiresApproval: s.requiresApproval !== false,
           parallelGroup: s.parallelGroup || null,
           inputs: s.inputs?.length ? JSON.stringify(s.inputs) : null,
@@ -340,17 +351,17 @@ ${teamDesc || '（暂无团队成员，步骤分配给主 Agent 自己）'}
       data: { status: 'online' }
     })
 
-    // 9. 通知相关成员
+    // 9. 激活可以立刻开始的步骤（activateAndNotifySteps 会更新状态 + 发 SSE + 触发 Agent 自动执行）
+    if (createdSteps.length > 0) {
+      const startables = getStartableSteps(createdSteps)
+      if (startables.length > 0) {
+        await activateAndNotifySteps(task.id, startables)
+      }
+    }
+    // 通知相关成员有新任务
     if (involvedUserIds.size > 0) {
       const userIds = Array.from(involvedUserIds)
       sendToUsers(userIds, { type: 'task:created', taskId: task.id, title: task.title })
-      // 通知可以立刻开始的步骤
-      const startables = getStartableSteps(createdSteps)
-      for (const s of startables) {
-        if (s.assigneeId) {
-          sendToUser(s.assigneeId, { type: 'step:ready', taskId: task.id, stepId: s.id, title: s.title })
-        }
-      }
     }
     if (task.creatorId) {
       sendToUser(task.creatorId, { type: 'task:decomposed', taskId: task.id, stepsCount: createdSteps.length })

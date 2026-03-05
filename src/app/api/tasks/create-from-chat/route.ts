@@ -152,7 +152,9 @@ export async function POST(req: NextRequest) {
           where: { workspaceId: membership.workspaceId },
           include: { user: { select: { id: true, agent: { select: { id: true, name: true, isMainAgent: true } } } } }
         })
-        const mainMember = allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
+        // Solo: 优先找创建者自己的主 Agent，兜底任意主 Agent
+        const mainMember = allMembers.find(m => m.user.id === user.id && (m.user.agent as any)?.isMainAgent)
+          || allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
         if (mainMember) {
           const mainAgentUserId = mainMember.user.id
           const decomposeStep = await prisma.taskStep.create({

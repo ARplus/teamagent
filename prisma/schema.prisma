@@ -55,6 +55,8 @@ model User {
   taskEdits TaskEditHistory[]
   // F06: 通知偏好
   preference UserPreference?
+  // 定时任务模板
+  scheduledTemplates ScheduledTemplate[] @relation("ScheduledTemplateCreator")
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -131,6 +133,7 @@ model Workspace {
   members     WorkspaceMember[]
   tasks       Task[]
   invites     InviteToken[]
+  scheduledTemplates ScheduledTemplate[]
 }
 
 // 邀请 Token（分享链接核心）
@@ -236,6 +239,11 @@ model Task {
 
   // F04: 编辑历史
   editHistory TaskEditHistory[]
+
+  // 定时任务关联（如果是定时实例）
+  templateId      String?
+  template        ScheduledTemplate? @relation("ScheduledInstances", fields: [templateId], references: [id], onDelete: SetNull)
+  instanceNumber  Int?     // 第几次执行（#1, #2, #3...）
 }
 
 // 任务步骤 - 工作流节点
@@ -591,4 +599,53 @@ model TaskEditHistory {
 
   @@index([taskId])
   @@index([editorId])
+}
+
+// 定时任务模板
+model ScheduledTemplate {
+  id              String   @id @default(cuid())
+
+  // 来源任务（从哪个成功任务保存的，可选）
+  sourceTaskId    String?
+
+  // 基本信息
+  title           String
+  description     String?
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creatorId       String
+  creator         User      @relation("ScheduledTemplateCreator", fields: [creatorId], references: [id])
+
+  // 步骤模板（JSON 快照）
+  // [{ title, description, assigneeId, assigneeType, requiresApproval, parallelGroup, order, inputs, outputs, skills }]
+  stepsTemplate   String
+
+  // 调度配置
+  schedule        String    // cron 表达式: "0 9 * * *"
+  timezone        String   @default("Asia/Shanghai")
+  enabled         Boolean  @default(true)
+
+  // 审批方式: "every" | "on_error" | "auto"
+  approvalMode    String   @default("every")
+
+  // 结果投递
+  deliveryBoard   Boolean  @default(true)
+  deliveryChat    Boolean  @default(false)
+  deliveryEmail   Boolean  @default(false)
+  deliveryFile    Boolean  @default(false)
+
+  // 统计
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  runCount        Int      @default(0)
+  failCount       Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 关联：每次执行产生的任务实例
+  instances       Task[]   @relation("ScheduledInstances")
+
+  @@index([workspaceId, enabled])
+  @@index([enabled, nextRunAt])
 }

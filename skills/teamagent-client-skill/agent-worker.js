@@ -593,6 +593,11 @@ async function main() {
             }
             inFlightChatMsgIds.add(decomposeKey)
             try {
+              // 🆕 立即 ACK：告知 Hub 已收到，取消千问 fallback 计时器
+              client.request('POST', `/api/tasks/${dTaskId}/decompose-ack`, {})
+                .then(r => console.log(`   ✅ ACK 已发送 → Hub${r.cancelled ? ' (fallback 已取消)' : ''}`))
+                .catch(e => console.warn(`   ⚠️ ACK 失败(非致命):`, e.message))
+
               // 🆕 构建团队信息（双身份：人类名 + Agent名 分开显示）
               const teamInfo = (teamMembers || []).map(m => {
                 const humanName = m.humanName || m.name

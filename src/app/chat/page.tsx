@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { VoiceMicButton } from '@/components/VoiceMicButton'
 
 interface ChatAttachment {
   url: string
@@ -473,22 +474,30 @@ export default function ChatPage() {
 
             <div className="px-5 py-4 space-y-3">
               {/* 标题（可留空，自动从描述提取） */}
-              <input
-                value={newTaskTitle}
-                onChange={e => setNewTaskTitle(e.target.value)}
-                placeholder="任务标题（可留空，自动生成）..."
-                className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); createTask() } }}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  value={newTaskTitle}
+                  onChange={e => setNewTaskTitle(e.target.value)}
+                  placeholder="任务标题（可留空，自动生成）..."
+                  className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); createTask() } }}
+                />
+                <VoiceMicButton variant="dark" size="sm"
+                  onResult={(text) => setNewTaskTitle(prev => prev ? prev + ' ' + text : text)} append />
+              </div>
               {/* 描述（必填） */}
-              <textarea
-                value={newTaskDesc}
-                onChange={e => setNewTaskDesc(e.target.value)}
-                placeholder="任务描述（必填），AI 将自动拆解步骤..."
-                rows={3}
-                autoFocus
-                className="w-full px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-              />
+              <div className="flex items-start gap-2">
+                <textarea
+                  value={newTaskDesc}
+                  onChange={e => setNewTaskDesc(e.target.value)}
+                  placeholder="任务描述（必填），AI 将自动拆解步骤..."
+                  rows={3}
+                  autoFocus
+                  className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                />
+                <VoiceMicButton variant="dark" size="sm" className="mt-2"
+                  onResult={(text) => setNewTaskDesc(prev => prev ? prev + ' ' + text : text)} append />
+              </div>
               {/* 模式选择 */}
               <div className="flex gap-2">
                 <button
@@ -567,29 +576,28 @@ export default function ChatPage() {
           )}
           {/* 隐藏文件input */}
           <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.doc,.docx,.txt,.md,.zip" multiple className="hidden" onChange={handleFileUpload} />
-          <div className="flex items-end gap-2">
-            {/* B13: 新建任务按钮 + 上传 + 成长 */}
-            <div className="flex flex-col gap-1 flex-shrink-0">
-              <button
-                onClick={() => setShowNewTask(true)}
-                disabled={!agent}
-                title="快速新建任务"
-                className="w-10 h-10 bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white/70 hover:text-white rounded-full flex items-center justify-center transition-colors text-base"
-              >
-                📋
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                title="上传图片/文件"
-                className="w-10 h-10 bg-white/10 hover:bg-blue-500/20 disabled:opacity-30 text-white/70 hover:text-blue-400 rounded-full flex items-center justify-center transition-colors text-base"
-              >
-                📷
-              </button>
-              <button
-                onClick={() => {
-                  if (!agent || loading) return
-                  const growthPrompt = `请帮我分析一下你当前的能力状态，然后推荐 3-5 个对你最有价值的新技能。具体步骤：
+          {/* 工具栏：新建任务 + 上传 + 成长（右移避开左侧麦克风） */}
+          <div className="flex items-center gap-2 mb-2 ml-12">
+            <button
+              onClick={() => setShowNewTask(true)}
+              disabled={!agent}
+              title="快速新建任务"
+              className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-orange-500/20 disabled:opacity-30 text-white/60 hover:text-orange-400 rounded-full transition-colors text-xs"
+            >
+              📋 <span>新建</span>
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              title="上传图片/文件"
+              className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-blue-500/20 disabled:opacity-30 text-white/60 hover:text-blue-400 rounded-full transition-colors text-xs"
+            >
+              📷 <span>上传</span>
+            </button>
+            <button
+              onClick={() => {
+                if (!agent || loading) return
+                const growthPrompt = `请帮我分析一下你当前的能力状态，然后推荐 3-5 个对你最有价值的新技能。具体步骤：
 1. 列出你当前已掌握的技能（已安装的 skills）
 2. 搜索 ClawHub 上可用的新技能（clawhub search）
 3. 根据我们的工作需求，推荐最有价值的技能，说明理由
@@ -597,15 +605,25 @@ export default function ChatPage() {
 5. 学习技能文档，总结新获得的能力
 
 请开始吧！🌱`
-                  sendMessage(growthPrompt)
-                }}
-                disabled={!agent || loading}
-                title="Agent 自主学习新技能"
-                className="w-10 h-10 bg-white/10 hover:bg-emerald-500/20 disabled:opacity-30 text-white/70 hover:text-emerald-400 rounded-full flex items-center justify-center transition-colors text-base"
-              >
-                🌱
-              </button>
-            </div>
+                sendMessage(growthPrompt)
+              }}
+              disabled={!agent || loading}
+              title="Agent 自主学习新技能"
+              className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-emerald-500/20 disabled:opacity-30 text-white/60 hover:text-emerald-400 rounded-full transition-colors text-xs"
+            >
+              🌱 <span>成长</span>
+            </button>
+          </div>
+          {/* 输入行：🎤 + textarea + 发送 */}
+          <div className="flex items-end gap-2">
+            {/* 语音输入按钮 */}
+            <VoiceMicButton
+              variant="dark"
+              size="lg"
+              className="flex-shrink-0 mb-1"
+              onResult={(text) => setInput(prev => prev ? prev + ' ' + text : text)}
+              append
+            />
             <div className="flex-1">
               <textarea
                 ref={inputRef}
