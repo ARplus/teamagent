@@ -25,7 +25,7 @@ export async function POST(
     if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
     const { id } = await params
-    const template = await prisma.scheduledTemplate.findUnique({ where: { id } })
+    const template = await prisma.taskTemplate.findUnique({ where: { id } })
 
     if (!template) {
       return NextResponse.json({ error: '模板不存在' }, { status: 404 })
@@ -34,12 +34,12 @@ export async function POST(
       return NextResponse.json({ error: '只有创建者可以暂停' }, { status: 403 })
     }
 
-    const updated = await prisma.scheduledTemplate.update({
+    const updated = await prisma.taskTemplate.update({
       where: { id },
-      data: { enabled: false, nextRunAt: null },
+      data: { scheduleEnabled: false, nextRunAt: null },
     })
 
-    console.log(`[Scheduled/Pause] 暂停模板: "${template.title}"`)
+    console.log(`[Scheduled/Pause] 暂停模板: "${template.name}"`)
     return NextResponse.json(updated)
   } catch (error) {
     console.error('[Scheduled/Pause] 失败:', error)

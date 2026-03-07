@@ -25,10 +25,11 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         name: true,
+        displayToken: true,  // 管理员充值自动生成的明文 token（供用户查看）
         lastUsedAt: true,
         expiresAt: true,
         createdAt: true
-        // 注意：不返回 token 本身
+        // 注意：不返回 hash 后的 token
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -69,20 +70,20 @@ export async function POST(req: NextRequest) {
       expiresAt.setDate(expiresAt.getDate() + expiresInDays)
     }
 
-    // 创建 token
+    // 创建 token（同时保存明文到 displayToken，方便用户随时查看）
     const apiToken = await prisma.apiToken.create({
       data: {
         token: hashedToken,
+        displayToken: rawToken,
         name: name || 'API Token',
         expiresAt,
         userId: user.id
       }
     })
 
-    // 只在创建时返回原始 token，之后无法再获取
     return NextResponse.json({
       message: 'Token 创建成功',
-      token: rawToken,  // ⚠️ 只返回一次！
+      token: rawToken,
       id: apiToken.id,
       name: apiToken.name,
       expiresAt: apiToken.expiresAt

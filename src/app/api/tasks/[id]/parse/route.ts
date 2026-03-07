@@ -199,7 +199,7 @@ ${task.description}
     for (const step of parseResult.steps) {
       order++
       let assigneeId: string | null = null
-      for (const assigneeName of step.assignees) {
+      for (const assigneeName of step.assignees || []) {
         const member = workspaceMembers.find(m =>
           m.user.nickname === assigneeName || m.user.name === assigneeName ||
           m.user.name?.includes(assigneeName) || assigneeName.includes(m.user.name || '') ||

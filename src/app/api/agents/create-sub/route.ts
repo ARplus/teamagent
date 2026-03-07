@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendToUser } from '@/lib/events'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 
@@ -46,8 +47,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '请先配对主 Agent，才能创建子 Agent' }, { status: 400 })
   }
 
+  // 子 Agent 不能再创建子 Agent
+  if (user.agent.parentAgentId) {
+    return NextResponse.json({ error: '子 Agent 不能创建子 Agent' }, { status: 403 })
+  }
+
+  // 自动修正 isMainAgent（claim 时可能因竞态未设置成功）
   if (!user.agent.isMainAgent) {
-    return NextResponse.json({ error: '只有主 Agent 的主人才能创建子 Agent' }, { status: 403 })
+    await prisma.agent.update({
+      where: { id: user.agent.id },
+      data: { isMainAgent: true }
+    })
+    console.log(`[CreateSub] 自动修正 ${user.agent.name} 的 isMainAgent 为 true`)
   }
 
   const workspace = user.workspaces[0]?.workspace
@@ -117,6 +128,40 @@ export async function POST(req: NextRequest) {
 
       return { subUser, subAgent }
     })
+
+    // 🆕 通知主 Agent：新子 Agent 已在 TeamAgent 注册，需要在 OpenClaw 中创建
+    const capsText = capabilities.length > 0 ? capabilities.join('、') : '通用'
+    const notifyContent = `🤖 新子 Agent「${name.trim()}」已在 TeamAgent 注册成功！\n\n` +
+      `- agentId: ${result.subAgent.id}\n` +
+      `- 能力: ${capsText}\n` +
+      `${personality ? `- 性格: ${personality.trim()}\n` : ''}` +
+      `\n请按照 SKILL.md「🌊 组建 Agent 军团」第一步，在 OpenClaw 中为此成员完成创建（workspace + agents.list + SOUL.md + LLM auth），` +
+      `使其从"纸面成员"变为可执行任务的真正 Agent。`
+
+    const notifyMsg = await prisma.chatMessage.create({
+      data: {
+        content: notifyContent,
+        role: 'user',
+        userId: user.id,
+        metadata: JSON.stringify({ source: 'system', subAgentId: result.subAgent.id }),
+      }
+    })
+    // 创建 pending 占位等主 Agent 回复
+    const agentReplyMsg = await prisma.chatMessage.create({
+      data: {
+        content: '__pending__',
+        role: 'agent',
+        userId: user.id,
+        agentId: user.agent!.id,
+      }
+    })
+    sendToUser(user.id, {
+      type: 'chat:incoming',
+      msgId: agentReplyMsg.id,
+      content: notifyContent,
+      agentId: user.agent!.id,
+    } as any)
+    console.log(`[CreateSub] ✅ 已通知主 Agent (${user.agent!.name}) 创建 OpenClaw 子 Agent: ${name.trim()}`)
 
     return NextResponse.json({
       success: true,

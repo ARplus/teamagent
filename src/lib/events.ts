@@ -54,21 +54,39 @@ const HEARTBEAT_INTERVAL = 30000
  * 添加订阅者
  */
 export function addSubscriber(
-  userId: string, 
-  agentId: string, 
+  userId: string,
+  agentId: string,
   controller: ReadableStreamDefaultController
 ): string {
   const subscriberId = `${userId}-${Date.now()}`
-  
+
+  // ⚡ 踢掉同一 agentId 的旧连接，防止 SSE 重连导致连接泄漏
+  const staleIds: string[] = []
+  subscribers.forEach((sub, id) => {
+    if (sub.agentId === agentId && sub.userId === userId) {
+      staleIds.push(id)
+    }
+  })
+  for (const id of staleIds) {
+    const old = subscribers.get(id)
+    if (old) {
+      try { old.controller.close() } catch {}
+    }
+    subscribers.delete(id)
+  }
+  if (staleIds.length > 0) {
+    console.log(`[Events] 踢掉 ${staleIds.length} 个旧连接 (agent=${agentId})`)
+  }
+
   subscribers.set(subscriberId, {
     userId,
     agentId,
     controller,
     lastPing: Date.now()
   })
-  
+
   console.log(`[Events] 订阅者加入: ${subscriberId} (总数: ${subscribers.size})`)
-  
+
   return subscriberId
 }
 
@@ -212,9 +230,9 @@ async function scheduledTick() {
     // 动态 import 避免循环依赖（events ← scheduled-executor ← step-scheduling ← events）
     const { prisma } = await import('./db')
     const now = new Date()
-    const dueTemplates = await prisma.scheduledTemplate.findMany({
-      where: { enabled: true, nextRunAt: { lte: now } },
-      select: { id: true, title: true },
+    const dueTemplates = await prisma.taskTemplate.findMany({
+      where: { scheduleEnabled: true, nextRunAt: { lte: now } },
+      select: { id: true, name: true },
     })
     if (dueTemplates.length === 0) {
       tickRunning = false
@@ -226,12 +244,12 @@ async function scheduledTick() {
       try {
         const result = await executeScheduledTemplate(t.id)
         if (result.success) {
-          console.log(`[ScheduledTick] ✅ "${t.title}" → Task ${result.taskId}`)
+          console.log(`[ScheduledTick] ✅ "${t.name}" → Task ${result.taskId}`)
         } else {
-          console.warn(`[ScheduledTick] ⚠️ "${t.title}" 失败: ${result.error}`)
+          console.warn(`[ScheduledTick] ⚠️ "${t.name}" 失败: ${result.error}`)
         }
       } catch (e: any) {
-        console.error(`[ScheduledTick] ❌ "${t.title}" 异常:`, e?.message)
+        console.error(`[ScheduledTick] ❌ "${t.name}" 异常:`, e?.message)
       }
     }
   } catch (e) {

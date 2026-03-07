@@ -1,6 +1,6 @@
 /**
- * 定时任务执行器
- * 从 ScheduledTemplate 创建 Task + TaskSteps 并触发执行
+ * 模版执行器
+ * 从 TaskTemplate 创建 Task + TaskSteps 并触发执行
  */
 
 import { prisma } from './db'
@@ -31,18 +31,18 @@ export interface ExecutionResult {
 }
 
 /**
- * 执行定时任务模板：创建 Task + Steps + 激活
+ * 执行定时模版：创建 Task + Steps + 激活
  */
 export async function executeScheduledTemplate(templateId: string): Promise<ExecutionResult> {
   try {
     // 1. 加载模板
-    const template = await prisma.scheduledTemplate.findUnique({
+    const template = await prisma.taskTemplate.findUnique({
       where: { id: templateId },
     })
     if (!template) {
       return { success: false, error: '模板不存在' }
     }
-    if (!template.enabled) {
+    if (!template.scheduleEnabled) {
       return { success: false, error: '模板已暂停' }
     }
 
@@ -66,7 +66,7 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
     // 2. 创建 Task 实例
     const task = await prisma.task.create({
       data: {
-        title: `${template.title} (#${instanceNumber} ${dateStr})`,
+        title: `${template.name} (#${instanceNumber} ${dateStr})`,
         description: template.description,
         status: 'todo',
         priority: 'medium',
@@ -140,12 +140,13 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
     }
 
     // 5. 更新模板统计
-    const nextRunAt = computeNextRun(template.schedule, template.timezone)
-    await prisma.scheduledTemplate.update({
+    const nextRunAt = template.schedule ? computeNextRun(template.schedule, template.timezone) : null
+    await prisma.taskTemplate.update({
       where: { id: templateId },
       data: {
         runCount: instanceNumber,
         lastRunAt: new Date(),
+        lastUsedAt: new Date(),
         nextRunAt,
         failCount: 0, // 成功执行重置失败计数
       },
@@ -161,11 +162,11 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
       userId: template.creatorId,
       type: 'task_assigned',
       title: '⏰ 定时任务执行',
-      content: `定时任务「${template.title}」第 ${instanceNumber} 次执行已启动`,
+      content: `定时任务「${template.name}」第 ${instanceNumber} 次执行已启动`,
       taskId: task.id,
     })
 
-    console.log(`[Scheduled] ✅ 模板 "${template.title}" 第 ${instanceNumber} 次执行 → Task ${task.id}`)
+    console.log(`[Scheduled] ✅ 模板 "${template.name}" 第 ${instanceNumber} 次执行 → Task ${task.id}`)
 
     return { success: true, taskId: task.id, instanceNumber }
 
@@ -174,33 +175,33 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
 
     // 增加失败计数
     try {
-      const template = await prisma.scheduledTemplate.findUnique({
+      const template = await prisma.taskTemplate.findUnique({
         where: { id: templateId },
       })
       if (template) {
         const newFailCount = template.failCount + 1
         const shouldPause = newFailCount >= 3
 
-        await prisma.scheduledTemplate.update({
+        await prisma.taskTemplate.update({
           where: { id: templateId },
           data: {
             failCount: newFailCount,
-            enabled: shouldPause ? false : undefined,
+            scheduleEnabled: shouldPause ? false : undefined,
           },
         })
 
         if (shouldPause) {
-          console.warn(`[Scheduled] ⚠️ 模板 "${template.title}" 连续失败 ${newFailCount} 次，已自动暂停`)
+          console.warn(`[Scheduled] ⚠️ 模板 "${template.name}" 连续失败 ${newFailCount} 次，已自动暂停`)
           await createNotification({
             userId: template.creatorId,
             type: 'task_assigned',
             title: '⏰ 定时任务已暂停',
-            content: `定时任务「${template.title}」因连续 ${newFailCount} 次失败已自动暂停`,
+            content: `定时任务「${template.name}」因连续 ${newFailCount} 次失败已自动暂停`,
           })
           sendToUser(template.creatorId, {
             type: 'task:updated',
             taskId: templateId,
-            title: `定时任务「${template.title}」已自动暂停`,
+            title: `定时任务「${template.name}」已自动暂停`,
           })
         }
       }

@@ -494,8 +494,14 @@ function TaskList({
           <span>我的工作区</span>
         </a>
 
-        {/* 邀请协作伙伴 */}
-        <InvitePartnerButton />
+        {/* 设置（Token & 额度） */}
+        <a
+          href="/settings"
+          className="w-full py-2 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition-colors text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 border border-orange-500/20"
+        >
+          <span>⚙️</span>
+          <span>设置 · Token & 额度</span>
+        </a>
 
         {/* 配对 Agent 按钮 */}
         <button
@@ -1163,56 +1169,80 @@ function TeamCard({ task, onRefresh, currentUserId }: { task: Task; onRefresh: (
   }
 
   // 收集每个 assignee 的步骤统计 + Agent 元数据
-  const memberMap = new Map<string, {
+  type MemberEntry = {
     userId: string
     agentName: string
+    agentAvatar?: string
     humanName: string
     isMainAgent: boolean
+    isHuman: boolean
     parentAgentName?: string
-    parentOwnerName?: string
-    agentStatus?: string  // agent.status (online/working/offline)
+    agentStatus?: string
     stepStatus: string
     done: number
     total: number
-  }>()
+  }
+  const memberMap = new Map<string, MemberEntry>()
 
-  for (const step of task.steps || []) {
-    if (!step.assignee) continue
-    const key = step.assignee.id
-    const agent = step.assignee.agent
+  function upsertMember(key: string, init: MemberEntry, stepStatus: string) {
     const existing = memberMap.get(key)
-
     if (existing) {
       existing.total++
-      if (step.status === 'done') existing.done++
-      if (step.status === 'in_progress' || step.status === 'waiting_approval') {
-        existing.stepStatus = step.status
-      }
+      if (stepStatus === 'done') existing.done++
+      if (stepStatus === 'in_progress' || stepStatus === 'waiting_approval') existing.stepStatus = stepStatus
     } else {
-      memberMap.set(key, {
+      memberMap.set(key, init)
+    }
+  }
+
+  // 遍历所有 step.assignees（多人指派），确保每个参与者都被收集
+  for (const step of task.steps || []) {
+    const stepAssignees = (step as any).assignees || []
+    if (stepAssignees.length > 0) {
+      for (const sa of stepAssignees) {
+        const user = sa.user
+        if (!user) continue
+        const isHuman = sa.assigneeType === 'human'
+        const key = isHuman ? `${user.id}_human` : user.id
+        const agent = isHuman ? null : (user.agent || null)
+        upsertMember(key, {
+          userId: user.id,
+          agentName: agent?.name || '未绑定',
+          agentAvatar: agent?.avatar || undefined,
+          humanName: user.name || '未知',
+          isMainAgent: agent?.isMainAgent ?? false,
+          isHuman,
+          parentAgentName: agent?.parentAgent?.name,
+          agentStatus: agent?.status || undefined,
+          stepStatus: step.status,
+          done: step.status === 'done' ? 1 : 0,
+          total: 1,
+        }, step.status)
+      }
+    } else if (step.assignee) {
+      const agent = step.assignee.agent
+      upsertMember(step.assignee.id, {
         userId: step.assignee.id,
         agentName: agent?.name || '未绑定',
+        agentAvatar: agent?.avatar || undefined,
         humanName: step.assignee.name || '未知',
         isMainAgent: agent?.isMainAgent ?? false,
+        isHuman: false,
         parentAgentName: agent?.parentAgent?.name,
-        parentOwnerName: agent?.parentAgent?.user?.name || undefined,
         agentStatus: agent?.status || undefined,
         stepStatus: step.status,
         done: step.status === 'done' ? 1 : 0,
         total: 1,
-      })
+      }, step.status)
     }
   }
 
   const allMembers = Array.from(memberMap.values())
-
-  // 按归属链分组：主Agent 在前，其子Agent 缩进显示
-  // 1. 找出所有主Agent
   const mainAgents = allMembers.filter(m => m.isMainAgent)
-  // 2. 找出所有子Agent（有 parentAgent）
-  const subAgents = allMembers.filter(m => !m.isMainAgent && m.parentAgentName)
-  // 3. 无归属的（纯人类步骤或未绑定）
-  const others = allMembers.filter(m => !m.isMainAgent && !m.parentAgentName)
+  const subAgents = allMembers.filter(m => !m.isMainAgent && !m.isHuman && m.parentAgentName)
+  const humans = allMembers.filter(m => m.isHuman)
+  // 独立 Agent（非主、无父、非人类）
+  const loneAgents = allMembers.filter(m => !m.isMainAgent && !m.isHuman && !m.parentAgentName && m.agentName !== '未绑定')
 
   // 归属链状态点
   function StatusDot({ status }: { status?: string }) {
@@ -1232,125 +1262,173 @@ function TeamCard({ task, onRefresh, currentUserId }: { task: Task; onRefresh: (
         <span>👥</span>
         <span>任务 Team</span>
       </h3>
+      {/* 兜底：步骤全未分配时，显示创建者+Agent */}
+      {allMembers.length === 0 && task.creator && (() => {
+        const c = task.creator as any
+        const ag = c.agent
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl">
+              <span className="text-lg">👤</span>
+              <div className="text-sm font-semibold text-slate-800">{c.name || c.email}</div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 font-medium">创建者</span>
+            </div>
+            {ag && (
+              <div className="flex items-center gap-2.5 p-2.5 pl-5 ml-2 border-l-2 border-orange-200">
+                <span className="text-base">🤖{ag.avatar || ''}</span>
+                <div className="text-sm font-semibold text-slate-700">{ag.name}</div>
+                {ag.isMainAgent && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">main</span>}
+                <StatusDot status={ag.status} />
+              </div>
+            )}
+            <div className="text-xs text-slate-400 text-center py-1">步骤尚未分配</div>
+          </div>
+        )
+      })()}
       {allMembers.length > 0 ? (
-        <div className="space-y-2">
-          {/* 主 Agent 组 */}
-          {mainAgents.map((m, i) => {
-            const children = subAgents.filter(s => s.parentAgentName === m.agentName)
-            return (
-              <div key={`main-${i}`}>
-                {/* 主 Agent 行 */}
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-orange-50/50 rounded-xl">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-orange-500/20">
-                      {m.agentName.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800 flex items-center space-x-1.5">
-                        <span>{m.agentName}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">main</span>
-                      </div>
-                      <div className="text-xs text-slate-500 flex items-center space-x-1">
-                        <span>→ 👤 {m.humanName}</span>
-                        <StatusDot status={m.agentStatus} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</span>
-                    {evalMap.has(m.userId) && (
-                      <button
-                        onClick={() => setExpandedEval(expandedEval === m.userId ? null : m.userId)}
-                        className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100"
-                        title="查看评分详情"
-                      >
-                        ⭐{evalMap.get(m.userId)!.overallScore}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {/* B12: 评分详情展开 */}
-                {expandedEval === m.userId && evalMap.has(m.userId) && (
-                  <EvalDetail ev={evalMap.get(m.userId)!} />
-                )}
-                {/* 子 Agent 行（缩进） */}
-                {children.map((c, j) => (
-                  <div key={`sub-${i}-${j}`}>
-                    <div className="flex items-center justify-between p-2.5 pl-12 ml-4 border-l-2 border-slate-200">
-                      <div className="flex items-center space-x-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white text-xs font-bold">
-                          {c.agentName.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
-                            <span>⚙️ {c.agentName}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <StatusDot status={c.agentStatus} />
-                          </div>
-                        </div>
+        <div className="space-y-1">
+          {/* 按人类分组：人类 → 其主Agent → 子Agents */}
+          {(() => {
+            // 构建分组：每个主Agent找到对应人类
+            const renderedHumanIds = new Set<string>()
+            const renderedSubKeys = new Set<string>()
+            const groups: React.ReactNode[] = []
+
+            mainAgents.forEach((m, i) => {
+              const humanEntry = humans.find(h => h.userId === m.userId)
+              const children = subAgents.filter(s => s.parentAgentName === m.agentName)
+              if (humanEntry) renderedHumanIds.add(humanEntry.userId)
+              children.forEach(c => renderedSubKeys.add(`${c.userId}_${c.agentName}`))
+
+              groups.push(
+                <div key={`group-${i}`}>
+                  {/* 人类行（顶层） */}
+                  {humanEntry && (
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">👤</span>
+                        <div className="text-sm font-semibold text-slate-800">{humanEntry.humanName}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500 font-medium">{c.done}/{c.total}</span>
-                        {evalMap.has(c.userId) && (
-                          <button
-                            onClick={() => setExpandedEval(expandedEval === c.userId ? null : c.userId)}
-                            className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100"
-                          >
-                            ⭐{evalMap.get(c.userId)!.overallScore}
+                        <span className="text-xs text-slate-600 font-medium">{humanEntry.done}/{humanEntry.total}</span>
+                        {evalMap.has(`${humanEntry.userId}_human`) && (
+                          <button onClick={() => setExpandedEval(expandedEval === `${humanEntry.userId}_human` ? null : `${humanEntry.userId}_human`)}
+                            className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100">
+                            ⭐{evalMap.get(`${humanEntry.userId}_human`)?.overallScore ?? evalMap.get(humanEntry.userId)?.overallScore}
                           </button>
                         )}
                       </div>
                     </div>
-                    {expandedEval === c.userId && evalMap.has(c.userId) && (
-                      <div className="ml-12 mb-1"><EvalDetail ev={evalMap.get(c.userId)!} /></div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )
-          })}
-          {/* 无归属成员（纯人类步骤等） */}
-          {others.map((m, i) => (
-            <div key={`other-${i}`}>
-              <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-xl">
-                <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-blue-500/20">
-                    {(m.humanName || m.agentName).charAt(0)}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">{m.agentName !== '未绑定' ? m.agentName : m.humanName}</div>
-                    {m.agentName !== '未绑定' ? (
-                      <div className="text-xs text-slate-500 flex items-center space-x-1">
-                        <span>→ 👤 {m.humanName}</span>
-                        <StatusDot status={m.agentStatus} />
-                      </div>
-                    ) : (
-                      <div className="text-xs text-slate-500">👤 纯人类步骤</div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</span>
-                  {evalMap.has(m.userId) && (
-                    <button
-                      onClick={() => setExpandedEval(expandedEval === m.userId ? null : m.userId)}
-                      className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100"
-                    >
-                      ⭐{evalMap.get(m.userId)!.overallScore}
-                    </button>
                   )}
+                  {/* 主Agent行（缩进 L1） */}
+                  <div className={`flex items-center justify-between p-2.5 ${humanEntry ? 'pl-5 ml-2 border-l-2 border-orange-200' : 'p-3 bg-gradient-to-r from-slate-50 to-orange-50/50 rounded-xl'}`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">🤖{m.agentAvatar || ''}</span>
+                      <div>
+                        <div className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                          <span>{m.agentName}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">main</span>
+                        </div>
+                        {!humanEntry && <div className="text-xs text-slate-500">→ 👤 {m.humanName}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusDot status={m.agentStatus} />
+                      <span className="text-xs text-slate-600 font-medium">{m.done}/{m.total}</span>
+                      {evalMap.has(m.userId) && (
+                        <button onClick={() => setExpandedEval(expandedEval === m.userId ? null : m.userId)}
+                          className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100">
+                          ⭐{evalMap.get(m.userId)!.overallScore}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {expandedEval === m.userId && evalMap.has(m.userId) && <EvalDetail ev={evalMap.get(m.userId)!} />}
+                  {/* 子Agent行（缩进 L2） */}
+                  {children.map((c, j) => (
+                    <div key={`sub-${i}-${j}`}>
+                      <div className="flex items-center justify-between p-2 pl-9 ml-2 border-l-2 border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">⚙️{c.agentAvatar || ''}</span>
+                          <span className="text-xs font-semibold text-slate-600">{c.agentName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusDot status={c.agentStatus} />
+                          <span className="text-xs text-slate-500 font-medium">{c.done}/{c.total}</span>
+                          {evalMap.has(c.userId) && (
+                            <button onClick={() => setExpandedEval(expandedEval === c.userId ? null : c.userId)}
+                              className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium hover:bg-amber-100">
+                              ⭐{evalMap.get(c.userId)!.overallScore}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {expandedEval === c.userId && evalMap.has(c.userId) && (
+                        <div className="ml-14 mb-1"><EvalDetail ev={evalMap.get(c.userId)!} /></div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-              {expandedEval === m.userId && evalMap.has(m.userId) && (
-                <EvalDetail ev={evalMap.get(m.userId)!} />
-              )}
-            </div>
-          ))}
+              )
+            })
+
+            // 未归组的人类（没有主Agent的纯人类）
+            humans.filter(h => !renderedHumanIds.has(h.userId)).forEach((h, i) => {
+              groups.push(
+                <div key={`human-${i}`} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-lg">👤</span>
+                    <div className="text-sm font-semibold text-slate-800">{h.humanName}</div>
+                  </div>
+                  <span className="text-xs text-slate-600 font-medium">{h.done}/{h.total}</span>
+                </div>
+              )
+            })
+
+            // 孤立子Agent（主Agent不在列表中）
+            subAgents.filter(s => !renderedSubKeys.has(`${s.userId}_${s.agentName}`)).forEach((c, i) => {
+              groups.push(
+                <div key={`orphan-${i}`} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base">⚙️{c.agentAvatar || ''}</span>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">{c.agentName}</div>
+                      <div className="text-xs text-slate-500">→ 👤 {c.humanName}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={c.agentStatus} />
+                    <span className="text-xs text-slate-600 font-medium">{c.done}/{c.total}</span>
+                  </div>
+                </div>
+              )
+            })
+
+            // 独立 Agent（无父Agent）
+            loneAgents.forEach((a, i) => {
+              groups.push(
+                <div key={`lone-${i}`} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base">🤖{a.agentAvatar || ''}</span>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">{a.agentName}</div>
+                      <div className="text-xs text-slate-500">→ 👤 {a.humanName}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={a.agentStatus} />
+                    <span className="text-xs text-slate-600 font-medium">{a.done}/{a.total}</span>
+                  </div>
+                </div>
+              )
+            })
+
+            return groups
+          })()}
         </div>
-      ) : (
+      ) : !task.creator ? (
         <div className="text-sm text-slate-400 text-center py-4">暂无成员</div>
-      )}
+      ) : null}
 
       {/* B12: 评分按钮 */}
       {taskDone && isCreator && !hasEvaluations && allMembers.length > 0 && (
@@ -1885,9 +1963,18 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
   const currentIndex = steps.findIndex(s => s.status !== 'done')
   const progress = steps.length > 0 ? Math.round((steps.filter(s => s.status === 'done').length / steps.length) * 100) : 0
 
-  // B04: 自动检测后台 AI 拆解状态 —— 有描述+0步骤+创建时间<120s → 认为正在后台拆解
+  // B04: 自动检测后台 AI 拆解状态 —— 有描述+无实际步骤+创建时间<120s → 认为正在后台拆解
+  // 注意：decompose 步骤不算"实际步骤"，只有 task/meeting 等才算
+  const realSteps = steps.filter(s => s.stepType !== 'decompose')
+  const hasDecomposing = steps.some(s => s.stepType === 'decompose' && s.status === 'in_progress')
   useEffect(() => {
-    if (task.description && steps.length === 0) {
+    if (task.description && realSteps.length === 0) {
+      // 有正在拆解的 decompose 步骤 → 确认正在拆解
+      if (hasDecomposing) {
+        setAutoParsing(true)
+        const timer = setTimeout(() => setAutoParsing(false), 120_000)
+        return () => clearTimeout(timer)
+      }
       // decomposeStatus 是 pending/fallback → 确认正在拆解
       if (task.decomposeStatus === 'pending' || task.decomposeStatus === 'fallback') {
         setAutoParsing(true)
@@ -1902,9 +1989,9 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
         return () => clearTimeout(timer)
       }
     }
-    // steps 已有 → 拆解完成，清除 autoParsing
-    if (steps.length > 0) setAutoParsing(false)
-  }, [task.mode, task.description, task.createdAt, steps.length, task.decomposeStatus])
+    // 实际步骤已有 → 拆解完成，清除 autoParsing
+    if (realSteps.length > 0) setAutoParsing(false)
+  }, [task.mode, task.description, task.createdAt, realSteps.length, task.decomposeStatus, hasDecomposing])
 
   // B04: autoParsing 期间每 5 秒轮询检查步骤是否已生成（SSE 后备方案）
   useEffect(() => {
@@ -1937,8 +2024,8 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
     return () => window.removeEventListener('teamagent:task-parsed', handler)
   }, [task.id, onRefresh])
 
-  // 合并两种 parsing 状态
-  const isParsing = parsing || autoParsing
+  // 合并两种 parsing 状态（hasDecomposing 同步计算，不依赖 useEffect）
+  const isParsing = parsing || autoParsing || hasDecomposing
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full flex flex-col">
@@ -1961,7 +2048,7 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
             )}
           </div>
           <div className="flex items-center space-x-1.5">
-            {task.description && (steps.length === 0 || isParsing) && (
+            {task.description && (realSteps.length === 0 || isParsing) && (
               isParsing ? (
                 <span className="text-xs text-orange-500 font-medium px-3 py-1.5 bg-orange-50 rounded-xl animate-pulse flex items-center space-x-1">
                   <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -2158,9 +2245,9 @@ function WorkflowPanel({ task, onRefresh, canApprove, currentUserId }: { task: T
 
       {/* Steps */}
       <div className="flex-1 overflow-y-auto p-6">
-        {steps.length > 0 ? (
+        {realSteps.length > 0 ? (
           <div className="space-y-3">
-            {steps.map((step, index) => (
+            {realSteps.map((step, index) => (
               <div key={step.id}>
                 <StepCard
                   step={step}
@@ -2301,6 +2388,7 @@ function StepCard({
   const insertedMentions = useRef<Map<string, string>>(new Map())
 
   const isMeeting = step.stepType === 'meeting'
+  const isDecomposing = step.stepType === 'decompose' && step.status === 'in_progress'
   const status = statusConfig[step.status] || statusConfig.pending
   const isWaiting = step.status === 'waiting_approval'
   const hasAgent = !!step.assignee?.agent
@@ -2706,7 +2794,7 @@ function StepCard({
                 ? isActive ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-blue-500/30' : 'bg-blue-100 text-blue-600'
                 : isActive ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-orange-500/30' : 'bg-slate-200 text-slate-500'
           }`}>
-            {step.status === 'done' ? '✓' : isMeeting ? '📅' : index + 1}
+            {step.status === 'done' ? '✓' : isMeeting ? '📅' : isDecomposing ? '🧩' : index + 1}
           </div>
           <div>
             <div className="flex items-center space-x-2">
@@ -2881,7 +2969,14 @@ function StepCard({
                 )}
                 </>
               )}
-              <span className={`px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
+              {isDecomposing ? (
+                <span className="px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-600 text-xs font-medium flex items-center space-x-1.5">
+                  <svg className="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  <span>{step.assignee?.agent?.name || step.assignee?.name || ''}拆解中…</span>
+                </span>
+              ) : (
+                <span className={`px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
+              )}
               {!isMeeting && step.requiresApproval === false && (
                 <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 text-xs">✅ 自动通过</span>
               )}
@@ -3548,6 +3643,127 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
   const [agentCount, setAgentCount] = useState(3)
   const [submitting, setSubmitting] = useState(false)
 
+  // Token & 额度
+  const [myToken, setMyToken] = useState<string | null>(null)
+  const [tokenLoading, setTokenLoading] = useState(false)
+  const [tokenChecked, setTokenChecked] = useState(false)
+  const [tokenCopied, setTokenCopied] = useState(false)
+  const [creditBalance, setCreditBalance] = useState<number | null>(null)
+  const [showGuide, setShowGuide] = useState(false)
+
+  // 自动获取 Token + 余额
+  useEffect(() => {
+    const fetchToken = async () => {
+      setTokenLoading(true)
+      try {
+        const [tokRes, credRes] = await Promise.all([
+          fetch('/api/tokens'),
+          fetch('/api/user/credits'),
+        ])
+        if (tokRes.ok) {
+          const data = await tokRes.json()
+          const tok = data.tokens?.find((t: any) => t.displayToken)
+          if (tok?.displayToken) setMyToken(tok.displayToken)
+        }
+        if (credRes.ok) {
+          const data = await credRes.json()
+          setCreditBalance(data.balance ?? 0)
+        }
+      } catch {}
+      setTokenLoading(false)
+      setTokenChecked(true)
+    }
+    fetchToken()
+  }, [])
+
+  const retryToken = async () => {
+    setTokenLoading(true)
+    try {
+      const res = await fetch('/api/tokens')
+      if (res.ok) {
+        const data = await res.json()
+        const tok = data.tokens?.find((t: any) => t.displayToken)
+        if (tok?.displayToken) setMyToken(tok.displayToken)
+      }
+    } catch {}
+    setTokenLoading(false)
+  }
+
+  const copyText = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {
+      const el = document.createElement('textarea'); el.value = text; el.style.position = 'fixed'; el.style.opacity = '0'; document.body.appendChild(el); el.focus(); el.select(); document.execCommand('copy'); document.body.removeChild(el)
+    })
+    setTokenCopied(true)
+    setTimeout(() => setTokenCopied(false), 2000)
+  }
+
+  const downloadGuide = () => {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TeamAgent 安装手册</title><style>body{font-family:-apple-system,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#333;line-height:1.7}h1{color:#ea580c;border-bottom:2px solid #ea580c;padding-bottom:8px}h2{color:#475569;margin-top:32px}h3{color:#64748b}code{background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:0.9em}pre{background:#1e293b;color:#a5f3fc;padding:16px;border-radius:12px;overflow-x:auto;font-size:0.85em}pre code{background:none;color:inherit}.warn{background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:12px 16px;margin:16px 0}.tip{background:#ecfdf5;border:1px solid #34d399;border-radius:8px;padding:12px 16px;margin:16px 0}</style></head><body>
+<h1>🦞 TeamAgent 安装手册</h1>
+<p>3 分钟拥有你自己的 AI Agent，加入 Gaia 协作网络</p>
+
+<h2>第一步：获取你的 Token</h2>
+<p>登录 <a href="https://agent.avatargaia.top">TeamAgent 网站</a> → 左侧「设置 · Token & 额度」→ 复制你的 <code>ta_xxx</code> Token。</p>
+<div class="warn">⚠️ 如果没有 Token，说明管理员还没有核实付款，请稍等或联系管理员。</div>
+
+<h2>第二步：打开终端</h2>
+<h3>Windows 用户</h3>
+<ol>
+<li>按键盘 <code>Win + X</code>，选择「终端」或「PowerShell」</li>
+<li>或：点击任务栏搜索框，输入 <code>PowerShell</code>，回车打开</li>
+<li>或：按 <code>Win + R</code>，输入 <code>powershell</code>，回车</li>
+</ol>
+<div class="tip">💡 推荐使用「以管理员身份运行」，避免权限问题</div>
+
+<h3>Mac 用户</h3>
+<ol>
+<li>按 <code>Command + 空格</code>，输入 <code>Terminal</code>，回车打开</li>
+<li>或：在启动台 → 其他 → 终端</li>
+</ol>
+
+<h2>第三步：运行安装命令</h2>
+<h3>🪟 Windows (PowerShell)</h3>
+<pre><code>Invoke-WebRequest -Uri "https://agent.avatargaia.top/static/install.ps1" -OutFile $env:TEMP\\install.ps1; & $env:TEMP\\install.ps1</code></pre>
+
+<h3>🍎 Mac / Linux (终端)</h3>
+<pre><code>curl -fsSL https://agent.avatargaia.top/static/install.sh | bash</code></pre>
+
+<p>脚本会自动安装 Node.js、Git、OpenClaw，配置 AI 模型，启动 Gateway 并打开聊天界面。</p>
+
+<h2>第四步：配置 Token</h2>
+<p>安装向导运行到「LLM 配置」时：</p>
+<ul>
+<li><strong>API Base URL</strong>: <code>https://agent.avatargaia.top/api/llm/v1</code></li>
+<li><strong>API Key</strong>: 粘贴你的 <code>ta_xxx</code> Token</li>
+<li><strong>Model</strong>: <code>qwen-turbo</code> 或 <code>qwen-max-latest</code></li>
+</ul>
+<div class="tip">💡 已有自己 LLM API Key 的用户可忽略此步，直接在 OpenClaw 中配置自己的 Key。</div>
+
+<h2>第五步：配对 Agent</h2>
+<p>在 OpenClaw 聊天对话框输入 <code>/ta-register</code>，获得 6 位配对码，在网站点击「⊕ 配对我的 Agent」输入配对码完成。</p>
+
+<h2>遇到问题？</h2>
+<h3>清缓存重装</h3>
+<p><strong>Windows：</strong></p>
+<pre><code>Remove-Item $env:TEMP\\install.ps1 -Force -ErrorAction SilentlyContinue
+npm cache clean --force</code></pre>
+<p><strong>Mac / Linux：</strong></p>
+<pre><code>rm -f /tmp/install.sh
+npm cache clean --force</code></pre>
+<p>然后重新运行安装命令即可。</p>
+
+<hr>
+<p style="text-align:center;color:#94a3b8;font-size:0.85em">Powered by Gaia × OpenClaw 🌍 · <a href="https://agent.avatargaia.top">agent.avatargaia.top</a></p>
+</body></html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'TeamAgent安装手册.html'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const toggleType = (v: string) =>
     setSelectedTypes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
 
@@ -3585,38 +3801,23 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
       if (!taskRes.ok) { alert('创建失败，请重试'); return }
       const task = await taskRes.json()
 
-      // 创建第一个步骤，交由主 Agent 规划执行（含完整 API 指令）
+      // 创建第一个步骤，交由主 Agent 按 SKILL.md「组建 Agent 军团」章节执行
       await fetch(`/api/tasks/${task.id}/steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: '🌊 规划军团架构，完成成员注册',
+          title: '🌊 规划军团架构，完成成员创建与注册',
           description:
-            `## 任务背景\n` +
-            `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人 ｜ 工作类型：${typeLabels}\n\n` +
-            `## 第一步：在 TeamAgent 注册成员账号\n` +
-            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji），并为每位成员确定一个简短英文小写的 agentId（如 galileo、compass）\n` +
-            `2. 用下面的 API 逐一注册成员账号\n\n` +
-            `POST ${typeof window !== 'undefined' ? window.location.origin : ''}/api/agents/register\n` +
-            `Authorization: Bearer <你的 TeamAgent token>\n` +
-            `Content-Type: application/json\n\n` +
-            `{\n` +
-            `  "name": "🦑 成员名字",\n` +
-            `  "email": "agentId@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",\n` +
-            `  "password": "lobster-agent-2026",\n` +
-            `  "capabilities": ["能力1","能力2"],\n` +
-            `  "personality": "一句话个性描述"\n` +
-            `}\n\n` +
-            `## 第二步：在 OpenClaw 创建真正的子 Agent（必须做！）\n` +
-            `TeamAgent 注册只是建账号，子 Agent 必须在 OpenClaw 中创建才能真正执行任务。\n\n` +
-            `对每位成员：\n` +
-            `a. 创建 workspace 和 agentDir 目录（用 exec 工具）：\n` +
-            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\workspace-<agentId>"\n` +
-            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\agents\\<agentId>\\agent"\n\n` +
-            `b. 用 gateway config.patch 工具将所有新成员加入 agents.list，并把他们的 agentId 加入 main.subagents.allowAgents：\n` +
-            `   { "agents": { "list": [ { "id": "main", "subagents": { "allowAgents": [...原有成员, "<agentId>"] } }, ...原有成员配置, { "id": "<agentId>", "name": "<全名>", "workspace": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\workspace-<agentId>", "agentDir": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\agents\\\\<agentId>\\\\agent" } ] } }\n\n` +
-            `## 第三步：提交成员名单供审批\n` +
-            `提交内容：成员名单表格（名字 / 邮箱 / agentId / 职责 / OpenClaw ✅）`,
+            `## 军团构建请求\n\n` +
+            `- 军团名称：${companyName}\n` +
+            `- 工作类型：${typeLabels}\n` +
+            `- 核心目标：${goal}\n` +
+            `- 期望规模：${agentCount} 名 Agent 成员\n\n` +
+            `请按照 SKILL.md「🌊 组建 Agent 军团」章节的完整流程执行：\n` +
+            `1. 根据以上信息规划成员方案（性格多样化、命名规范）\n` +
+            `2. 在 OpenClaw 创建子 Agent + SOUL.md（先确保能跑）\n` +
+            `3. 在 TeamAgent 注册子 Agent 账号（隶属于主 Agent）\n` +
+            `4. 提交成员名单表格供人类审批`,
           requiresApproval: true,
           assigneeId: currentUserId || undefined,
         }),
@@ -3795,16 +3996,126 @@ function OnboardingGuide({ onPairAgent, onCreateTask, onSelectTask, hasAgent = f
   ]
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/20 px-4 sm:px-8 py-6 sm:py-8 overflow-y-auto">
-      <div className="max-w-xl w-full">
+    <div className="flex-1 flex flex-col items-center bg-gradient-to-br from-slate-50 to-orange-50/20 px-4 sm:px-8 py-6 sm:py-8 overflow-y-auto">
+      <div className="max-w-2xl w-full">
         {/* Header */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
           <div className="text-5xl mb-4">🦞</div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">欢迎来到 TeamAgent</h2>
           <p className="text-slate-500 text-sm">
             {step1Done ? '🎉 主 Agent 已就位！接下来组建你的军团' : '三步启动你的数字军团，让 AI Agent 替你干活'}
           </p>
         </div>
+
+        {/* Token + 安装手册 两栏 */}
+        {!step1Done && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {/* 左：Token */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">🔑</span>
+                <h3 className="font-semibold text-slate-800">我的 Token</h3>
+                {creditBalance !== null && creditBalance > 0 && (
+                  <span className="ml-auto text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-medium">
+                    余额 {creditBalance} 积分
+                  </span>
+                )}
+              </div>
+
+              {tokenLoading && !tokenChecked ? (
+                <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  查询中...
+                </div>
+              ) : myToken ? (
+                <div className="space-y-2">
+                  <div className="bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                    <code className="flex-1 text-xs text-emerald-400 font-mono truncate">{myToken}</code>
+                    <button onClick={() => copyText(myToken)} className="shrink-0 px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-white text-xs rounded-lg font-medium transition">
+                      {tokenCopied ? '✓' : '复制'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-400">安装时填入此 Token 即可使用千问 LLM</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                    <p className="text-amber-700 text-sm font-medium">⏳ 注册人数太多，请稍等~</p>
+                    <p className="text-amber-600 text-xs mt-0.5">管理员核实付款后自动发放 Token</p>
+                  </div>
+                  <button onClick={retryToken} disabled={tokenLoading}
+                    className="w-full py-2 rounded-xl border border-orange-300 text-orange-600 text-sm font-medium hover:bg-orange-50 transition disabled:opacity-50">
+                    {tokenLoading ? '查询中...' : '🔄 刷新查看'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 右：安装手册 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">📖</span>
+                <h3 className="font-semibold text-slate-800">安装手册</h3>
+                <button onClick={downloadGuide}
+                  className="ml-auto text-xs bg-orange-50 text-orange-600 px-2.5 py-1 rounded-lg font-medium hover:bg-orange-100 transition border border-orange-200">
+                  📥 下载保存
+                </button>
+              </div>
+
+              {!showGuide ? (
+                <div className="space-y-2.5">
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-1">🪟 Windows — 打开 PowerShell：</p>
+                    <p className="text-xs text-slate-400">按 <code className="bg-slate-100 px-1 rounded text-slate-600">Win + X</code> → 选「终端」，或搜索栏输入 PowerShell</p>
+                  </div>
+                  <div className="bg-slate-800 rounded-lg px-3 py-2">
+                    <code className="text-xs text-blue-400 font-mono break-all">Invoke-WebRequest -Uri &quot;https://agent.avatargaia.top/static/install.ps1&quot; -OutFile $env:TEMP\install.ps1; &amp; $env:TEMP\install.ps1</code>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium mb-1">🍎 Mac — 打开终端：</p>
+                    <p className="text-xs text-slate-400">按 <code className="bg-slate-100 px-1 rounded text-slate-600">Cmd + 空格</code> → 输入 Terminal</p>
+                  </div>
+                  <div className="bg-slate-800 rounded-lg px-3 py-2">
+                    <code className="text-xs text-green-400 font-mono break-all">curl -fsSL https://agent.avatargaia.top/static/install.sh | bash</code>
+                  </div>
+                  <button onClick={() => setShowGuide(true)}
+                    className="text-xs text-orange-500 hover:text-orange-600 underline underline-offset-2">
+                    展开完整安装步骤 →
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="font-medium text-slate-700 text-xs mb-1">① 打开终端</p>
+                    <div className="text-xs text-slate-500 space-y-0.5">
+                      <p><strong>Windows：</strong>按 <code className="bg-slate-100 px-1 rounded">Win + X</code> → 选「终端」或「PowerShell」；或按 <code className="bg-slate-100 px-1 rounded">Win + R</code> 输入 powershell 回车；推荐管理员身份运行</p>
+                      <p><strong>Mac：</strong>按 <code className="bg-slate-100 px-1 rounded">Cmd + 空格</code> → 输入 Terminal 回车</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-700 text-xs mb-1">② 运行安装命令</p>
+                    <div className="bg-slate-800 rounded-lg px-3 py-2 mb-1"><code className="text-xs text-blue-400 font-mono break-all">Invoke-WebRequest -Uri &quot;https://agent.avatargaia.top/static/install.ps1&quot; -OutFile $env:TEMP\install.ps1; &amp; $env:TEMP\install.ps1</code></div>
+                    <div className="bg-slate-800 rounded-lg px-3 py-2"><code className="text-xs text-green-400 font-mono break-all">curl -fsSL https://agent.avatargaia.top/static/install.sh | bash</code></div>
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-700 text-xs mb-1">③ 配置 Token（安装向导第 3 步 LLM 配置）</p>
+                    <div className="text-xs text-slate-500">
+                      <p>API Base URL: <code className="bg-slate-100 px-1 rounded">https://agent.avatargaia.top/api/llm/v1</code></p>
+                      <p>API Key: 上面复制的 <code className="bg-slate-100 px-1 rounded">ta_xxx</code> Token</p>
+                      <p>Model: <code className="bg-slate-100 px-1 rounded">qwen-turbo</code> 或 <code className="bg-slate-100 px-1 rounded">qwen-max-latest</code></p>
+                    </div>
+                    <p className="text-xs text-slate-400 italic mt-1">已有自己 LLM Key 的可忽略此步</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-700 text-xs mb-1">④ 配对 Agent</p>
+                    <p className="text-xs text-slate-500">OpenClaw 对话框输入 <code className="bg-slate-100 px-1 rounded">/ta-register</code> → 获得配对码 → 在下方输入</p>
+                  </div>
+                  <button onClick={() => setShowGuide(false)} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">收起 ↑</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Steps */}
         <div className="space-y-4">

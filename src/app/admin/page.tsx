@@ -19,6 +19,8 @@ interface UserData {
   id: string
   name: string | null
   email: string
+  phone: string | null
+  creditBalance: number
   createdAt: string
   agent: {
     id: string
@@ -30,7 +32,7 @@ interface UserData {
     reputation: number | null
   } | null
   workspaces: { role: string; workspace: { id: string; name: string } }[]
-  _count: { createdTasks: number; taskSteps: number }
+  _count: { createdTasks: number; taskSteps: number; apiTokens: number }
 }
 
 interface TaskData {
@@ -124,7 +126,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<UserData[]>([])
   const [tasks, setTasks] = useState<TaskData[]>([])
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'tasks' | 'hierarchy'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'tasks' | 'hierarchy' | 'activation'>('overview')
   const [loading, setLoading] = useState(true)
   const [taskStatus, setTaskStatus] = useState('')
   const [hierarchy, setHierarchy] = useState<HierarchyNode[]>([])
@@ -132,7 +134,25 @@ export default function AdminPage() {
   const [hSummary, setHSummary] = useState<HierarchySummary | null>(null)
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
-  const ADMIN_EMAILS = ['aurora@arplus.top']
+  // 激活码管理
+  const [actCodes, setActCodes] = useState<any[]>([])
+  const [actStats, setActStats] = useState<any>(null)
+  const [actGenCount, setActGenCount] = useState(5)
+  const [actGenCredits, setActGenCredits] = useState(1000)
+  const [actGenDays, setActGenDays] = useState(90)
+  const [actGenNote, setActGenNote] = useState('')
+  const [actGenLoading, setActGenLoading] = useState(false)
+  const [actNewCodes, setActNewCodes] = useState<string[]>([])
+  const [actCopied, setActCopied] = useState(false)
+
+  // 充值相关
+  const [rechargeUser, setRechargeUser] = useState<UserData | null>(null)
+  const [rechargeCredits, setRechargeCredits] = useState(1000)
+  const [rechargeNote, setRechargeNote] = useState('')
+  const [rechargeLoading, setRechargeLoading] = useState(false)
+  const [rechargeResult, setRechargeResult] = useState<{ message: string; newToken?: string } | null>(null)
+
+  const ADMIN_EMAILS = ['aurora@arplus.top', 'muxu@arplus.top']
 
   useEffect(() => {
     if (status === 'unauthenticated') { router.push('/login'); return }
@@ -181,6 +201,39 @@ export default function AdminPage() {
     if (res.ok) { const d = await res.json(); setTasks(d.tasks || []) }
   }
 
+  async function handleRecharge() {
+    if (!rechargeUser) return
+    setRechargeLoading(true)
+    setRechargeResult(null)
+    try {
+      const res = await fetch('/api/admin/users/recharge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: rechargeUser.id,
+          credits: rechargeCredits,
+          note: rechargeNote || `管理员手动充值 ${rechargeCredits} 积分`,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setRechargeResult({
+          message: data.message,
+          newToken: data.newToken,
+        })
+        // 刷新用户列表
+        const uRes = await fetch('/api/admin/users')
+        if (uRes.ok) { const d = await uRes.json(); setUsers(d.users || []) }
+      } else {
+        setRechargeResult({ message: `❌ ${data.error}` })
+      }
+    } catch {
+      setRechargeResult({ message: '❌ 网络错误' })
+    } finally {
+      setRechargeLoading(false)
+    }
+  }
+
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -217,6 +270,7 @@ export default function AdminPage() {
             { key: 'hierarchy', label: '🌳 团队层级' },
             { key: 'users', label: '👥 用户 & Agent' },
             { key: 'tasks', label: '📋 任务总览' },
+            { key: 'activation', label: '🎫 激活码' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -551,67 +605,188 @@ export default function AdminPage() {
 
         {/* ===== USERS ===== */}
         {activeTab === 'users' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">👥 用户列表 ({users.length})</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">用户</th>
-                    <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">Agent</th>
-                    <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">工作区</th>
-                    <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">任务/步骤</th>
-                    <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">注册时间</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {users.map(u => (
-                    <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="font-medium text-gray-900">{u.name || '(未命名)'}</div>
-                        <div className="text-xs text-gray-400">{u.email}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        {u.agent ? (
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${AGENT_STATUS_DOT[u.agent.status] || 'bg-gray-300'}`} />
-                            <div>
-                              <div className="font-medium text-gray-800 flex items-center gap-1">
-                                {u.agent.name}
-                                {u.agent.isMainAgent && <span className="text-xs bg-indigo-100 text-indigo-600 px-1 rounded">主</span>}
-                              </div>
-                              <div className="text-xs text-gray-400">{u.agent.status}</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-300">未配对</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="space-y-1">
-                          {u.workspaces.map(w => (
-                            <div key={w.workspace.id} className="flex items-center gap-1">
-                              <span className="text-xs text-gray-600">{w.workspace.name}</span>
-                              <span className="text-xs text-gray-300">({w.role})</span>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="text-gray-700">{u._count.createdTasks}</span>
-                        <span className="text-gray-300"> / </span>
-                        <span className="text-gray-700">{u._count.taskSteps}</span>
-                      </td>
-                      <td className="px-5 py-4 text-xs text-gray-400">
-                        {timeAgo(u.createdAt)}
-                      </td>
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800">👥 用户列表 ({users.length})</h3>
+                <span className="text-xs text-gray-400">点击「已付款」直接充值积分</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">用户</th>
+                      <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">Agent</th>
+                      <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">💰 额度</th>
+                      <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">任务/步骤</th>
+                      <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">注册时间</th>
+                      <th className="px-5 py-3 text-xs font-medium text-gray-400 uppercase">操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {users.map(u => (
+                      <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-gray-900">{u.name || '(未命名)'}</div>
+                          <div className="text-xs text-gray-400">{u.email}</div>
+                          {u.phone && <div className="text-xs text-orange-500">📱 {u.phone}</div>}
+                        </td>
+                        <td className="px-5 py-4">
+                          {u.agent ? (
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${AGENT_STATUS_DOT[u.agent.status] || 'bg-gray-300'}`} />
+                              <div>
+                                <div className="font-medium text-gray-800 flex items-center gap-1">
+                                  {u.agent.name}
+                                  {u.agent.isMainAgent && <span className="text-xs bg-indigo-100 text-indigo-600 px-1 rounded">主</span>}
+                                </div>
+                                <div className="text-xs text-gray-400">{u.agent.status}</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-300">未配对</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold ${u.creditBalance > 0 ? 'text-green-600' : 'text-gray-300'}`}>
+                              {u.creditBalance}
+                            </span>
+                            {u._count.apiTokens > 0 && (
+                              <span className="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded">🔑 有Token</span>
+                            )}
+                            {u._count.apiTokens === 0 && (
+                              <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">无Token</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="text-gray-700">{u._count.createdTasks}</span>
+                          <span className="text-gray-300"> / </span>
+                          <span className="text-gray-700">{u._count.taskSteps}</span>
+                        </td>
+                        <td className="px-5 py-4 text-xs text-gray-400">
+                          {timeAgo(u.createdAt)}
+                        </td>
+                        <td className="px-5 py-4">
+                          <button
+                            onClick={() => {
+                              setRechargeUser(u)
+                              setRechargeCredits(1000)
+                              setRechargeNote('')
+                              setRechargeResult(null)
+                            }}
+                            className="text-xs bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors font-medium"
+                          >
+                            💰 已付款
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
+
+            {/* 充值弹窗 */}
+            {rechargeUser && (
+              <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !rechargeLoading && setRechargeUser(null)}>
+                <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">💰 确认充值</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    给 <span className="font-medium text-gray-800">{rechargeUser.name || rechargeUser.email}</span> 充值积分
+                  </p>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium">用户</label>
+                      <div className="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 mt-1">
+                        {rechargeUser.name || '(未命名)'} · {rechargeUser.email}
+                        {rechargeUser.phone && <span className="text-orange-500 ml-1">📱{rechargeUser.phone}</span>}
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          当前余额: {rechargeUser.creditBalance} 积分
+                          {rechargeUser._count.apiTokens === 0 && ' · ⚠️ 无Token（充值后自动生成）'}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium">充值积分</label>
+                      <div className="flex gap-2 mt-1">
+                        {[500, 1000, 2000, 5000].map(c => (
+                          <button
+                            key={c}
+                            onClick={() => setRechargeCredits(c)}
+                            className={`flex-1 text-sm py-2 rounded-lg border transition-colors ${
+                              rechargeCredits === c
+                                ? 'border-orange-500 bg-orange-50 text-orange-700 font-medium'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="number"
+                        value={rechargeCredits}
+                        onChange={e => setRechargeCredits(Math.max(1, parseInt(e.target.value) || 0))}
+                        className="w-full mt-2 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        placeholder="自定义积分数"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium">备注（可选）</label>
+                      <input
+                        type="text"
+                        value={rechargeNote}
+                        onChange={e => setRechargeNote(e.target.value)}
+                        className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        placeholder="如：微信付款 ¥49"
+                      />
+                    </div>
+                  </div>
+
+                  {rechargeResult && (
+                    <div className={`mt-4 p-3 rounded-lg text-sm ${
+                      rechargeResult.message.startsWith('❌') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+                    }`}>
+                      <p>{rechargeResult.message}</p>
+                      {rechargeResult.newToken && (
+                        <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                          <p className="text-xs text-gray-500 mb-1">🔑 自动生成的 API Token（仅显示一次）：</p>
+                          <code className="text-xs break-all text-gray-800 select-all">{rechargeResult.newToken}</code>
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(rechargeResult.newToken!); }}
+                            className="ml-2 text-xs text-indigo-600 hover:text-indigo-800"
+                          >
+                            复制
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 mt-5">
+                    <button
+                      onClick={() => setRechargeUser(null)}
+                      className="flex-1 text-sm py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      disabled={rechargeLoading}
+                    >
+                      {rechargeResult && !rechargeResult.message.startsWith('❌') ? '关闭' : '取消'}
+                    </button>
+                    {(!rechargeResult || rechargeResult.message.startsWith('❌')) && (
+                      <button
+                        onClick={handleRecharge}
+                        disabled={rechargeLoading || rechargeCredits < 1}
+                        className="flex-1 text-sm py-2.5 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {rechargeLoading ? '处理中...' : `确认充值 ${rechargeCredits} 积分`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -712,6 +887,197 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* ===== ACTIVATION CODES ===== */}
+        {activeTab === 'activation' && (
+          <ActivationTab
+            codes={actCodes} setCodes={setActCodes}
+            stats={actStats} setStats={setActStats}
+            genCount={actGenCount} setGenCount={setActGenCount}
+            genCredits={actGenCredits} setGenCredits={setActGenCredits}
+            genDays={actGenDays} setGenDays={setActGenDays}
+            genNote={actGenNote} setGenNote={setActGenNote}
+            genLoading={actGenLoading} setGenLoading={setActGenLoading}
+            newCodes={actNewCodes} setNewCodes={setActNewCodes}
+            copied={actCopied} setCopied={setActCopied}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============ 激活码管理组件 ============
+function ActivationTab({ codes, setCodes, stats, setStats, genCount, setGenCount, genCredits, setGenCredits, genDays, setGenDays, genNote, setGenNote, genLoading, setGenLoading, newCodes, setNewCodes, copied, setCopied }: any) {
+  useEffect(() => { fetchCodes() }, [])
+
+  const fetchCodes = async () => {
+    try {
+      const res = await fetch('/api/admin/activation')
+      if (res.ok) {
+        const data = await res.json()
+        setCodes(data.codes || [])
+        setStats(data.stats || null)
+      }
+    } catch (e) { console.error('获取激活码失败', e) }
+  }
+
+  const generate = async () => {
+    setGenLoading(true)
+    setNewCodes([])
+    try {
+      const res = await fetch('/api/admin/activation/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: genCount, credits: genCredits, expiresInDays: genDays, note: genNote }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setNewCodes(data.codes)
+        setGenNote('')
+        fetchCodes()
+      } else {
+        alert(data.error || '生成失败')
+      }
+    } catch { alert('生成失败') }
+    finally { setGenLoading(false) }
+  }
+
+  const copyAllCodes = () => {
+    const text = newCodes.join('\n')
+    navigator.clipboard?.writeText(text).catch(() => {
+      const el = document.createElement('textarea')
+      el.value = text; el.style.position = 'fixed'; el.style.opacity = '0'
+      document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el)
+    })
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 统计 */}
+      {stats && (
+        <div className="grid grid-cols-4 gap-4">
+          {[
+            { label: '总计', value: stats.total, color: 'indigo' },
+            { label: '可用', value: stats.available, color: 'green' },
+            { label: '已用', value: stats.used, color: 'orange' },
+            { label: '过期', value: stats.expired, color: 'gray' },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+              <div className={`text-2xl font-bold text-${s.color}-600`}>{s.value}</div>
+              <div className="text-xs text-gray-400">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 生成表单 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h3 className="font-semibold text-gray-800 mb-4">🎫 生成激活码</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">数量</label>
+            <input type="number" value={genCount} onChange={e => setGenCount(Number(e.target.value))}
+              min={1} max={50}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">积分/码</label>
+            <input type="number" value={genCredits} onChange={e => setGenCredits(Number(e.target.value))}
+              min={1}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">有效天数</label>
+            <input type="number" value={genDays} onChange={e => setGenDays(Number(e.target.value))}
+              min={1} max={365}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">备注</label>
+            <input type="text" value={genNote} onChange={e => setGenNote(e.target.value)}
+              placeholder="如：微信付款 ¥99"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          </div>
+        </div>
+        <button onClick={generate} disabled={genLoading}
+          className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-lg hover:from-indigo-600 hover:to-purple-600 transition disabled:opacity-50 text-sm">
+          {genLoading ? '生成中...' : `生成 ${genCount} 个激活码`}
+        </button>
+
+        {/* 新生成的码 */}
+        {newCodes.length > 0 && (
+          <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-green-700">✅ 新生成 {newCodes.length} 个激活码：</span>
+              <button onClick={copyAllCodes}
+                className="text-xs px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+                {copied ? '已复制!' : '全部复制'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {newCodes.map((c: string) => (
+                <code key={c} className="bg-white px-2 py-1 rounded text-xs font-mono text-green-800 border border-green-100 text-center">
+                  {c}
+                </code>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 激活码列表 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-800">全部激活码</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-xs">
+                <th className="px-4 py-3 text-left">激活码</th>
+                <th className="px-4 py-3 text-left">积分</th>
+                <th className="px-4 py-3 text-left">状态</th>
+                <th className="px-4 py-3 text-left">使用者</th>
+                <th className="px-4 py-3 text-left">备注</th>
+                <th className="px-4 py-3 text-left">创建时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              {codes.map((c: any) => {
+                const isUsed = !!c.usedAt
+                const isExpired = !isUsed && new Date(c.expiresAt) < new Date()
+                return (
+                  <tr key={c.id} className="border-t border-gray-50 hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-xs font-medium">{c.code}</td>
+                    <td className="px-4 py-3 text-xs">{c.credits}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        isUsed ? 'bg-green-100 text-green-700' :
+                        isExpired ? 'bg-gray-100 text-gray-500' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {isUsed ? '已使用' : isExpired ? '已过期' : '可用'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {c.usedByUser ? `${c.usedByUser.name || c.usedByUser.email}` : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{c.note || '-'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      {new Date(c.createdAt).toLocaleDateString('zh-CN')}
+                    </td>
+                  </tr>
+                )
+              })}
+              {codes.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">暂无激活码</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

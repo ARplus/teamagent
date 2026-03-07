@@ -236,11 +236,16 @@ function OnboardingSection() {
 
         <FadeIn delay={300}>
           <div className="mt-8 text-center">
-            <Link href="/register"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-8 py-4 rounded-2xl transition-all duration-300 hover:scale-105 shadow-lg shadow-orange-500/25">
-              <span>🚀 立即开始</span>
-              <span className="text-orange-200">→</span>
-            </Link>
+            <div className="flex items-center justify-center gap-3">
+              <Link href="/login"
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-8 py-4 rounded-2xl transition-all duration-300 hover:scale-105 shadow-lg shadow-orange-500/25">
+                <span>🚀 登录</span>
+              </Link>
+              <Link href="/register"
+                className="inline-flex items-center gap-2 border border-slate-600 hover:border-orange-500/50 text-slate-300 hover:text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-300">
+                <span>✨ 注册</span>
+              </Link>
+            </div>
           </div>
         </FadeIn>
       </div>
@@ -484,6 +489,7 @@ function DocsSection() {
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false)
   const [tickerPaused, setTickerPaused] = useState(false)
+  const [showPayQR, setShowPayQR] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
@@ -534,16 +540,17 @@ export default function LandingPage() {
               TeamAgent
             </span>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <Link href="/guide/usage" className="text-slate-400 hover:text-white transition-colors duration-200 text-sm font-medium hidden sm:inline">
-              📖 使用指南
+              📖 指南
             </Link>
-            <Link href="/login" className="text-slate-400 hover:text-white transition-colors duration-200 text-sm font-medium">
+            <Link href="/login"
+              className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105">
               登录
             </Link>
-            <Link href="/build-agent"
-              className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105">
-              🛠️ 安装指南
+            <Link href="/register"
+              className="border border-slate-600 hover:border-orange-500/50 text-slate-300 hover:text-white text-sm font-medium px-5 py-2 rounded-xl transition-all duration-200">
+              注册
             </Link>
           </div>
         </div>
@@ -582,15 +589,23 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-            <Link href="/register"
-              className="glow w-full sm:w-auto bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105">
-              🚀 注册账号
-            </Link>
             <Link href="/login"
-              className="w-full sm:w-auto border border-slate-700 hover:border-orange-500/50 text-slate-300 hover:text-white font-semibold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:bg-orange-500/5">
-              已有账号，登录 →
+              className="glow w-full sm:w-auto bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105 shadow-lg shadow-orange-500/25">
+              🚀 登录
             </Link>
+            <Link href="/register"
+              className="w-full sm:w-auto border border-slate-600 hover:border-orange-500/50 text-slate-300 hover:text-white font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:bg-orange-500/5">
+              ✨ 新用户注册
+            </Link>
+            <button
+              onClick={() => setShowPayQR(true)}
+              className="w-full sm:w-auto bg-gradient-to-r from-amber-500/80 to-yellow-500/80 hover:from-amber-400 hover:to-yellow-400 text-slate-900 font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105 shadow-lg shadow-amber-500/15">
+              💎 扫码付款
+            </button>
           </div>
+          <p className="text-slate-500 text-sm mb-4 text-center">
+            新用户：注册 → 扫码付款（备注手机号）→ 获得额度
+          </p>
           {/* 中国用户安装指南入口 */}
           <div className="flex items-center justify-center mb-14">
             <Link href="/guide/china-install"
@@ -871,10 +886,16 @@ export default function LandingPage() {
               <br />
               TeamAgent 是这个文明的协作基础设施。
             </p>
-            <Link href="/register"
-              className="glow inline-block bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-12 py-5 rounded-2xl text-xl transition-all duration-300 hover:scale-105">
-              🦞 加入 GAIA，认领你的 Agent
-            </Link>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link href="/login"
+                className="glow inline-block bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-bold px-12 py-5 rounded-2xl text-xl transition-all duration-300 hover:scale-105">
+                🚀 登录
+              </Link>
+              <Link href="/register"
+                className="inline-block border border-slate-600 hover:border-orange-500/50 text-slate-300 hover:text-white font-bold px-12 py-5 rounded-2xl text-xl transition-all duration-300 hover:bg-orange-500/5">
+                ✨ 新用户注册
+              </Link>
+            </div>
           </FadeIn>
         </div>
       </section>
@@ -958,16 +979,16 @@ export default function LandingPage() {
                   <div className="text-xs text-slate-500 font-medium mb-1 mt-3">🪟 Windows (PowerShell)</div>
                   <div className="relative group/cmd">
                     <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-blue-400 font-mono overflow-x-auto border border-slate-700 break-all">
-                      irm https://agent.avatargaia.top/static/install.ps1 | iex
+                      Invoke-WebRequest -Uri &quot;https://agent.avatargaia.top/static/install.ps1&quot; -OutFile $env:TEMP\install.ps1; &amp; $env:TEMP\install.ps1
                     </code>
                   </div>
                 </div>
               </div>
 
-              {/* 土豪档 */}
-              <div className="relative rounded-2xl border border-amber-500/20 bg-gradient-to-b from-slate-800 to-amber-950/10 p-8 hover:border-amber-500/40 transition-all duration-300 group">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 text-xs font-bold">
-                  👑 VIP
+              {/* 土豪档 — 高亮推荐 */}
+              <div className="relative rounded-2xl border-2 border-amber-500/50 bg-gradient-to-b from-slate-800 to-amber-950/10 p-8 hover:border-amber-400/70 transition-all duration-300 group shadow-[0_0_30px_rgba(245,158,11,0.15)] hover:shadow-[0_0_40px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/20 scale-[1.02] md:-mt-4 md:mb-[-16px]">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 text-xs font-bold shadow-lg shadow-amber-500/30 animate-pulse">
+                  🔥 一键搞定
                 </div>
                 <div className="text-center mb-6 pt-2">
                   <div className="text-4xl mb-3">💎</div>
@@ -985,11 +1006,17 @@ export default function LandingPage() {
                   <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">★</span><span className="text-amber-300">赞助开源 + 支持作者</span></li>
                 </ul>
                 <div className="text-center space-y-3">
-                  <p className="text-xs text-slate-500">扫码支付后，回复截图获取安装口令</p>
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                    <p className="text-xs text-amber-300 font-semibold">⚠️ 付款时请备注手机号</p>
+                    <p className="text-xs text-slate-500 mt-0.5">必须与注册时填写的手机号一致</p>
+                  </div>
                   <div className="inline-block rounded-xl overflow-hidden border-2 border-amber-500/30 bg-white p-1">
                     <img src="/static/pay-qr.png" alt="支付二维码" className="w-36 h-36 object-contain" />
                   </div>
-                  <p className="text-xs text-slate-600">口令一次性使用，付款后自动发放</p>
+                  <Link href="/register" className="block w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 text-sm font-bold hover:from-amber-400 hover:to-yellow-400 transition-all duration-200">
+                    💰 已付款，去注册
+                  </Link>
+                  <p className="text-xs text-slate-600">注册时填写付款手机号 → 管理员核实后自动发放额度</p>
                 </div>
               </div>
             </div>
@@ -1053,6 +1080,31 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* 付款二维码弹窗 */}
+      {showPayQR && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowPayQR(false)}>
+          <div className="bg-slate-800 rounded-2xl border border-amber-500/30 shadow-2xl shadow-amber-500/10 p-8 max-w-sm mx-4 text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-3">💎</div>
+            <h3 className="text-xl font-bold text-white mb-1">尊享版 · 一键搞定</h3>
+            <p className="text-amber-400 text-2xl font-bold mb-4">¥99 <span className="text-slate-500 text-sm font-normal">一次性</span></p>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 mb-4">
+              <p className="text-amber-300 text-sm font-semibold">⚠️ 付款时请备注手机号</p>
+              <p className="text-slate-500 text-xs mt-0.5">必须与注册时填写的手机号一致</p>
+            </div>
+            <div className="inline-block rounded-xl overflow-hidden border-2 border-amber-500/30 bg-white p-1 mb-4">
+              <img src="/static/pay-qr.png" alt="支付二维码" className="w-48 h-48 object-contain" />
+            </div>
+            <div className="space-y-2">
+              <Link href="/register" onClick={() => setShowPayQR(false)}
+                className="block w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold hover:from-orange-400 hover:to-rose-400 transition-all duration-200">
+                💰 已付款，去注册
+              </Link>
+              <p className="text-slate-500 text-xs">含千问 Max 百万 token · 专属安装口令 · 一键部署</p>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

@@ -28,7 +28,7 @@ export async function POST(
     const { id } = await params
 
     // 检查模板存在 + 权限
-    const template = await prisma.scheduledTemplate.findUnique({ where: { id } })
+    const template = await prisma.taskTemplate.findUnique({ where: { id } })
     if (!template) {
       return NextResponse.json({ error: '模板不存在' }, { status: 404 })
     }

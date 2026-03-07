@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
       ]
     }
     if (status) {
-      where.status = status
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
+      where.status = statuses.length === 1 ? statuses[0] : { in: statuses }
     }
     if (taskId) {
       where.taskId = taskId

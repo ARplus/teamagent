@@ -73,8 +73,11 @@ export function Navbar() {
               <Link href="/workspace" className="text-xs text-gray-600 hover:text-orange-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-orange-50 transition-colors">
                 🏠 工作区
               </Link>
+              <Link href="/templates" className="text-xs text-gray-600 hover:text-orange-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-orange-50 transition-colors">
+                📦 模版库
+              </Link>
               <Link href="/scheduled" className="text-xs text-gray-600 hover:text-orange-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-orange-50 transition-colors">
-                ⏰ 定时任务
+                ⏰ 定时
               </Link>
               <Link href="/guide/usage" className="text-xs text-gray-600 hover:text-blue-600 whitespace-nowrap px-1.5 py-1 rounded-md hover:bg-blue-50 transition-colors">
                 📖 指南
@@ -177,6 +180,9 @@ export function Navbar() {
               </Link>
               <Link href="/workspace" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
                 <span>🏠</span><span>我的工作区</span>
+              </Link>
+              <Link href="/templates" className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50" onClick={() => setMobileMenuOpen(false)}>
+                <span>📦</span><span>模版库</span>
               </Link>
               <button
                 onClick={() => { setShowPairingModal(true); setMobileMenuOpen(false) }}

@@ -26,7 +26,7 @@ export async function POST(
     if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
     const { id } = await params
-    const template = await prisma.scheduledTemplate.findUnique({ where: { id } })
+    const template = await prisma.taskTemplate.findUnique({ where: { id } })
 
     if (!template) {
       return NextResponse.json({ error: '模板不存在' }, { status: 404 })
@@ -35,14 +35,18 @@ export async function POST(
       return NextResponse.json({ error: '只有创建者可以恢复' }, { status: 403 })
     }
 
+    if (!template.schedule) {
+      return NextResponse.json({ error: '该模版没有定时计划' }, { status: 400 })
+    }
+
     const nextRunAt = computeNextRun(template.schedule, template.timezone)
 
-    const updated = await prisma.scheduledTemplate.update({
+    const updated = await prisma.taskTemplate.update({
       where: { id },
-      data: { enabled: true, nextRunAt, failCount: 0 },
+      data: { scheduleEnabled: true, nextRunAt, failCount: 0 },
     })
 
-    console.log(`[Scheduled/Resume] 恢复模板: "${template.title}", 下次执行: ${nextRunAt}`)
+    console.log(`[Scheduled/Resume] 恢复模板: "${template.name}", 下次执行: ${nextRunAt}`)
     return NextResponse.json(updated)
   } catch (error) {
     console.error('[Scheduled/Resume] 失败:', error)

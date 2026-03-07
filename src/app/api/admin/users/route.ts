@@ -1,13 +1,10 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { authenticateAdmin } from '@/lib/admin-auth'
 
-const ADMIN_EMAILS = ['aurora@arplus.top']
-
-export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email || !ADMIN_EMAILS.includes(session.user.email)) {
+export async function GET(req: NextRequest) {
+  const admin = await authenticateAdmin(req)
+  if (!admin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -17,6 +14,8 @@ export async function GET() {
       id: true,
       name: true,
       email: true,
+      phone: true,
+      creditBalance: true,
       createdAt: true,
       agent: {
         select: {
@@ -39,6 +38,7 @@ export async function GET() {
         select: {
           createdTasks: true,
           taskSteps: true,
+          apiTokens: true,
         }
       }
     }

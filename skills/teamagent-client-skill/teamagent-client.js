@@ -302,6 +302,29 @@ class TeamAgentClient {
     return this.setStatus('offline')
   }
 
+  // ========== 💬 聊天相关 ==========
+
+  /**
+   * 主动发消息（每次创建新消息，不覆盖）
+   * 与 /api/chat/reply 的区别：reply 更新已有消息，push 每次创建新消息
+   * @param {string} content - 消息内容
+   * @param {string} [targetUserId] - 目标用户ID（不传则发给 Agent 主人）
+   */
+  async pushMessage(content, targetUserId = null) {
+    const body = { content }
+    if (targetUserId) body.targetUserId = targetUserId
+    return this.request('POST', '/api/chat/push', body)
+  }
+
+  /**
+   * 回复用户消息（更新已有的 agent 占位消息）
+   * @param {string} msgId - 要回复的消息ID
+   * @param {string} content - 回复内容
+   */
+  async replyMessage(msgId, content) {
+    return this.request('POST', '/api/chat/reply', { msgId, content })
+  }
+
   // ========== 步骤操作 ==========
 
   // 获取分配给我的步骤
@@ -315,9 +338,9 @@ class TeamAgentClient {
     return this.request('GET', endpoint)
   }
 
-  // 获取待执行的步骤（已分配给我的）
+  // 获取待执行的步骤（已分配给我的，含 pending + in_progress 的 decompose）
   async getPendingSteps() {
-    return this.getMySteps({ status: 'pending' })
+    return this.getMySteps({ status: 'pending,in_progress' })
   }
 
   // 获取可领取的步骤（未分配的）

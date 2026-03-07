@@ -7,11 +7,11 @@ import { Navbar } from '@/components/Navbar'
 
 interface ScheduledTemplate {
   id: string
-  title: string
+  name: string
   description: string | null
-  schedule: string
+  schedule: string | null
   timezone: string
-  enabled: boolean
+  scheduleEnabled: boolean
   approvalMode: string
   lastRunAt: string | null
   nextRunAt: string | null
@@ -171,15 +171,15 @@ export default function ScheduledPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${t.enabled ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
-                        <h3 className="text-sm font-medium text-white truncate">{t.title}</h3>
+                        <span className={`w-2 h-2 rounded-full ${t.scheduleEnabled ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
+                        <h3 className="text-sm font-medium text-white truncate">{t.name}</h3>
                         <span className="text-xs text-slate-400 shrink-0">
                           {describeCron(t.schedule)}
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-slate-500">
                         <span>上次: {formatTime(t.lastRunAt)}{t.lastRunAt ? ' ✅' : ''}</span>
-                        <span>下次: {t.enabled ? formatTime(t.nextRunAt) : '--'}</span>
+                        <span>下次: {t.scheduleEnabled ? formatTime(t.nextRunAt) : '--'}</span>
                         <span>
                           已执行 {t.runCount} 次
                           {t.failCount > 0 && <span className="text-red-400"> | 失败 {t.failCount} 次</span>}
@@ -187,15 +187,15 @@ export default function ScheduledPage() {
                       </div>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ml-2 ${
-                      t.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'
+                      t.scheduleEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'
                     }`}>
-                      {t.enabled ? '运行中' : '已暂停'}
+                      {t.scheduleEnabled ? '运行中' : '已暂停'}
                     </span>
                   </div>
 
                   {/* 操作按钮 */}
                   <div className="flex gap-2 mt-3">
-                    {t.enabled ? (
+                    {t.scheduleEnabled ? (
                       <button
                         onClick={e => { e.stopPropagation(); handleAction(t.id, 'pause') }}
                         disabled={actionLoading === `${t.id}-pause`}

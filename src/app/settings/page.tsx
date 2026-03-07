@@ -8,6 +8,7 @@ import { Navbar } from '@/components/Navbar'
 interface ApiToken {
   id: string
   name: string
+  displayToken: string | null
   lastUsedAt: string | null
   expiresAt: string | null
   createdAt: string
@@ -41,6 +42,15 @@ export default function SettingsPage() {
   const [inviteCopied, setInviteCopied] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
 
+  // 💰 积分系统
+  const [creditBalance, setCreditBalance] = useState(0)
+  const [totalUsed, setTotalUsed] = useState(0)
+  const [totalCalls, setTotalCalls] = useState(0)
+  const [recentUsage, setRecentUsage] = useState<any[]>([])
+  const [redeemCode, setRedeemCode] = useState('')
+  const [redeemLoading, setRedeemLoading] = useState(false)
+  const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   // F06: 通知偏好
   const [dndEnabled, setDndEnabled] = useState(false)
   const [dndStart, setDndStart] = useState('22:00')
@@ -63,6 +73,7 @@ export default function SettingsPage() {
       fetchTokens()
       fetchWorkspace()
       fetchPreferences()
+      fetchCredits()
     }
   }, [session])
 
@@ -102,6 +113,46 @@ export default function SettingsPage() {
       setPrefMsg('❌ 保存失败')
     } finally {
       setPrefSaving(false)
+    }
+  }
+
+  const fetchCredits = async () => {
+    try {
+      const res = await fetch('/api/user/credits')
+      if (res.ok) {
+        const data = await res.json()
+        setCreditBalance(data.balance)
+        setTotalUsed(data.totalUsed)
+        setTotalCalls(data.totalCalls)
+        setRecentUsage(data.recentUsage || [])
+      }
+    } catch (e) {
+      console.error('获取积分失败', e)
+    }
+  }
+
+  const handleRedeem = async () => {
+    if (!redeemCode.trim()) return
+    setRedeemLoading(true)
+    setRedeemMsg(null)
+    try {
+      const res = await fetch('/api/activation/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: redeemCode.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setRedeemMsg({ type: 'success', text: `✅ ${data.message}` })
+        setCreditBalance(data.newBalance)
+        setRedeemCode('')
+      } else {
+        setRedeemMsg({ type: 'error', text: `❌ ${data.error}` })
+      }
+    } catch {
+      setRedeemMsg({ type: 'error', text: '❌ 兑换失败，请重试' })
+    } finally {
+      setRedeemLoading(false)
     }
   }
 
@@ -427,105 +478,218 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* API Token 管理 */}
+        {/* 🔑 API Token + LLM 额度 合并卡片 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">🔑 API Token</h2>
-          <p className="text-gray-600 text-sm mb-6">
-            API Token 用于让你的本地 Agent（如 Clawdbot）连接 TeamAgent。
-            每个 Token 只在创建时显示一次，请妥善保存。
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">🔑 API Token & LLM 额度</h2>
+          <p className="text-gray-500 text-sm mb-5">
+            Agent 连接 TeamAgent 和调用 AI 模型的凭证与额度。
           </p>
 
-          {/* 新创建的 Token 显示 */}
-          {newToken && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-              <p className="text-green-800 font-medium mb-2">✅ Token 创建成功！请立即复制保存：</p>
-              <div className="flex items-center space-x-2">
-                <code className="flex-1 bg-white px-3 py-2 rounded border text-sm font-mono break-all">
-                  {newToken}
-                </code>
-                <button
-                  onClick={copyToken}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                >
-                  {copied ? '已复制!' : '复制'}
-                </button>
-              </div>
-              <p className="text-green-700 text-xs mt-2">
-                ⚠️ 关闭此提示后将无法再次查看此 Token
-              </p>
-              <button
-                onClick={() => setNewToken(null)}
-                className="text-green-600 text-sm mt-2 hover:underline"
-              >
-                我已保存，关闭提示
-              </button>
+          {/* 最显眼：用户的 Token（有 displayToken 的） */}
+          {tokens.some(t => t.displayToken) && (
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-5 mb-5 border border-orange-200">
+              <p className="text-sm font-medium text-orange-700 mb-3">🔑 你的 API Token</p>
+              {tokens.filter(t => t.displayToken).map(token => (
+                <div key={token.id} className="mb-3 last:mb-0">
+                  <div className="flex items-center space-x-2">
+                    <code className="flex-1 text-sm font-mono text-orange-800 bg-white px-3 py-2 rounded-lg border border-orange-200 break-all select-all">
+                      {token.displayToken}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(token.displayToken!)
+                        setCopied(true)
+                        setTimeout(() => setCopied(false), 2000)
+                      }}
+                      className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 transition shrink-0"
+                    >
+                      {copied ? '✓ 已复制' : '📋 复制'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-orange-500 mt-1.5">
+                    配置 OpenClaw 时粘贴此 Token · {token.name}
+                  </p>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* 创建新 Token */}
-          <div className="flex items-center space-x-3 mb-6">
-            <input
-              type="text"
-              value={newTokenName}
-              onChange={(e) => setNewTokenName(e.target.value)}
-              placeholder="Token 名称，如：Lobster Skill"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-            />
-            <button
-              onClick={createToken}
-              disabled={creating || !newTokenName.trim()}
-              className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50"
-            >
-              {creating ? '创建中...' : '创建 Token'}
-            </button>
+          {/* 余额卡片 */}
+          <div className="bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl p-5 mb-5 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-end gap-2 mb-1">
+                  <span className="text-3xl font-bold text-orange-600">{creditBalance.toLocaleString()}</span>
+                  <span className="text-sm text-orange-400 mb-1">积分</span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {creditBalance > 0
+                    ? `≈ ${(creditBalance * 750 / 10000).toFixed(1)} 万字（qwen-turbo 估算）`
+                    : '余额为零，请联系管理员充值'}
+                </p>
+              </div>
+              {totalCalls > 0 && (
+                <div className="text-right">
+                  <p className="text-xs text-gray-400">累计调用 {totalCalls} 次</p>
+                  <p className="text-xs text-gray-400">消耗 {totalUsed} 积分</p>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Token 列表 */}
-          <div className="space-y-3">
-            {tokens.length === 0 ? (
-              <p className="text-gray-500 text-sm">还没有创建任何 Token</p>
-            ) : (
-              tokens.map((token) => (
-                <div
-                  key={token.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
-                >
-                  <div>
-                    <p className="font-medium text-gray-800">{token.name}</p>
-                    <p className="text-xs text-gray-500">
-                      创建于 {new Date(token.createdAt).toLocaleDateString('zh-CN')}
-                      {token.lastUsedAt && (
-                        <span> · 最后使用 {new Date(token.lastUsedAt).toLocaleDateString('zh-CN')}</span>
-                      )}
-                    </p>
+          {/* 近期用量 */}
+          {recentUsage.length > 0 && (
+            <div className="mb-5">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">📊 近期用量</label>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {recentUsage.slice(0, 10).map((u: any) => (
+                  <div key={u.id} className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">
+                        {new Date(u.createdAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                        u.model === 'qwen-turbo' ? 'bg-blue-50 text-blue-500' : 'bg-purple-50 text-purple-500'
+                      }`}>
+                        {u.model === 'qwen-turbo' ? 'Turbo' : 'Max'}
+                      </span>
+                      <span className="text-gray-400">{u.totalTokens.toLocaleString()} token</span>
+                    </div>
+                    <span className="text-orange-500 font-medium">-{u.creditsDeducted}</span>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Token 管理区（折叠） */}
+          <details className="group">
+            <summary className="flex items-center cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-800 transition py-2">
+              <span className="mr-2 transition-transform group-open:rotate-90">▶</span>
+              Token 管理 & 激活码兑换
+            </summary>
+            <div className="pt-3 space-y-4">
+              {/* 新创建的 Token 显示 */}
+              {newToken && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <p className="text-green-800 font-medium mb-2">✅ Token 创建成功！请立即复制保存：</p>
+                  <div className="flex items-center space-x-2">
+                    <code className="flex-1 bg-white px-3 py-2 rounded border text-sm font-mono break-all">
+                      {newToken}
+                    </code>
+                    <button
+                      onClick={copyToken}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                    >
+                      {copied ? '已复制!' : '复制'}
+                    </button>
+                  </div>
+                  <p className="text-green-700 text-xs mt-2">
+                    ⚠️ 关闭此提示后将无法再次查看此 Token
+                  </p>
                   <button
-                    onClick={() => deleteToken(token.id)}
-                    className="text-red-600 hover:text-red-700 text-sm"
+                    onClick={() => setNewToken(null)}
+                    className="text-green-600 text-sm mt-2 hover:underline"
                   >
-                    删除
+                    我已保存，关闭提示
                   </button>
                 </div>
-              ))
-            )}
-          </div>
+              )}
+
+              {/* 创建新 Token */}
+              <div className="flex items-center space-x-3">
+                <input
+                  type="text"
+                  value={newTokenName}
+                  onChange={(e) => setNewTokenName(e.target.value)}
+                  placeholder="Token 名称，如：Lobster Skill"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                />
+                <button
+                  onClick={createToken}
+                  disabled={creating || !newTokenName.trim()}
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm"
+                >
+                  {creating ? '创建中...' : '创建 Token'}
+                </button>
+              </div>
+
+              {/* Token 列表 */}
+              <div className="space-y-2">
+                {tokens.length === 0 ? (
+                  <p className="text-gray-500 text-sm">还没有创建任何 Token</p>
+                ) : (
+                  tokens.map((token) => (
+                    <div
+                      key={token.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-700 text-sm">{token.name}</p>
+                        <p className="text-xs text-gray-400">
+                          创建于 {new Date(token.createdAt).toLocaleDateString('zh-CN')}
+                          {token.lastUsedAt && (
+                            <span> · 最后使用 {new Date(token.lastUsedAt).toLocaleDateString('zh-CN')}</span>
+                          )}
+                          {token.displayToken && <span className="text-orange-500"> · 可查看</span>}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => deleteToken(token.id)}
+                        className="text-red-500 hover:text-red-600 text-xs"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* 兑换激活码 */}
+              <div className="border-t border-gray-100 pt-4">
+                <label className="text-sm font-medium text-gray-700 mb-2 block">🎫 兑换激活码</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={redeemCode}
+                    onChange={e => setRedeemCode(e.target.value.toUpperCase())}
+                    placeholder="输入 8 位激活码"
+                    maxLength={12}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent font-mono text-sm tracking-wider uppercase"
+                    onKeyDown={e => e.key === 'Enter' && handleRedeem()}
+                  />
+                  <button
+                    onClick={handleRedeem}
+                    disabled={redeemLoading || !redeemCode.trim()}
+                    className="px-5 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm whitespace-nowrap"
+                  >
+                    {redeemLoading ? '兑换中...' : '兑换'}
+                  </button>
+                </div>
+                {redeemMsg && (
+                  <p className={`text-sm mt-2 ${redeemMsg.type === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+                    {redeemMsg.text}
+                  </p>
+                )}
+              </div>
+            </div>
+          </details>
         </div>
 
         {/* 使用说明 */}
         <div className="bg-gray-50 rounded-2xl p-6">
-          <h3 className="font-semibold text-gray-800 mb-3">📖 如何使用 API Token</h3>
+          <h3 className="font-semibold text-gray-800 mb-3">📖 如何使用</h3>
           <ol className="text-sm text-gray-600 space-y-3">
-            <li>1. 点击上方「创建 Token」生成一个 API Token</li>
-            <li>2. 复制 Token（创建后只显示一次！）</li>
-            <li>3. 在 Claude Code 中安装 TeamAgent Skill：</li>
+            <li>1. 上方橙色区域即可看到你的 API Token，点击复制</li>
+            <li>2. 在 Claude Code 中安装 TeamAgent Skill：</li>
             <code className="block bg-white px-4 py-2 rounded mt-1 text-xs font-mono">
               openclaw skill install teamagent
             </code>
-            <li className="mt-2">4. 运行注册命令，按提示粘贴 Token：</li>
+            <li className="mt-2">3. 运行注册命令，按提示粘贴 Token：</li>
             <code className="block bg-white px-4 py-2 rounded mt-1 text-xs font-mono">
               /ta-register
             </code>
-            <li className="mt-2">5. 在 TeamAgent 网页输入 6 位配对码完成绑定</li>
+            <li className="mt-2">4. 在 TeamAgent 网页输入 6 位配对码完成绑定</li>
           </ol>
           <p className="text-xs text-gray-400 mt-4">
             Token 用于 Agent 连接 TeamAgent 服务。如果 Token 泄露，请立即删除并重新创建。

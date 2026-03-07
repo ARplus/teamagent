@@ -27,7 +27,7 @@ export async function GET(
 
     const { id } = await params
 
-    const template = await prisma.scheduledTemplate.findUnique({
+    const template = await prisma.taskTemplate.findUnique({
       where: { id },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
@@ -78,7 +78,7 @@ export async function PATCH(
     if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
     const { id } = await params
-    const template = await prisma.scheduledTemplate.findUnique({ where: { id } })
+    const template = await prisma.taskTemplate.findUnique({ where: { id } })
 
     if (!template) {
       return NextResponse.json({ error: '模板不存在' }, { status: 404 })
@@ -90,7 +90,7 @@ export async function PATCH(
     const body = await req.json()
     const updateData: any = {}
 
-    if (body.title !== undefined) updateData.title = body.title
+    if (body.title !== undefined) updateData.name = body.title
     if (body.description !== undefined) updateData.description = body.description
     if (body.approvalMode !== undefined) {
       if (!['every', 'on_error', 'auto'].includes(body.approvalMode)) {
@@ -108,15 +108,15 @@ export async function PATCH(
       }
       updateData.schedule = body.schedule
       const tz = body.timezone || template.timezone
-      updateData.nextRunAt = template.enabled ? computeNextRun(body.schedule, tz) : null
+      updateData.nextRunAt = template.scheduleEnabled ? computeNextRun(body.schedule, tz) : null
     }
     if (body.timezone !== undefined) {
       updateData.timezone = body.timezone
       const sched = body.schedule || template.schedule
-      updateData.nextRunAt = template.enabled ? computeNextRun(sched, body.timezone) : null
+      updateData.nextRunAt = template.scheduleEnabled ? computeNextRun(sched, body.timezone) : null
     }
 
-    const updated = await prisma.scheduledTemplate.update({
+    const updated = await prisma.taskTemplate.update({
       where: { id },
       data: updateData,
       include: {
@@ -141,7 +141,7 @@ export async function DELETE(
     if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
     const { id } = await params
-    const template = await prisma.scheduledTemplate.findUnique({ where: { id } })
+    const template = await prisma.taskTemplate.findUnique({ where: { id } })
 
     if (!template) {
       return NextResponse.json({ error: '模板不存在' }, { status: 404 })
@@ -156,9 +156,9 @@ export async function DELETE(
       data: { templateId: null },
     })
 
-    await prisma.scheduledTemplate.delete({ where: { id } })
+    await prisma.taskTemplate.delete({ where: { id } })
 
-    console.log(`[Scheduled/DELETE] 删除模板: "${template.title}"`)
+    console.log(`[Scheduled/DELETE] 删除模板: "${template.name}"`)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Scheduled/DELETE/:id] 失败:', error)

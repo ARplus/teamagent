@@ -520,7 +520,7 @@ async function main() {
             if (lastError) {
               await client.request('POST', '/api/chat/reply', {
                 msgId,
-                content: '🐙 八爪刚刚在忙，你再说一次？马上回！'
+                content: '😅 啊抱歉，我刚忙着呢，你再说一次？马上回！'
               }).catch(() => {})
               markSeen(msgId)
             }
@@ -801,8 +801,27 @@ async function main() {
           }, CHAT_POLL_INTERVAL)
         }
 
-        // SSE 连接函数（含自动重连）
+        // SSE 连接函数（含指数退避重连）
         let lastDisconnectTime = null
+        let reconnectDelay = 2000   // 初始 2s
+        let reconnectCount = 0
+        const MAX_RECONNECT_DELAY = 30000  // 上限 30s
+        const COOLDOWN_THRESHOLD = 10      // 连续失败 10 次进入冷却
+        const COOLDOWN_DELAY = 60000       // 冷却 60s
+
+        const scheduleReconnect = (reason) => {
+          reconnectCount++
+          let delay
+          if (reconnectCount >= COOLDOWN_THRESHOLD) {
+            delay = COOLDOWN_DELAY
+            console.log(`⏸️ 连续失败 ${reconnectCount} 次，冷却 ${delay/1000}s 后重试...`)
+          } else {
+            delay = Math.min(reconnectDelay * Math.pow(2, reconnectCount - 1), MAX_RECONNECT_DELAY)
+          }
+          console.log(`🔌 ${reason}，${(delay/1000).toFixed(0)}s 后重连 (#${reconnectCount})`)
+          setTimeout(connectSSE, delay)
+        }
+
         const connectSSE = () => {
           const { URL } = require('url')
           const baseUrl = client.hubUrl.replace(/\/$/, '')
@@ -828,13 +847,14 @@ async function main() {
             }
           }, (res) => {
             if (res.statusCode !== 200) {
-              console.error(`❌ SSE 连接失败: HTTP ${res.statusCode}，5秒后重连`)
               res.resume()
               sseConnected = false
-              setTimeout(connectSSE, 5000)
+              scheduleReconnect(`SSE HTTP ${res.statusCode}`)
               return
             }
+            // ✅ 连接成功，重置退避
             sseConnected = true
+            reconnectCount = 0
             lastSSEActivity = Date.now()
             console.log('✅ SSE 已连接，实时监听事件...\n')
 
@@ -875,20 +895,17 @@ async function main() {
             res.on('end', () => {
               sseConnected = false
               lastDisconnectTime = new Date().toISOString()
-              console.log('\n🔌 SSE 连接断开，5秒后重连...')
-              setTimeout(connectSSE, 5000)
+              scheduleReconnect('SSE 连接断开')
             })
             res.on('error', (e) => {
               sseConnected = false
               lastDisconnectTime = new Date().toISOString()
-              console.error('❌ SSE 流错误:', e.message, '，5秒后重连')
-              setTimeout(connectSSE, 5000)
+              scheduleReconnect(`SSE 流错误: ${e.message}`)
             })
           })
           req.on('error', (e) => {
             sseConnected = false
-            console.error('❌ SSE 请求错误:', e.message, '，5秒后重连')
-            setTimeout(connectSSE, 5000)
+            scheduleReconnect(`SSE 请求错误: ${e.message}`)
           })
           req.setTimeout(0) // 禁用请求超时（长连接）
           req.end()

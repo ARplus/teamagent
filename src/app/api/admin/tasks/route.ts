@@ -1,17 +1,14 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { authenticateAdmin } from '@/lib/admin-auth'
 
-const ADMIN_EMAILS = ['aurora@arplus.top']
-
-export async function GET(request: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email || !ADMIN_EMAILS.includes(session.user.email)) {
+export async function GET(req: NextRequest) {
+  const admin = await authenticateAdmin(req)
+  if (!admin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { searchParams } = new URL(request.url)
+  const { searchParams } = new URL(req.url)
   const page = parseInt(searchParams.get('page') || '1')
   const limit = parseInt(searchParams.get('limit') || '20')
   const status = searchParams.get('status') // filter by status

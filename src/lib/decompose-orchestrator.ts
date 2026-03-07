@@ -316,11 +316,15 @@ export async function orchestrateDecompose(params: {
 
   // 3. 路由到具体拆解方式
   if (decomposerType === 'main-agent') {
-    // 找到在线的主 Agent
-    const mainAgentMember = members.find(m => {
+    // 找主 Agent：优先创建者自己的主 Agent，兜底任意在线主 Agent
+    const allMainAgents = members.filter(m => {
       const agent = m.user.agent as any
       return agent && agent.isMainAgent && !agent.parentAgentId
     })
+    // 创建者的 Agent → 在线的 → 第一个
+    const mainAgentMember = allMainAgents.find(m => m.user.id === creatorId)
+      || allMainAgents.find(m => (m.user.agent as any)?.status === 'online' || (m.user.agent as any)?.status === 'working')
+      || allMainAgents[0]
 
     if (!mainAgentMember) {
       console.warn(`[Decompose] 工作区无主 Agent，降级到 hub-llm（不自动执行）`)

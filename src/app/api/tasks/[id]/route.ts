@@ -37,7 +37,9 @@ export async function GET(
     const task = await prisma.task.findUnique({
       where: { id },
       include: {
-        creator: { select: { id: true, name: true, email: true, avatar: true } },
+        creator: { select: { id: true, name: true, email: true, avatar: true,
+          agent: { select: { id: true, name: true, avatar: true, status: true, isMainAgent: true } }
+        } },
         assignee: { select: { id: true, name: true, avatar: true } },
         workspace: { select: { id: true, name: true } },
         steps: {
@@ -59,7 +61,10 @@ export async function GET(
               include: {
                 user: { select: {
                   id: true, name: true, email: true, avatar: true,
-                  agent: { select: { id: true, name: true, status: true } }
+                  agent: { select: {
+                    id: true, name: true, avatar: true, status: true, userId: true, isMainAgent: true,
+                    parentAgent: { select: { id: true, name: true, user: { select: { id: true, name: true } } } }
+                  } }
                 } }
               }
             },

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, name } = await req.json()
+    const { email, password, name, phone } = await req.json()
 
     // 验证
     if (!email || !password) {
@@ -21,6 +21,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // 手机号格式校验（可选字段，但如果填了就要合法）
+    const cleanPhone = phone?.replace(/\s|-/g, '').trim() || null
+    if (cleanPhone && !/^1[3-9]\d{9}$/.test(cleanPhone)) {
+      return NextResponse.json(
+        { error: '请输入正确的手机号' },
+        { status: 400 }
+      )
+    }
+
     // 检查邮箱是否已存在
     const existingUser = await prisma.user.findUnique({
       where: { email }
@@ -33,14 +42,28 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // 检查手机号是否已存在
+    if (cleanPhone) {
+      const existingPhone = await prisma.user.findUnique({
+        where: { phone: cleanPhone }
+      })
+      if (existingPhone) {
+        return NextResponse.json(
+          { error: '该手机号已被注册' },
+          { status: 400 }
+        )
+      }
+    }
+
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    // 创建用户 + 默认工作区（Agent-First 模式：不自动创建 Agent，用户后续通过配对码认领）
+    // 创建用户 + 默认工作区
     const userName = name || email.split('@')[0]
     const user = await prisma.user.create({
       data: {
         email,
+        phone: cleanPhone,
         password: hashedPassword,
         name: userName,
       }

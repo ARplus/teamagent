@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '未找到工作区' }, { status: 400 })
     }
 
-    const templates = await prisma.scheduledTemplate.findMany({
+    const templates = await prisma.taskTemplate.findMany({
       where: { workspaceId },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 检查上限（每工作区 20 个）
-    const existingCount = await prisma.scheduledTemplate.count({
+    const existingCount = await prisma.taskTemplate.count({
       where: { workspaceId },
     })
     if (existingCount >= 20) {
@@ -150,16 +150,17 @@ export async function POST(req: NextRequest) {
     // 计算下次执行时间
     const nextRunAt = computeNextRun(schedule, timezone)
 
-    const template = await prisma.scheduledTemplate.create({
+    const template = await prisma.taskTemplate.create({
       data: {
         sourceTaskId: sourceTaskId || null,
-        title: finalTitle,
+        name: finalTitle,
         description: description || null,
         workspaceId,
         creatorId: auth.userId,
         stepsTemplate,
         schedule,
         timezone,
+        scheduleEnabled: true,
         approvalMode,
         deliveryBoard,
         deliveryChat,
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    console.log(`[Scheduled/POST] 创建模板: "${template.title}" (cron: ${schedule})`)
+    console.log(`[Scheduled/POST] 创建模板: "${template.name}" (cron: ${schedule})`)
 
     return NextResponse.json(template)
   } catch (error) {

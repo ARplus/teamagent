@@ -32,7 +32,7 @@ async function authenticate(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const auth = await authenticate(req)
-    
+
     if (!auth) {
       return NextResponse.json({ error: '请先登录或提供 API Token' }, { status: 401 })
     }
@@ -290,8 +290,8 @@ export async function POST(req: NextRequest) {
               requiresApproval: false,
               outputs: JSON.stringify(['steps-json']),
               skills: JSON.stringify(['task-decompose', 'team-management']),
-              status: 'pending',
-              agentStatus: 'pending',
+              status: 'in_progress',
+              agentStatus: 'working',
             }
           })
           // B08: 同步 StepAssignee

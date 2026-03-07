@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Providers } from '@/components/Providers'
 import { MobileBottomNavMount } from '@/components/MobileBottomNavMount'
+import { ChatWidget } from '@/components/ChatWidget'
 
 export const metadata: Metadata = {
   title: 'TeamAgent - 团队协作新范式',
@@ -39,6 +40,7 @@ export default function RootLayout({
         <Providers>
           {children}
           <MobileBottomNavMount />
+          <ChatWidget />
         </Providers>
       </body>
     </html>
