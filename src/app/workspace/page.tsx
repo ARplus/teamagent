@@ -403,148 +403,157 @@ function TokenRow({ agentName, token }: { agentName: string; token: string }) {
   )
 }
 
+const WORK_TYPE_OPTIONS = [
+  { label: '✍️ 写作/内容', value: 'writing' },
+  { label: '💻 代码/技术', value: 'coding' },
+  { label: '🎨 设计/创意', value: 'design' },
+  { label: '📣 运营/推广', value: 'marketing' },
+  { label: '🔬 研究/分析', value: 'research' },
+  { label: '💼 销售/商务', value: 'sales' },
+  { label: '🏗️ 一人公司', value: 'solo-company' },
+  { label: '✨ 其他', value: 'other' },
+]
+
+const BUILD_LEGION_TEMPLATE_ID = 'cmmzywgos0019v7el8fdozyt8'
+
 function CreateSubAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [count, setCount] = useState(1)
-  const [teamName, setTeamName] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [goal, setGoal] = useState('')
-  const [styleInput, setStyleInput] = useState('')
-  const [styles, setStyles] = useState<string[]>([])
-  const [creating, setCreating] = useState(false)
-  const [creatingIndex, setCreatingIndex] = useState(0)
-  const [results, setResults] = useState<{ agentName: string; token: string; agentId: string }[] | null>(null)
-  const [error, setError] = useState('')
+  const [agentCount, setAgentCount] = useState(3)
+  const [submitting, setSubmitting] = useState(false)
 
-  const addStyle = () => {
-    const v = styleInput.trim()
-    if (v && !styles.includes(v)) { setStyles([...styles, v]); setStyleInput('') }
-  }
-  const removeStyle = (s: string) => setStyles(styles.filter(x => x !== s))
-
-  const canCreate = teamName.trim().length > 0
+  const toggleType = (v: string) =>
+    setSelectedTypes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
 
   const handleCreate = async () => {
-    if (!canCreate || creating) return
-    setCreating(true); setError('')
+    if (!companyName.trim() || !goal.trim()) return
+    setSubmitting(true)
     try {
-      const created: { agentName: string; token: string; agentId: string }[] = []
-      for (let i = 0; i < count; i++) {
-        setCreatingIndex(i + 1)
-        const name = count === 1 ? teamName.trim() : `${teamName.trim()}-${i + 1}`
-        const res = await fetch('/api/agents/create-sub', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name,
-            personality: goal.trim() || undefined,
-            capabilities: styles.length > 0 ? styles : undefined,
-          })
-        })
-        const data = await res.json()
-        if (!res.ok) { setError(data.error || '创建失败'); return }
-        created.push({ agentName: name, token: data.token, agentId: data.agent.id })
-      }
+      const typeLabels = WORK_TYPE_OPTIONS
+        .filter(o => selectedTypes.includes(o.value))
+        .map(o => o.label).join('、') || '待定'
 
-      setResults(created)
+      const runRes = await fetch(`/api/templates/${BUILD_LEGION_TEMPLATE_ID}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variables: {
+            legionName: companyName,
+            workType: typeLabels,
+            size: agentCount,
+          },
+          overrides: {
+            title: `⚔️ 组建「${companyName}」Agent 军团`,
+            description: `军团名称：${companyName}\n工作类型：${typeLabels}\n核心目标：${goal}\n期望规模：${agentCount} 名成员`,
+          },
+        }),
+      })
+      if (!runRes.ok) { alert('创建失败，请重试'); return }
+      const result = await runRes.json()
       onCreated()
-    } catch { setError('网络错误，请重试') }
-    finally { setCreating(false) }
+      onClose()
+      if (result.taskId) {
+        window.location.href = `/#${result.taskId}`
+      }
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  // 成功界面
-  if (results) return (
-    <ResultPanel results={results} onClose={onClose} />
-  )
-
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <span>⚔️</span> 创建 Agent 军团
-          </h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-lg">✕</button>
-        </div>
-
-        <p className="text-xs text-slate-500">填团队方向，名字和职责由主 Agent 自行分配</p>
-
-        {/* 团队名 */}
-        <div>
-          <label className="text-sm text-slate-300 mb-1.5 block">
-            团队名 <span className="text-rose-400">*</span>
-            <span className="text-xs text-slate-500 ml-2">如：开发、运营、测试</span>
-          </label>
-          <input
-            value={teamName}
-            onChange={e => setTeamName(e.target.value)}
-            placeholder="如：开发"
-            className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition"
-          />
-          {teamName && count > 1 && (
-            <p className="text-[11px] text-slate-500 mt-1">
-              将创建 {count} 位「{teamName.trim()}」成员，名字由主 Agent 自由命名
-            </p>
-          )}
-        </div>
-
-        {/* 目标描述 */}
-        <div>
-          <label className="text-sm text-slate-300 mb-1.5 block">目标描述</label>
-          <textarea
-            value={goal}
-            onChange={e => setGoal(e.target.value)}
-            placeholder="这支团队要做什么？主 Agent 会据此分配职责"
-            rows={3}
-            className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition resize-none"
-          />
-        </div>
-
-        {/* 数量选择器 */}
-        <div>
-          <label className="text-sm text-slate-300 mb-2 block">人数</label>
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4, 5].map(n => (
-              <button key={n} onClick={() => setCount(n)}
-                className={`w-10 h-10 rounded-full text-sm font-bold transition-all ${count === n ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30 scale-110' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-slate-200'}`}>
-                {n}
-              </button>
-            ))}
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}>
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-7 py-6">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🌊</span>
+              <h2 className="text-lg font-bold text-white">组建你的 Agent 军团</h2>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-white text-xl transition">×</button>
           </div>
+          <p className="text-slate-400 text-sm">告诉主 Agent 你的需求，它来规划成员架构并完成注册</p>
         </div>
 
-        {/* 风格标签 */}
-        <div>
-          <label className="text-sm text-slate-300 mb-1.5 block">
-            风格标签
-            <span className="text-xs text-slate-500 ml-2">如：严谨、高效、创意</span>
-          </label>
-          <div className="flex items-center gap-1.5">
-            <input value={styleInput} onChange={e => setStyleInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addStyle() } }}
-              placeholder="输入后回车添加"
-              className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition" />
-            <button onClick={addStyle}
-              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-lg transition">+</button>
+        {/* Form */}
+        <div className="p-7 space-y-5">
+          {/* 军团名 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-1.5 block">🏢 军团 / 公司名称</label>
+            <input
+              type="text"
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              placeholder="如：Aurora 宇宙艺术团、极光创作工作室..."
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+              autoFocus
+            />
           </div>
-          {styles.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {styles.map(s => (
-                <span key={s} className="text-xs px-2 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 flex items-center gap-1">
-                  {s}
-                  <button onClick={() => removeStyle(s)} className="text-violet-400 hover:text-white">×</button>
-                </span>
+
+          {/* 工作类型 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">💼 主要工作类型（可多选）</label>
+            <div className="flex flex-wrap gap-2">
+              {WORK_TYPE_OPTIONS.map(opt => (
+                <button key={opt.value} type="button" onClick={() => toggleType(opt.value)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all border ${
+                    selectedTypes.includes(opt.value)
+                      ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-orange-300 hover:text-orange-600'
+                  }`}>
+                  {opt.label}
+                </button>
               ))}
             </div>
-          )}
+          </div>
+
+          {/* 核心目标 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-1.5 block">🎯 核心目标（一句话）</label>
+            <input
+              type="text"
+              value={goal}
+              onChange={e => setGoal(e.target.value)}
+              placeholder="如：用 AI 军团独立完成产品开发和运营..."
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+            />
+          </div>
+
+          {/* Agent 数量 */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">
+              👥 期望 Agent 人数 <span className="text-orange-500 font-bold">{agentCount} 名</span>
+            </label>
+            <div className="flex gap-2">
+              {[2, 3, 4, 5, 6].map(n => (
+                <button key={n} type="button" onClick={() => setAgentCount(n)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
+                    agentCount === n
+                      ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                      : 'bg-white text-slate-400 border-slate-200 hover:border-orange-300'
+                  }`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {error && <div className="text-sm text-rose-400 text-center">{error}</div>}
-
-        <button onClick={handleCreate} disabled={!canCreate || creating}
-          className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
-          {creating
-            ? `⏳ 创建中 ${creatingIndex}/${count}...`
-            : `🚀 组建 ${count} 人${teamName ? `「${teamName}」` : ''}团队`}
-        </button>
+        {/* Footer */}
+        <div className="px-7 pb-7 flex gap-3">
+          <button onClick={handleCreate}
+            disabled={submitting || !companyName.trim() || !goal.trim()}
+            className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold hover:from-orange-400 hover:to-rose-400 disabled:opacity-50 shadow-lg shadow-orange-500/25 transition-all text-sm">
+            {submitting ? '🌊 组建中...' : '🌊 让主 Agent 帮我组建'}
+          </button>
+          <button onClick={onClose}
+            className="px-5 py-3 text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors text-sm font-medium">
+            取消
+          </button>
+        </div>
       </div>
     </div>
   )
