@@ -5,12 +5,12 @@
  * 用户的 OpenClaw 配置:
  *   baseURL: https://agent.avatargaia.top/api/llm/v1
  *   apiKey: ta_xxx
- *   model: qwen-turbo
+ *   model: kimi-k2.5 / qwen3.5-flash / qwen3-max
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateRequest } from '@/lib/api-auth'
 import { prisma } from '@/lib/db'
-import { ALLOWED_MODELS, calculateCredits, forwardToQianwen } from '@/lib/llm-proxy'
+import { ALLOWED_MODELS, calculateCredits, forwardToLLM } from '@/lib/llm-proxy'
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 4. 检查积分余额
+    // 4. 检查 Token 余额
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { creditBalance: true },
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: {
-            message: '积分不足，请在 TeamAgent 设置页兑换激活码充值。Insufficient credits.',
+            message: 'Token 不足，请在 TeamAgent 设置页兑换激活码充值。Insufficient tokens.',
             type: 'insufficient_credits',
             balance: user?.creditBalance || 0,
           },
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     // 5. 转发到千问
     console.log(`[LLM Proxy] ${auth.user.name || userId} → ${model}${stream ? ' [stream]' : ''} (balance: ${user.creditBalance})`)
 
-    const upstream = await forwardToQianwen({
+    const upstream = await forwardToLLM({
       model,
       messages,
       stream: !!stream,
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
           }
         },
         async flush() {
-          // 流结束后异步扣积分
+          // 流结束后异步扣 Token
           if (usageData && usageData.total_tokens > 0) {
             const credits = calculateCredits(model, usageData.total_tokens)
             try {
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
     const promptTokens = usage.prompt_tokens || 0
     const completionTokens = usage.completion_tokens || 0
 
-    // 7. 计算并扣减积分（原子操作）
+    // 7. 计算并扣减 Token（原子操作）
     const credits = calculateCredits(model, totalTokens)
 
     await prisma.$transaction([

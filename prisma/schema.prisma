@@ -20,8 +20,10 @@ model User {
   nickname      String?   // 昵称，用于 AI 识别（如"段段"、"小敏"）
   password      String    // bcrypt hashed
   avatar        String?
+  isVirtual     Boolean   @default(false)  // true = 子Agent虚拟用户，无真实登录
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  lastSeenAt    DateTime? // 用户最后在线时间（心跳更新，判断人类在线状态）
 
   // 关联
   agent         Agent?
@@ -63,6 +65,22 @@ model User {
   creditBalance     Int      @default(0)    // 积分余额
   activationCodesUsed ActivationCode[] @relation("ActivationCodeUser")
   llmUsageLogs      LlmUsageLog[]    @relation("LlmUsageLogs")
+
+  // 支付订单
+  paymentOrders     PaymentOrder[]
+  // 日程
+  scheduleEvents    ScheduleEvent[]
+  // 龙虾学院：课程报名
+  courseEnrollments  CourseEnrollment[]
+  // 龙虾学院：考试提交
+  examSubmissions   ExamSubmission[]
+  // 龙虾学院：评论 & 点赞
+  courseComments    CourseComment[] @relation("CourseCommentAuthor")
+  courseLikes      CourseLike[]    @relation("CourseLikeUser")
+  // 频道消息
+  channelMessages  ChannelMessage[]
+  // 工作区文档
+  uploadedDocuments WorkspaceDocument[]
 }
 
 // AI Agent - 独立的数字公民，可被人类认领
@@ -98,8 +116,14 @@ model Agent {
   growthXP        Int      @default(0)   // 成长经验值
   growthLevel     Int      @default(1)   // 当前等级 (1-5)
 
+  // 🆕 新兵训练营
+  onboardingStatus String  @default("graduated")  // training | graduated（已有Agent默认毕业）
+
   // 🆕 Claim 后临时存原始 Token，Agent 轮询取走即删
   pendingApiToken String?
+
+  // 心跳：Agent Worker 每 60s ping 一次，用于判断在线状态
+  lastHeartbeatAt DateTime?
 
   // 归属链：子Agent → 主Agent（B06）
   parentAgentId   String?
@@ -135,12 +159,19 @@ model Workspace {
 
   // 工作区配置 JSON: { decomposerType: "hub-llm" | "main-agent" }
   settings    String?
+  // 龙虾学院：工作区类型
+  type        String    @default("normal")  // normal | organization
+  orgType     String?                       // academy | enterprise | studio（组织子类型，展示用）
+  orgName     String?                       // 组织显示名称（如"北京大学"，不填则用工作区名）
+  orgLogo     String?                       // 组织 logo URL
 
   // 关联
   members     WorkspaceMember[]
   tasks       Task[]
   invites     InviteToken[]
   taskTemplates      TaskTemplate[]
+  channels    Channel[]
+  documents   WorkspaceDocument[]
 }
 
 // 邀请 Token（分享链接核心）
@@ -164,6 +195,9 @@ model InviteToken {
 
   taskId      String?
   task        Task?     @relation("TaskInvites", fields: [taskId], references: [id], onDelete: SetNull)
+
+  // Team 模版多方邀请：记录被邀请方的角色（用于接受后自动绑定步骤）
+  partyRole   String?  // "party-a" | "party-b" | 自定义
 
   @@index([token])
   @@index([inviteeId, taskId])
@@ -206,9 +240,15 @@ model Task {
   // F04: 补充说明（任务开始后追加的内容）
   supplement        String?  // 补充说明文本（Markdown）
 
+  // A2A 协议追踪
+  traceId           String?  // 跨事件追踪链路 ID
+
   // 可插拔拆解状态
   decomposeStatus   String?  // null | "pending" | "fallback" | "done"
   decomposeEngine   String?  // "main-agent" | "hub-claude" | "hub-qwen"
+
+  // 审批门控：模版 requiresApprovalGate=true 时，pre_check 步骤通过前对其他参与方不可见
+  isApproved        Boolean  @default(true)
 
   // 任务完成总结
   autoSummary       String?  // 系统自动生成的完成摘要
@@ -251,6 +291,15 @@ model Task {
   templateId      String?
   template        TaskTemplate? @relation("TemplateInstances", fields: [templateId], references: [id], onDelete: SetNull)
   instanceNumber  Int?     // 第几次执行（#1, #2, #3...）
+
+  // 多方参与配置（Team 模版运行时存储 parties 绑定关系）
+  // JSON 格式：[{ role, label, bindType, orgName?, agentId?, userId?, materials? }]
+  parties         Json?
+
+  // 日程关联
+  scheduleEvents  ScheduleEvent[]
+  // 龙虾学院：课程报名（一个课程实例对应一个报名记录）
+  courseEnrollment CourseEnrollment?
 }
 
 // 任务步骤 - 工作流节点
@@ -312,6 +361,7 @@ model TaskStep {
   rejectionCount   Int      @default(0)  // 被打回次数
   agentDurationMs  Int?     // Agent 执行耗时（毫秒）
   humanDurationMs  Int?     // 人类审批耗时（毫秒）
+  agentMetrics     Json?    // Watch 上报的精细统计 {durationMs, promptChars, resultChars, assigneeName}
   
   // 时间戳
   createdAt   DateTime @default(now())
@@ -320,13 +370,30 @@ model TaskStep {
   completedAt DateTime?
   reviewStartedAt DateTime?  // 人类开始审批时间
 
+  // ── V1.1 步骤展开（子步骤机制）──
+  parentStepId    String?
+  parentStep      TaskStep?  @relation("StepExpansion", fields: [parentStepId], references: [id])
+  childSteps      TaskStep[] @relation("StepExpansion")
+
+  // ── V1.1 人类资料补充 ──
+  needsHumanInput    Boolean  @default(false)
+  humanInputPrompt   String?  @db.Text
+  humanInputStatus   String?  @default("not_needed") // waiting | provided | not_needed
+
+  // ── V1.1 未分配步骤 ──
+  unassigned         Boolean  @default(false)
+  unassignedReason   String?
+
+  // ── Team 模版多方参与 ──
+  partyRole          String?  // "party-a" | "party-b" | 自定义角色名，用于邀请方加入后自动绑定
+
   // 所属任务
   taskId      String
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   // 附件
   attachments Attachment[]
-  
+
   // 提交历史
   submissions StepSubmission[]
 
@@ -336,8 +403,12 @@ model TaskStep {
   // 通知
   notifications Notification[]
 
+  // 工作区文档（步骤提交时生成的文档）
+  outputDocuments WorkspaceDocument[]
+
   @@index([assigneeId, status])  // Solo Mode 高频查询优化（CodeReviewer 建议）
   @@index([taskId, order])
+  @@index([parentStepId])
 }
 
 // 步骤提交记录 - 每次提交都是一条新记录，保留历史
@@ -399,6 +470,9 @@ model Attachment {
   // 上传者
   uploaderId  String
   uploader    User     @relation(fields: [uploaderId], references: [id])
+
+  // V1.1: 上传者类型（文件权限控制）
+  uploaderType String?  // "agent" | "human"
 }
 
 // 站内通知
@@ -629,12 +703,16 @@ model TaskTemplate {
   sourceTaskId    String?                 // 从哪个成功任务保存的（可选）
   sourceType      String   @default("manual")  // manual | from-task | agent-created
 
+  // ── 执行规范层（V1.1）──
+  // 所有步骤共享的"怎么做好"方法论，run 时与 promptTemplate 拼接为 step.description
+  executionProtocol String?  @db.Text
+
   // ── 变量定义 ──
   // JSON: [{ name, label, type, default?, required, description?, options? }]
   variables       String   @default("[]")
 
   // ── 步骤模板 ──
-  // JSON: [{ order, title, description, skillRef?, promptTemplate?, assigneeRole, requiresApproval, parallelGroup, inputs, outputs }]
+  // JSON: [{ order, title, promptTemplate?, assigneeRole, requiredSkills?, requiresApproval, parallelGroup, ... }]
   stepsTemplate   String
 
   // ── 任务默认配置 ──
@@ -646,6 +724,9 @@ model TaskTemplate {
   timezone        String   @default("Asia/Shanghai")
   scheduleEnabled Boolean  @default(false)
 
+  // 审批门控：true 时从模版创建任务后，pre_check 通过前对其他参与方不可见
+  requiresApprovalGate  Boolean  @default(false)
+
   // ── 兼容旧字段（迁移过渡） ──
   approvalMode    String   @default("every")   // every | on_error | auto
   deliveryBoard   Boolean  @default(true)
@@ -654,7 +735,9 @@ model TaskTemplate {
   deliveryFile    Boolean  @default(false)
 
   // ── 可见性 ──
-  isPublic        Boolean  @default(false)     // true = 所有工作区可见
+  isDraft         Boolean  @default(false)     // true = 草稿，仅创建者/admin可见
+  isPublic        Boolean  @default(true)      // 保留向后兼容（以 visibility 为准）
+  visibility      String   @default("workspace") // public | workspace | private
   isEnabled       Boolean  @default(true)      // false = 已归档
 
   // ── 统计 ──
@@ -668,8 +751,31 @@ model TaskTemplate {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // ── 龙虾学院：课程字段 ──
+  price           Int?                        // Token 价格（null=免费）
+  courseType      String?                     // agent | human | both（null=普通模板，非课程）
+  reviewStatus    String   @default("none")   // none | pending | approved | rejected
+  reviewNote      String?                     // 审核意见
+  coverImage      String?                     // 封面图 URL
+  school          String?                     // 发布学校/机构（如"北京大学"、"龙虾学院"）
+  department      String?                     // 院系/专业/行业（如"计算机科学"、"AI"、"金融"）
+  difficulty      String?                     // 学习难度：beginner | intermediate | advanced
+
+  // ── 龙虾学院：考试 ──
+  // JSON: { passScore, questions: [{ id, type, title, points, options?, correctAnswer?, referenceAnswer?, uploadHint? }] }
+  examTemplate    String?  @db.Text           // 考试定义（null = 无考试）
+  examPassScore   Int      @default(60)       // 及格分（0-100）
+
+  // ── 龙虾学院：Principle 百宝箱 ──
+  principleTemplate  String?  @db.Text        // 出题老师提交的 Principle 草稿（Markdown）
+  principleRequired  Boolean  @default(true)  // 是否必须提交 Principle 才能发布（课程默认必须）
+
   // ── 关联 ──
   instances       Task[]   @relation("TemplateInstances")
+  enrollments     CourseEnrollment[]
+  examSubmissions ExamSubmission[]
+  comments        CourseComment[]
+  likes           CourseLike[]
 
   @@map("ScheduledTemplate")
   @@index([workspaceId, category])
@@ -714,4 +820,262 @@ model LlmUsageLog {
   createdAt       DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// 支付订单（支付宝）
+model PaymentOrder {
+  id            String    @id @default(cuid())
+  outTradeNo    String    @unique          // 商户订单号 TA_xxx
+  tradeNo       String?                    // 支付宝交易号
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  planId        String                     // 套餐ID: starter/pro/ultimate
+  amount        Int                        // 金额（分）
+  credits       Int                        // 对应积分
+  status        String    @default("pending") // pending/paid/closed/refunded
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// 日程事件
+model ScheduleEvent {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  title       String                          // 事件标题
+  description String?                         // 详细描述
+  emoji       String?   @default("📅")        // emoji 图标
+  startAt     DateTime                        // 开始时间
+  endAt       DateTime?                       // 结束时间（可选，全天事件无结束时间）
+  allDay      Boolean   @default(false)       // 是否全天事件
+  remindAt    DateTime?                       // 提醒时间（null=不提醒）
+  reminded    Boolean   @default(false)       // 是否已发送提醒
+  color       String?   @default("orange")    // 颜色标签: orange/blue/emerald/rose/purple
+  taskId      String?                         // 关联任务（可选）
+  task        Task?     @relation(fields: [taskId], references: [id])
+  source      String    @default("manual")    // 创建来源: manual/voice/agent
+  voiceText   String?                         // 语音原文（如果通过语音创建）
+  recurring   String?                         // 重复规则: daily/weekly/monthly/null
+  status      String    @default("active")    // active/completed/cancelled
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, startAt])
+  @@index([userId, status])
+  @@index([remindAt, reminded])
+}
+
+// V1.1: Skill 注册表（Hub 官方推荐 Skill 目录）
+model SkillRegistry {
+  id              String   @id @default(cuid())
+  name            String   @unique             // Skill 名称，如 "tavily-search"
+  description     String                       // Skill 用途描述
+  clawhubPackage  String?                      // ClawHub 包名（clawhub install xxx）
+  category        String   @default("general") // search, content, analysis, dev, general
+  requiresKey     Boolean  @default(false)     // 是否需要 API Key
+  keySetupGuide   String?  @db.Text            // Key 获取指南
+  alternatives    String?                      // JSON: ["替代方案1", "替代方案2"]
+  recommended     Boolean  @default(true)      // 是否推荐
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+}
+
+// ══════════ 龙虾学院 ══════════
+
+// 课程报名 — 连接学生与课程，追踪学习进度
+model CourseEnrollment {
+  id           String    @id @default(cuid())
+  userId       String
+  templateId   String
+  status         String    @default("enrolled")  // enrolled | learning | completed | graduated
+  progress       Int       @default(0)           // 0-100%
+  completedSteps String?                         // JSON: [0,1,3] — 已完成的步骤索引（human课程用）
+  taskId         String?   @unique               // 对应的 Task 实例（Agent课程=跑模板生成的任务）
+  paidTokens     Int       @default(0)           // 支付的 Token 数
+  enrolledByAgentId String?                      // 如果是 Agent 报名，记录 agentId（区分人类/Agent）
+  enrolledAt     DateTime  @default(now())
+  completedAt    DateTime?
+
+  // Principle 下发
+  principleDelivered   Boolean   @default(false)  // 是否已下发 Principle 到学员百宝箱
+  principleDeliveredAt DateTime?                  // 下发时间
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template     TaskTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  task         Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  examSubmission ExamSubmission?
+
+  @@unique([userId, templateId])
+  @@index([templateId])
+  @@index([userId])
+}
+
+// 考试提交记录
+model ExamSubmission {
+  id              String   @id @default(cuid())
+  enrollmentId    String   @unique
+  userId          String
+  templateId      String
+
+  // 答案: [{ questionId, answer, autoScore?, manualScore?, feedback? }]
+  answers         String   @db.Text
+  autoScore       Int?                        // 客观题自动得分
+  manualScore     Int?                        // 主观题人工得分
+  totalScore      Int?                        // 总分
+  maxScore        Int      @default(100)      // 满分
+  passed          Boolean  @default(false)
+
+  // 批改状态
+  gradingStatus   String   @default("pending")  // pending | auto_graded | manual_grading | graded
+  gradedBy        String?                       // 阅卷人 userId
+  gradingNote     String?                       // 阅卷备注
+
+  // 投诉
+  complaintText   String?  @db.Text
+  complaintStatus String?                       // null | pending | resolved | dismissed
+  complaintNote   String?                       // 仲裁备注
+
+  // 人机共学
+  matchedWith     String?                       // 搭档的 submissionId
+  matchReport     String?  @db.Text             // 匹配报告 JSON
+
+  submittedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  enrollment      CourseEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template        TaskTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([templateId])
+  @@index([gradingStatus])
+}
+
+// 龙虾学院：课程评论
+model CourseComment {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  templateId  String
+  template    TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  authorId    String
+  author      User     @relation("CourseCommentAuthor", fields: [authorId], references: [id])
+
+  @@index([templateId, createdAt])
+}
+
+// 龙虾学院：课程点赞
+model CourseLike {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  templateId  String
+  template    TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User     @relation("CourseLikeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, templateId])
+  @@index([templateId])
+}
+
+// ══════════ 频道群聊 ══════════
+
+// 工作区频道 — 多人+多Agent 群聊
+model Channel {
+  id          String   @id @default(cuid())
+  name        String                          // 频道名（如"大厅"、"开发讨论"）
+  slug        String                          // URL 友好标识（如"lobby"）
+  description String?
+  isDefault   Boolean  @default(false)        // 默认频道不可删除
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  messages    ChannelMessage[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+// 频道消息 — 支持人类和 Agent 发送
+model ChannelMessage {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  // 发送者（人类 userId，Agent 也通过其绑定 user 发）
+  senderId    String
+  sender      User     @relation(fields: [senderId], references: [id])
+
+  // Agent 标识
+  isFromAgent Boolean  @default(false)
+  agentId     String?                         // Agent 发送时填写
+  agentName   String?                         // 冗余存储，免 join
+
+  // 元数据：附件、@mention 等
+  metadata    String?                         // JSON: { attachments: [...], mentions: [...] }
+
+  // 所属频道
+  channelId   String
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@index([senderId])
+}
+
+// 工作区文档协同（V1.5 MVP）
+model WorkspaceDocument {
+  id          String    @id @default(cuid())
+  title       String                        // 文件标题（显示用）
+  folder      String    @default("references") // decisions | requirements | references | outputs | principles
+  content     String    @db.Text           // 文件内容（markdown/plain text/json）
+  mimeType    String    @default("text/markdown") // text/markdown | text/plain | application/json
+  fileSize    Int?                          // 字节数（近似）
+  version     Int       @default(1)        // 版本号（同名文件更新时 +1）
+
+  // 来源追踪
+  sourceType  String?   // manual | step_submit | secretary | course_completion
+  sourceStepId String?  // 来自哪个步骤提交（step_submit 时填）
+  sourceStep  TaskStep? @relation(fields: [sourceStepId], references: [id], onDelete: SetNull)
+
+  // 所属工作区
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // 上传者
+  uploaderId  String
+  uploader    User      @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, folder])
+  @@index([workspaceId, createdAt])
+  @@index([uploaderId])
+}
+
+// A2A 协议：幂等键记录（防重复写操作）
+model IdempotencyRecord {
+  id        String   @id @default(cuid())
+  key       String   @unique         // 幂等键（客户端生成）
+  method    String                    // HTTP 方法 (POST/PATCH)
+  path      String                    // API 路径
+  status    Int                       // 响应状态码
+  body      String?  @db.Text        // 响应体 JSON
+  createdAt DateTime @default(now())
+  expiresAt DateTime                  // 过期时间（24h 后自动清理）
+
+  @@index([expiresAt])
 }

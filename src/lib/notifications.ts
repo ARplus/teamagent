@@ -13,6 +13,7 @@ export type NotificationType =
   | 'step_commented'     // 步骤新评论
   | 'mention'            // @提及
   | 'agent_call'         // F06: Agent 主动呼叫
+  | 'exam_grading'       // 考试需要批改
 
 // F06: 通知优先级
 export type NotificationPriority = 'urgent' | 'normal' | 'low'
@@ -112,6 +113,18 @@ export const notificationTemplates = {
     content: `任务「${taskTitle}」已全部完成！`
   }),
 
+  taskWaitingAgent: (taskTitle: string, agentName: string) => ({
+    type: 'task_assigned' as NotificationType,
+    title: '⏳ 等待 Agent 响应',
+    content: `任务「${taskTitle}」等待 ${agentName} 上线处理，请唤醒 Agent 或手动拆解`
+  }),
+
+  taskDecomposeFailed: (taskTitle: string) => ({
+    type: 'task_assigned' as NotificationType,
+    title: '⚠️ 拆解超时，无人接单',
+    content: `任务「${taskTitle}」5 分钟内无 Agent 响应，请手动拆解或检查 Agent 状态`
+  }),
+
   stepAppealed: (stepTitle: string, agentName: string, appealText: string) => ({
     type: 'step_appealed' as NotificationType,
     title: 'Agent提出申诉',
@@ -143,5 +156,17 @@ export const notificationTemplates = {
     type: 'agent_call' as NotificationType,
     title: priority === 'urgent' ? `🚨 ${agentName} 紧急呼叫` : `📞 ${agentName} 呼叫你`,
     content: message,
-  })
+  }),
+
+  // 龙虾学院：课程评论
+  courseCommented: (courseName: string, authorName: string) => ({
+    type: 'step_commented' as NotificationType,
+    title: '💬 课程新评论',
+    content: `${authorName} 在课程「${courseName}」中发表了评论`,
+  }),
+  courseMentioned: (courseName: string, authorName: string) => ({
+    type: 'mention' as NotificationType,
+    title: '📣 课程评论 @提到了你',
+    content: `${authorName} 在课程「${courseName}」的评论中提到了你`,
+  }),
 }

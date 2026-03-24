@@ -141,6 +141,11 @@ export default function ScheduledPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800">
       <Navbar />
       <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="mb-4">
+          <a href="/" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-orange-400 transition-colors">
+            <span>←</span><span>返回首页</span>
+          </a>
+        </div>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <span>⏰</span>
@@ -174,7 +179,7 @@ export default function ScheduledPage() {
                         <span className={`w-2 h-2 rounded-full ${t.scheduleEnabled ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
                         <h3 className="text-sm font-medium text-white truncate">{t.name}</h3>
                         <span className="text-xs text-slate-400 shrink-0">
-                          {describeCron(t.schedule)}
+                          {describeCron(t.schedule ?? '')}
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-slate-500">

@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { VoiceMicButton } from '@/components/VoiceMicButton'
+// useAgentEvents 不用于聊天页（避免踢掉 Agent 的 OpenClaw SSE 连接）
 
 interface ChatAttachment {
   url: string
@@ -50,12 +51,36 @@ export default function ChatPage() {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
 
+  // 三联呼状态
+  const [calling, setCalling] = useState(false)
+  const [callFailed, setCallFailed] = useState(false)
+  const messagesRef = useRef<Message[]>([])
+  useEffect(() => { messagesRef.current = messages }, [messages])
+  // 记录最后一条真实 Agent 消息的时间（用于判断 3/5 分钟超时是否应该弹出）
+  const lastAgentMsgTimeRef = useRef<number>(Date.now())
+  const chatFetchAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const lastReal = [...messages].reverse().find(m => m.role === 'agent' && !m.pending && !m.id.startsWith('__'))
+    if (lastReal) {
+      const t = new Date(lastReal.createdAt).getTime()
+      if (t > lastAgentMsgTimeRef.current) lastAgentMsgTimeRef.current = t
+    }
+  }, [messages])
+
   // B13: 新建任务状态
   const [showNewTask, setShowNewTask] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskDesc, setNewTaskDesc] = useState('')
   const [newTaskMode, setNewTaskMode] = useState<'solo' | 'team'>('solo')
   const [creatingTask, setCreatingTask] = useState(false)
+
+  // 创建日程状态
+  const [showNewSchedule, setShowNewSchedule] = useState(false)
+  const [scheduleForm, setScheduleForm] = useState({
+    title: '', emoji: '📅', startDate: '', startTime: '09:00',
+    allDay: false, remindBefore: '30', color: 'orange', description: '',
+  })
+  const [creatingSchedule, setCreatingSchedule] = useState(false)
 
   // 认证检查
   useEffect(() => {
@@ -68,6 +93,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (session?.user) {
       loadAll()
+      // ?msg= 预填消息（来自呼叫Agent入口）
+      const preMsg = new URLSearchParams(window.location.search).get('msg')
+      if (preMsg) setInput(decodeURIComponent(preMsg))
     }
   }, [session])
 
@@ -108,17 +136,21 @@ export default function ChatPage() {
     return () => clearInterval(interval)
   }, [session])
 
-  // #3 fix: 监听 SSE chat:incoming → 立即刷新（Agent主动消息实时更新）
+  // #3 fix: 监听 SSE chat:incoming → 立即刷新（AbortController 防竞态）
   useEffect(() => {
     const handler = async () => {
       try {
-        const res = await fetch('/api/chat/history?limit=50')
+        if (chatFetchAbortRef.current) chatFetchAbortRef.current.abort()
+        chatFetchAbortRef.current = new AbortController()
+        const res = await fetch('/api/chat/history?limit=50', { signal: chatFetchAbortRef.current.signal })
         if (!res.ok) return
         const data = await res.json()
         const msgs: Message[] = data.messages || []
         setMessages(msgs)
         if (msgs.length > 0) latestMsgIdRef.current = msgs[msgs.length - 1].id
-      } catch (_) {}
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return
+      }
     }
     window.addEventListener('teamagent:chat-refresh', handler)
     return () => window.removeEventListener('teamagent:chat-refresh', handler)
@@ -265,6 +297,68 @@ export default function ChatPage() {
     }
   }
 
+  // 三联呼：向服务器发 agent:calling 事件，8s 内若没有新 Agent 消息则显示"Ta不在"
+  const handleCallAgent = useCallback(async () => {
+    if (calling) return
+    setCalling(true)
+    setCallFailed(false)
+
+    // 记录当前最新的 agent 消息 id（非 pending）
+    const lastAgentMsgId = [...messagesRef.current].reverse().find(m => m.role === 'agent' && !m.pending)?.id
+
+    // 通知服务器发送 agent:calling 给 Agent 的 SSE 连接
+    await fetch('/api/chat/call-agent', { method: 'POST' }).catch(() => {})
+
+    // 等 8 秒，看 Agent 是否回复了新消息
+    await new Promise(r => setTimeout(r, 8000))
+
+    const hasNewReply = messagesRef.current.some(m =>
+      m.role === 'agent' && !m.pending && m.id !== lastAgentMsgId && !m.id.startsWith('__')
+    )
+    if (!hasNewReply) {
+      setCallFailed(true)
+      setMessages(prev => [...prev, {
+        id: `__call_failed_${Date.now()}`,
+        content: `📵 ${agent?.name ?? 'Agent'} 是不是去摸鱼了？请给Ta三联呼！`,
+        role: 'agent' as const,
+        createdAt: new Date().toISOString(),
+      }])
+    } else {
+      setCallFailed(false)
+    }
+    setCalling(false)
+  }, [calling, agent])
+
+  // 3 / 5 分钟任务无响应提醒
+  // 只在 Agent 真的沉默（最近 3/5 分钟内没有新消息）才弹出，对话中不打扰
+  useEffect(() => {
+    if (stats.inProgress === 0) return
+    const agentName = agent?.name ?? 'Agent'
+    const t3 = setTimeout(() => {
+      const silentMs = Date.now() - lastAgentMsgTimeRef.current
+      if (silentMs >= 3 * 60 * 1000) {
+        setMessages(prev => [...prev, {
+          id: `__timeout3_${Date.now()}`,
+          content: `⏱ 任务进行中已 3 分钟无响应，${agentName} 可能离线，试试右上角 📞 三联呼！`,
+          role: 'agent' as const,
+          createdAt: new Date().toISOString(),
+        }])
+      }
+    }, 3 * 60 * 1000)
+    const t5 = setTimeout(() => {
+      const silentMs = Date.now() - lastAgentMsgTimeRef.current
+      if (silentMs >= 5 * 60 * 1000) {
+        setMessages(prev => [...prev, {
+          id: `__timeout5_${Date.now()}`,
+          content: `⚠️ 已等待 5 分钟，建议点右上角 📞 呼叫 ${agentName} 上线！`,
+          role: 'agent' as const,
+          createdAt: new Date().toISOString(),
+        }])
+      }
+    }, 5 * 60 * 1000)
+    return () => { clearTimeout(t3); clearTimeout(t5) }
+  }, [stats.inProgress, agent?.name])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -309,6 +403,42 @@ export default function ChatPage() {
     }
   }
 
+  // 创建日程
+  const createSchedule = async () => {
+    if (!scheduleForm.title.trim() || !scheduleForm.startDate || creatingSchedule) return
+    setCreatingSchedule(true)
+    try {
+      const startAt = scheduleForm.allDay
+        ? new Date(scheduleForm.startDate + 'T00:00:00').toISOString()
+        : new Date(scheduleForm.startDate + 'T' + scheduleForm.startTime + ':00').toISOString()
+      let remindAt = null
+      if (scheduleForm.remindBefore !== 'none') {
+        const mins = parseInt(scheduleForm.remindBefore)
+        remindAt = new Date(new Date(startAt).getTime() - mins * 60 * 1000).toISOString()
+      }
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: scheduleForm.title, emoji: scheduleForm.emoji, startAt,
+          allDay: scheduleForm.allDay, remindAt, color: scheduleForm.color,
+          description: scheduleForm.description || null,
+        }),
+      })
+      if (res.ok) {
+        setShowNewSchedule(false)
+        setScheduleForm({ title: '', emoji: '📅', startDate: '', startTime: '09:00', allDay: false, remindBefore: '30', color: 'orange', description: '' })
+        sendMessage(`📅 我刚创建了日程「${scheduleForm.title}」，请帮我记住哦！`)
+      } else {
+        alert('创建日程失败')
+      }
+    } catch {
+      alert('网络错误，请重试')
+    } finally {
+      setCreatingSchedule(false)
+    }
+  }
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -324,16 +454,12 @@ export default function ChatPage() {
       <header className="flex-shrink-0 border-b border-white/10 bg-slate-900/95 sticky top-0 z-30" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
 
-          {/* 左：返回 */}
-          <button onClick={() => router.push('/')} className="text-white/60 hover:text-white text-sm">
-            ← 任务
-          </button>
-
-          {/* 中：Agent 信息 + 呼叫按钮 */}
+          {/* 左：返回 + Agent 头像 + 昵称 + 电话 */}
           <div className="flex items-center gap-2">
+            <a href="/" className="text-white/40 hover:text-orange-400 transition-colors mr-1" title="返回首页">←</a>
             {agent ? (
               <>
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-sm font-bold">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
                   {agent.name?.charAt(0) || '🦞'}
                 </div>
                 <div>
@@ -343,31 +469,50 @@ export default function ChatPage() {
                     {agent.status === 'online' ? '在线' : '忙碌中'}
                   </div>
                 </div>
-                <button
-                  onClick={() => sendMessage(`📞 呼叫 ${agent.name}！请来移动端回复～`)}
-                  disabled={loading}
-                  title="呼叫 Agent"
-                  className="w-7 h-7 flex items-center justify-center text-white/40 hover:text-orange-400 disabled:opacity-30 transition-colors ml-1"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                    <path fillRule="evenodd" d="M2 3.5A1.5 1.5 0 013.5 2h1.148a1.5 1.5 0 011.465 1.175l.716 3.223a1.5 1.5 0 01-1.052 1.767l-.933.267c-.41.117-.643.555-.48.95a11.542 11.542 0 006.254 6.254c.395.163.833-.07.95-.48l.267-.933a1.5 1.5 0 011.767-1.052l3.223.716A1.5 1.5 0 0118 15.352V16.5a1.5 1.5 0 01-1.5 1.5H15c-1.149 0-2.263-.15-3.326-.43A13.022 13.022 0 012.43 8.326 13.019 13.019 0 012 5V3.5z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handleCallAgent}
+                    disabled={calling}
+                    title={calling ? '呼叫中...' : '三联呼 Agent'}
+                    className={`w-10 h-10 flex items-center justify-center rounded-full transition-all touch-manipulation
+                      ${calling
+                        ? 'text-orange-400 animate-pulse bg-orange-500/20'
+                        : 'text-orange-400 active:bg-orange-500/30 hover:text-orange-300 hover:bg-orange-500/20'
+                      } disabled:opacity-60`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                      <path fillRule="evenodd" d="M2 3.5A1.5 1.5 0 013.5 2h1.148a1.5 1.5 0 011.465 1.175l.716 3.223a1.5 1.5 0 01-1.052 1.767l-.933.267c-.41.117-.643.555-.48.95a11.542 11.542 0 006.254 6.254c.395.163.833-.07.95-.48l.267-.933a1.5 1.5 0 011.767-1.052l3.223.716A1.5 1.5 0 0118 15.352V16.5a1.5 1.5 0 01-1.5 1.5H15c-1.149 0-2.263-.15-3.326-.43A13.022 13.022 0 012.43 8.326 13.019 13.019 0 012 5V3.5z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  {callFailed && (
+                    <span className="text-[10px] text-rose-400 animate-pulse font-medium">Ta不在</span>
+                  )}
+                </div>
               </>
             ) : (
               <div className="text-white/60 text-sm">未配对 Agent</div>
             )}
           </div>
 
-          {/* 右：任务统计 */}
-          <div className="flex flex-col items-end gap-0.5">
-            <div className="flex items-center gap-1">
-              <span className="text-orange-400 text-xs font-bold">{stats.inProgress}</span>
-              <span className="text-white/40 text-xs">进行中</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-emerald-400 text-xs font-bold">{stats.done}</span>
-              <span className="text-white/40 text-xs">已完成</span>
+          {/* 右：日程快捷 + 任务统计 */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/calendar')}
+              title="日程表"
+              className="w-8 h-8 rounded-xl bg-white/10 hover:bg-orange-500/20 flex items-center justify-center text-white/60 hover:text-orange-400 transition-colors"
+            >
+              📅
+            </button>
+            <div className="flex flex-col items-end gap-0.5">
+              <div className="flex items-center gap-1">
+                <span className="text-orange-400 text-xs font-bold">{stats.inProgress}</span>
+                <span className="text-white/40 text-xs">待处理</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-emerald-400 text-xs font-bold">{stats.done}</span>
+                <span className="text-white/40 text-xs">已完成</span>
+              </div>
             </div>
           </div>
 
@@ -413,7 +558,7 @@ export default function ChatPage() {
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] rounded-2xl ${msg.pending ? 'px-4 py-3' : msgAttachments.length > 0 ? '' : 'px-4 py-2.5'} ${
                   msg.role === 'user'
-                    ? 'bg-orange-500 text-white rounded-br-md'
+                    ? 'bg-gradient-to-br from-orange-400 via-orange-500 to-rose-500 text-white rounded-br-md'
                     : 'bg-white/10 text-white/90 rounded-bl-md'
                 } overflow-hidden`}>
                   {msg.pending ? (
@@ -554,6 +699,166 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* 创建日程弹窗 */}
+      {showNewSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => !creatingSchedule && setShowNewSchedule(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative w-full max-w-lg mx-4 bg-slate-800 border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 标题栏 */}
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-500/10 to-orange-500/10">
+              <h3 className="text-white font-medium flex items-center gap-2">
+                <span className="text-lg">{scheduleForm.emoji}</span> 创建日程
+              </h3>
+              <button onClick={() => setShowNewSchedule(false)} className="text-white/40 hover:text-white text-lg">✕</button>
+            </div>
+
+            <div className="px-5 py-5 space-y-4">
+              {/* 标题 + 语音 */}
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">日程标题</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={scheduleForm.title}
+                    onChange={e => setScheduleForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="例如：团队周会、产品评审..."
+                    autoFocus
+                    className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); createSchedule() } }}
+                  />
+                  <VoiceMicButton variant="dark" size="sm"
+                    onResult={(text) => setScheduleForm(f => ({ ...f, title: f.title ? f.title + ' ' + text : text }))} append />
+                </div>
+              </div>
+
+              {/* 日期 + 时间 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">日期</label>
+                  <input
+                    type="date"
+                    value={scheduleForm.startDate}
+                    onChange={e => setScheduleForm(f => ({ ...f, startDate: e.target.value }))}
+                    className="w-full bg-white/10 text-white text-sm rounded-xl px-3 py-2.5 border border-white/20 outline-none focus:ring-2 focus:ring-orange-500/50"
+                  />
+                </div>
+                {!scheduleForm.allDay && (
+                  <div>
+                    <label className="text-xs text-white/50 mb-1 block">时间</label>
+                    <input
+                      type="time"
+                      value={scheduleForm.startTime}
+                      onChange={e => setScheduleForm(f => ({ ...f, startTime: e.target.value }))}
+                      className="w-full bg-white/10 text-white text-sm rounded-xl px-3 py-2.5 border border-white/20 outline-none focus:ring-2 focus:ring-orange-500/50"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Emoji 选择 */}
+              <div>
+                <label className="text-xs text-white/50 mb-1.5 block">图标</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {['📅', '🗓️', '🍽️', '🏃', '💼', '📞', '🎂', '📝', '💻', '🤝', '📚', '✈️', '🏥', '📦'].map(e => (
+                    <button
+                      key={e}
+                      onClick={() => setScheduleForm(f => ({ ...f, emoji: e }))}
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg transition ${scheduleForm.emoji === e ? 'bg-orange-500/20 ring-1 ring-orange-500 scale-110' : 'hover:bg-white/10'}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 颜色 + 提醒 + 全天 */}
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/50">颜色</span>
+                  {['orange', 'blue', 'emerald', 'rose', 'purple'].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setScheduleForm(f => ({ ...f, color: c }))}
+                      className={`w-5 h-5 rounded-full transition ${
+                        c === 'orange' ? 'bg-orange-500' : c === 'blue' ? 'bg-blue-500' : c === 'emerald' ? 'bg-emerald-500' : c === 'rose' ? 'bg-rose-500' : 'bg-purple-500'
+                      } ${scheduleForm.color === c ? 'ring-2 ring-offset-2 ring-offset-slate-800 ring-white scale-110' : 'opacity-60 hover:opacity-100'}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/50">提醒</span>
+                  <select
+                    value={scheduleForm.remindBefore}
+                    onChange={e => setScheduleForm(f => ({ ...f, remindBefore: e.target.value }))}
+                    className="bg-white/10 text-white text-xs rounded-lg px-2 py-1.5 border border-white/20 outline-none"
+                  >
+                    <option value="none">不提醒</option>
+                    <option value="5">5分钟前</option>
+                    <option value="15">15分钟前</option>
+                    <option value="30">30分钟前</option>
+                    <option value="60">1小时前</option>
+                    <option value="1440">1天前</option>
+                  </select>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-white/50 ml-auto cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scheduleForm.allDay}
+                    onChange={e => setScheduleForm(f => ({ ...f, allDay: e.target.checked }))}
+                    className="rounded border-slate-600"
+                  />
+                  全天
+                </label>
+              </div>
+
+              {/* 备注 + 语音 */}
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">备注</label>
+                <div className="flex items-start gap-2">
+                  <textarea
+                    value={scheduleForm.description}
+                    onChange={e => setScheduleForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder="备注信息（可选）..."
+                    rows={2}
+                    className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                  />
+                  <VoiceMicButton variant="dark" size="sm" className="mt-2"
+                    onResult={(text) => setScheduleForm(f => ({ ...f, description: f.description ? f.description + ' ' + text : text }))} append />
+                </div>
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-5 py-4 border-t border-white/10 flex justify-between items-center">
+              <button
+                onClick={() => router.push('/calendar')}
+                className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+              >
+                打开日程表 →
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowNewSchedule(false)}
+                  disabled={creatingSchedule}
+                  className="px-4 py-2 text-white/60 hover:text-white text-sm rounded-lg transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={createSchedule}
+                  disabled={!scheduleForm.title.trim() || !scheduleForm.startDate || creatingSchedule}
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 disabled:bg-white/20 disabled:from-transparent disabled:to-transparent disabled:text-white/40 text-white text-sm font-medium rounded-xl transition-colors shadow-lg shadow-orange-500/20"
+                >
+                  {creatingSchedule ? '⏳ 创建中...' : '✓ 创建日程'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <footer className="flex-shrink-0 border-t border-white/10 bg-slate-900/95 mb-16 md:mb-0">
         <div className="max-w-2xl mx-auto px-4 py-3">
@@ -586,8 +891,8 @@ export default function ChatPage() {
           )}
           {/* 隐藏文件input */}
           <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.doc,.docx,.txt,.md,.zip" multiple className="hidden" onChange={handleFileUpload} />
-          {/* 工具栏：新建任务 + 上传 + 成长（右移避开左侧麦克风） */}
-          <div className="flex items-center gap-2 mb-2 ml-12">
+          {/* 快捷工具栏 */}
+          <div className="flex items-center gap-2 mb-2">
             <button
               onClick={() => setShowNewTask(true)}
               disabled={!agent}
@@ -595,6 +900,17 @@ export default function ChatPage() {
               className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-orange-500/20 disabled:opacity-30 text-white/60 hover:text-orange-400 rounded-full transition-colors text-xs"
             >
               📋 <span>新建</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowNewSchedule(true)
+                setScheduleForm(f => ({ ...f, startDate: new Date().toISOString().split('T')[0] }))
+              }}
+              disabled={!agent}
+              title="快速创建日程"
+              className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-purple-500/20 disabled:opacity-30 text-white/60 hover:text-purple-400 rounded-full transition-colors text-xs"
+            >
+              📅 <span>日程</span>
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -624,28 +940,29 @@ export default function ChatPage() {
               🌱 <span>成长</span>
             </button>
           </div>
-          {/* 输入行：🎤 + textarea + 发送 */}
+          {/* 输入行：textarea（内含🎤）+ 发送 */}
           <div className="flex items-end gap-2">
-            {/* 语音输入按钮 */}
-            <VoiceMicButton
-              variant="dark"
-              size="lg"
-              className="flex-shrink-0 mb-1"
-              onResult={(text) => setInput(prev => prev ? prev + ' ' + text : text)}
-              append
-            />
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={agent ? `对 ${agent.name} 说点什么...` : '先配对 Agent...'}
+                placeholder={agent ? `和${agent.name}说话...` : '先配对 Agent...'}
                 disabled={!agent || loading}
                 rows={1}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-2xl text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 disabled:opacity-50"
+                className="w-full pl-4 pr-12 py-3 bg-white/10 border border-white/20 rounded-2xl text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 disabled:opacity-50"
                 style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
               />
+              {/* 🎤 语音按钮在输入框内右侧 */}
+              <div className="absolute right-2 bottom-1.5">
+                <VoiceMicButton
+                  variant="dark"
+                  size="sm"
+                  onResult={(text) => setInput(prev => prev ? prev + ' ' + text : text)}
+                  append
+                />
+              </div>
             </div>
             <button
               onClick={() => sendMessage()}

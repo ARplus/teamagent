@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { isValidCron, computeNextRun } from '@/lib/cron-utils'
+import { validateExamTemplate } from '@/lib/exam-validation'
 
 // 统一认证（返回 source 区分 Agent vs 人类）
 async function authenticate(req: NextRequest) {
@@ -30,32 +31,44 @@ export async function GET(req: NextRequest) {
     const skill = searchParams.get('skill')
     const q = searchParams.get('q')
 
-    // 默认取用户的工作区
+    // 取用户所在的所有工作区 ID（workspace-scoped 模版对所有成员可见）
+    const allMemberships = await prisma.workspaceMember.findMany({
+      where: { userId: auth.userId },
+      select: { workspaceId: true, role: true },
+    })
+    const memberWorkspaceIds = allMemberships.map(m => m.workspaceId)
+
+    // 默认 workspaceId：优先 owner 的工作区，用于 admin 草稿可见判断
     if (!workspaceId) {
-      const membership = await prisma.workspaceMember.findFirst({
-        where: { userId: auth.userId, role: 'owner' },
-        select: { workspaceId: true },
-      })
-      workspaceId = membership?.workspaceId || null
-      if (!workspaceId) {
-        const any = await prisma.workspaceMember.findFirst({
-          where: { userId: auth.userId },
-          select: { workspaceId: true },
-        })
-        workspaceId = any?.workspaceId || null
-      }
+      workspaceId =
+        allMemberships.find(m => m.role === 'owner')?.workspaceId ||
+        allMemberships[0]?.workspaceId ||
+        null
     }
 
-    if (!workspaceId) {
-      return NextResponse.json({ error: '未找到工作区' }, { status: 400 })
-    }
+    // 无 workspace 成员资格（如新注册 Agent）→ 只返回公开模版，不报错
 
-    // 构建查询条件
+    // 查询用户在 workspaceId 的角色（admin/owner 可以看到 draft）
+    const isAdmin = allMemberships.some(
+      m => m.workspaceId === workspaceId && (m.role === 'owner' || m.role === 'admin')
+    )
+
+    // 构建查询条件（visibility 三级过滤）
     const where: any = {
       isEnabled: true,
       OR: [
-        { workspaceId },         // 本工作区的模版
-        { isPublic: true },      // 公开模版
+        // 公开模版：所有人可见
+        { visibility: 'public', isDraft: false },
+        // 工作区模版：用户所在的任意工作区均可见（App Store 原则：加入了工作区就能看到模版）
+        { workspaceId: { in: memberWorkspaceIds }, visibility: 'workspace', isDraft: false },
+        // 私有模版：仅创建者可见
+        { creatorId: auth.userId, visibility: 'private', isDraft: false },
+        // 草稿：创建者可见
+        { creatorId: auth.userId, isDraft: true },
+        // admin/owner 可见本工作区所有草稿
+        ...(isAdmin ? [{ workspaceId, isDraft: true }] : []),
+        // 兼容旧数据：isPublic=true 但 visibility 未迁移的
+        { isPublic: true, isDraft: false },
       ],
     }
 
@@ -63,13 +76,18 @@ export async function GET(req: NextRequest) {
       where.category = category
     }
 
+    // 排除课程（courseType 不为空的是学院课程，不在模版库显示）
+    if (!searchParams.get('includeCourses')) {
+      where.courseType = null
+    }
+
     const templates = await prisma.taskTemplate.findMany({
       where,
       include: {
-        creator: { select: { id: true, name: true, avatar: true } },
+        creator: { select: { id: true, name: true, avatar: true, agent: { select: { name: true } } } },
         _count: { select: { instances: true } },
       },
-      orderBy: [{ useCount: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ isDraft: 'asc' }, { useCount: 'desc' }, { createdAt: 'desc' }],
     })
 
     // 应用文本搜索过滤（q 参数）
@@ -106,11 +124,6 @@ export async function POST(req: NextRequest) {
     const auth = await authenticate(req)
     if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
-    // 只有 Agent（API Token 认证）可以创建模版
-    if (auth.source !== 'agent') {
-      return NextResponse.json({ error: '模版只能由 Agent 创建，请告诉你的 Agent 来创建' }, { status: 403 })
-    }
-
     const body = await req.json()
     const {
       name,
@@ -126,17 +139,38 @@ export async function POST(req: NextRequest) {
       timezone = 'Asia/Shanghai',
       sourceType = 'manual',
       sourceTaskId,
-      isPublic = false,
+      isPublic = true,
+      isDraft = false,
+      visibility: visibilityInput,  // 'public' | 'workspace' | 'private'
       workspaceId: reqWorkspaceId,
+      executionProtocol,
       // 兼容旧字段
       approvalMode = 'every',
+      // 课程字段
+      courseType,
+      price,
+      coverImage,
+      difficulty,
+      school,
+      department,
+      // 考试字段
+      examTemplate,
+      examPassScore,
+      // Principle 百宝箱
+      principleTemplate,
     } = body
+
+    // 课程或普通模板均可由人类/Agent 创建
 
     // 校验必填
     if (!name) {
       return NextResponse.json({ error: '请填写模版名称' }, { status: 400 })
     }
-    if (!stepsTemplate || !Array.isArray(stepsTemplate) || stepsTemplate.length === 0) {
+    // 兼容 string 传参（api CLI 用 JSON 文件发送时会传字符串）
+    const stepsArr = typeof stepsTemplate === 'string'
+      ? (() => { try { return JSON.parse(stepsTemplate) } catch { return null } })()
+      : stepsTemplate
+    if (!stepsArr || !Array.isArray(stepsArr) || stepsArr.length === 0) {
       return NextResponse.json({ error: '步骤模板不能为空' }, { status: 400 })
     }
 
@@ -148,6 +182,15 @@ export async function POST(req: NextRequest) {
         select: { workspaceId: true },
       })
       workspaceId = membership?.workspaceId
+    }
+    // fallback: 非 owner 也能找到工作区
+    if (!workspaceId) {
+      const anyMembership = await prisma.workspaceMember.findFirst({
+        where: { userId: auth.userId },
+        select: { workspaceId: true },
+        orderBy: { joinedAt: 'asc' },
+      })
+      workspaceId = anyMembership?.workspaceId || null
     }
     if (!workspaceId) {
       return NextResponse.json({ error: '未找到工作区' }, { status: 400 })
@@ -178,6 +221,27 @@ export async function POST(req: NextRequest) {
       nextRunAt = computeNextRun(schedule, timezone)
     }
 
+    // v15: correctAnswer 格式校验（创建时闭环）
+    if (examTemplate) {
+      const examJson = typeof examTemplate === 'string' ? examTemplate : JSON.stringify(examTemplate)
+      const validationErrors = validateExamTemplate(examJson)
+      if (validationErrors.length > 0) {
+        return NextResponse.json({
+          error: '考试模板校验失败',
+          details: validationErrors,
+        }, { status: 400 })
+      }
+    }
+
+    // Bug3 防御：确保不会 double-stringify（前端可能传 string 或 object）
+    const safeStringify = (val: any): string => {
+      if (typeof val === 'string') {
+        // 已经是 string，验证是否合法 JSON
+        try { JSON.parse(val); return val } catch { /* fallthrough */ }
+      }
+      return JSON.stringify(val)
+    }
+
     const template = await prisma.taskTemplate.create({
       data: {
         name,
@@ -185,24 +249,43 @@ export async function POST(req: NextRequest) {
         icon: icon || null,
         category,
         tags: Array.isArray(tags) ? JSON.stringify(tags) : (tags || null),
-        variables: JSON.stringify(variables),
-        stepsTemplate: JSON.stringify(stepsTemplate),
+        variables: safeStringify(variables),
+        stepsTemplate: safeStringify(stepsTemplate),
         defaultMode,
         defaultPriority,
         schedule: schedule || null,
         timezone,
         scheduleEnabled: !!schedule,
         approvalMode,
-        isPublic,
+        isPublic: isDraft ? false : (visibilityInput === 'public' || isPublic),
+        visibility: isDraft ? 'private' : (['public','workspace','private'].includes(visibilityInput) ? visibilityInput : (isPublic ? 'public' : 'workspace')),
+        isDraft,
         isEnabled: true,
         sourceTaskId: sourceTaskId || null,
+        executionProtocol: executionProtocol || null,
         sourceType,
         workspaceId,
         creatorId: auth.userId,
         nextRunAt,
+        // 课程字段
+        ...(courseType && { courseType }),
+        ...(price !== undefined && price !== null && price !== '' && { price: Number(price) }),
+        ...(coverImage && { coverImage }),
+        ...(difficulty !== undefined && { difficulty: difficulty || null }),
+        ...(school !== undefined && { school: school || null }),
+        ...(department !== undefined && { department: department || null }),
+        // 考试字段（v15 闭环）
+        ...(examTemplate && {
+          examTemplate: typeof examTemplate === 'string' ? examTemplate : JSON.stringify(examTemplate),
+        }),
+        ...(examPassScore !== undefined && examPassScore !== null && { examPassScore: Number(examPassScore) }),
+        // Principle 百宝箱（DB 字段是 String，object 需序列化）
+        ...(principleTemplate !== undefined && principleTemplate !== null && {
+          principleTemplate: typeof principleTemplate === 'string' ? principleTemplate : JSON.stringify(principleTemplate),
+        }),
       },
       include: {
-        creator: { select: { id: true, name: true, avatar: true } },
+        creator: { select: { id: true, name: true, avatar: true, agent: { select: { name: true } } } },
       },
     })
 

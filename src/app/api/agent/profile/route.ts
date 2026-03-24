@@ -103,6 +103,10 @@ export async function GET(req: NextRequest) {
         reputation: agent.reputation,
         claimedAt: agent.claimedAt,
         pairingCode: agent.pairingCode,
+        onboardingStatus: agent.onboardingStatus,  // 🆕 training | graduated
+        growthLevel: agent.growthLevel,
+        growthXP: agent.growthXP,
+        soul: agent.soul ? agent.soul.substring(0, 200) : null,
         user: agent.user
       },
       stats: {
@@ -137,10 +141,13 @@ export async function PATCH(req: NextRequest) {
     if (!agent) return NextResponse.json({ error: '你还没有 Agent' }, { status: 404 })
 
     const body = await req.json()
-    const { name, personality, capabilities } = body
+    const { name, personality, capabilities, soul, onboardingStatus } = body
 
     if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
       return NextResponse.json({ error: '名字不能为空' }, { status: 400 })
+    }
+    if (onboardingStatus !== undefined && !['training', 'graduated'].includes(onboardingStatus)) {
+      return NextResponse.json({ error: 'onboardingStatus 只能是 training 或 graduated' }, { status: 400 })
     }
 
     const updated = await prisma.agent.update({
@@ -149,10 +156,15 @@ export async function PATCH(req: NextRequest) {
         ...(name !== undefined && { name: name.trim() }),
         ...(personality !== undefined && { personality: personality.trim() || null }),
         ...(capabilities !== undefined && { capabilities: JSON.stringify(capabilities) }),
+        ...(soul !== undefined && { soul }),
+        ...(onboardingStatus !== undefined && { onboardingStatus }),
       }
     })
 
-    return NextResponse.json({ ok: true, agent: { id: updated.id, name: updated.name, personality: updated.personality } })
+    return NextResponse.json({
+      ok: true,
+      agent: { id: updated.id, name: updated.name, personality: updated.personality, onboardingStatus: updated.onboardingStatus }
+    })
   } catch (error) {
     console.error('更新 Agent 档案失败:', error)
     return NextResponse.json({ error: '服务器错误' }, { status: 500 })

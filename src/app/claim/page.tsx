@@ -10,10 +10,16 @@ export default function ClaimCodePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const trimmedCode = code.trim()
+  const isPairingCode = /^[a-zA-Z0-9]{4,6}$/.test(trimmedCode)  // 4-6位字母数字配对码
+  const isAgentId = /^[a-z0-9]{20,}$/i.test(trimmedCode)        // 长ID
+  const isValidInput = isPairingCode || isAgentId
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!code.trim() || code.length !== 6) {
-      setError('请输入6位配对码')
+    const trimmed = code.trim()
+    if (!trimmed) {
+      setError('请输入配对码或 Agent ID')
       return
     }
 
@@ -21,7 +27,11 @@ export default function ClaimCodePage() {
     setError(null)
 
     try {
-      const res = await fetch(`/api/agent/claim?code=${code}`)
+      // 短码(4-6位) → 配对码；长码(20+) → Agent ID
+      const query = trimmed.length <= 6
+        ? `code=${trimmed}`
+        : `agentId=${trimmed}`
+      const res = await fetch(`/api/agent/claim?${query}`)
       const data = await res.json()
 
       if (!res.ok) {
@@ -54,7 +64,7 @@ export default function ClaimCodePage() {
         <div className="text-center mb-6">
           <div className="text-6xl mb-4">🔗</div>
           <h1 className="text-2xl font-bold text-slate-900">输入配对码</h1>
-          <p className="text-slate-600 mt-2">输入 Agent 提供的6位配对码</p>
+          <p className="text-slate-600 mt-2">输入 Agent 提供的配对码或 Agent ID</p>
         </div>
 
         {error && (
@@ -68,17 +78,18 @@ export default function ClaimCodePage() {
             <input
               type="text"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
-              className="w-full text-center text-4xl tracking-[0.5em] font-mono px-4 py-6 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-500/50 outline-none"
-              maxLength={6}
+              onChange={(e) => setCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+              placeholder="配对码 或 Agent ID"
+              className={`w-full text-center font-mono px-4 py-6 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-500/50 outline-none ${
+                code.length <= 6 ? 'text-4xl tracking-[0.5em]' : 'text-lg tracking-normal'
+              }`}
               autoFocus
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading || code.length !== 6}
+            disabled={loading || !isValidInput}
             className="w-full px-6 py-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-medium hover:from-orange-600 hover:to-rose-600 transition disabled:opacity-50"
           >
             {loading ? '验证中...' : '验证配对码'}

@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
         isMainAgent: false,
         claimedAt: new Date(),
         parentAgentId: callerAgent.id,
+        onboardingStatus: 'training',  // 🆕 新兵训练营
       }
     })
 

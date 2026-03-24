@@ -50,6 +50,8 @@ interface WorkspaceMember {
 interface WorkspaceData {
   workspaceId: string
   workspaceName: string
+  workspaceType: string
+  workspaceOrgType: string | null
   members: WorkspaceMember[]
 }
 
@@ -237,7 +239,7 @@ function MyAgentCard({ agent, liveStatus }: { agent: AgentData; liveStatus: stri
   const pct = total > 0 ? Math.round((agent.stats.doneSteps / total) * 100) : 0
 
   return (
-    <a href="/?t=chat" className="block">
+    <a href="/chat" className="block">
       <div className="rounded-2xl overflow-hidden shadow-md shadow-orange-500/10 border border-slate-700 hover:border-orange-500/40 transition-all">
         <div className="bg-gradient-to-br from-orange-500 to-rose-500 p-5">
           <div className="flex items-center justify-between mb-3">
@@ -326,66 +328,131 @@ function SubAgentCard({ agent }: { agent: AgentData }) {
   )
 }
 
-// ============ Create Sub Agent Modal ============
-function CreateSubAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = useState('')
-  const [personality, setPersonality] = useState('')
-  const [capInput, setCapInput] = useState('')
-  const [caps, setCaps] = useState<string[]>([])
-  const [creating, setCreating] = useState(false)
-  const [result, setResult] = useState<{ token: string; agentName: string } | null>(null)
-  const [error, setError] = useState('')
+// ============ Create Agent 军团 Modal ============
+function ResultPanel({ results, onClose }: { results: { agentName: string; token: string; agentId: string }[]; onClose: () => void }) {
+  const [copiedAll, setCopiedAll] = useState(false)
 
-  const addCap = () => {
-    const v = capInput.trim()
-    if (v && !caps.includes(v)) { setCaps([...caps, v]); setCapInput('') }
-  }
-  const removeCap = (c: string) => setCaps(caps.filter(x => x !== c))
-
-  const handleCreate = async () => {
-    if (!name.trim() || creating) return
-    setCreating(true); setError('')
-    try {
-      const res = await fetch('/api/agents/create-sub', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          capabilities: caps,
-          personality: personality.trim() || undefined
-        })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setResult({ token: data.token, agentName: data.agent.name })
-        onCreated()
-      } else {
-        setError(data.error || '创建失败')
-      }
-    } catch { setError('网络错误，请重试') }
-    finally { setCreating(false) }
+  const copyAll = () => {
+    const text = results.map(r =>
+      `${r.agentName}\n  token: ${r.token}\n  激活: teamagent set-token ${r.token}`
+    ).join('\n\n')
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedAll(true)
+      setTimeout(() => setCopiedAll(false), 2500)
+    })
   }
 
-  // Show token result
-  if (result) return (
+  return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="text-center">
           <div className="text-4xl mb-2">🎉</div>
-          <h3 className="text-lg font-bold text-white">{result.agentName} 创建成功！</h3>
-          <p className="text-sm text-slate-400 mt-1">以下是 Agent 的 API Token，请妥善保管</p>
+          <h3 className="text-lg font-bold text-white">
+            {results.length === 1 ? `${results[0].agentName} 创建成功！` : `${results.length} 位 Agent 创建成功！`}
+          </h3>
+          <p className="text-sm text-slate-400 mt-1">已加入你的 Agent 军团</p>
         </div>
-        <div className="bg-slate-900 rounded-xl p-3 border border-slate-700">
-          <p className="text-xs text-slate-500 mb-1">API Token（仅显示一次）</p>
-          <p className="text-xs text-orange-300 font-mono break-all select-all">{result.token}</p>
+        <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700 space-y-3 max-h-64 overflow-y-auto">
+          {results.map((r, i) => (
+            <TokenRow key={i} agentName={r.agentName} token={r.token} />
+          ))}
         </div>
-        <p className="text-xs text-slate-500 text-center">⚠️ 请复制保存此 Token，关闭后无法再次查看</p>
+        <div className="bg-amber-500/10 rounded-xl p-3 border border-amber-500/20">
+          <p className="text-xs text-amber-400">⚠️ Token 仅在此页面显示一次，请立即复制给 Agent 激活</p>
+        </div>
+        {results.length > 1 && (
+          <button onClick={copyAll}
+            className={`w-full py-2 rounded-xl text-sm font-semibold transition border ${copiedAll ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
+            {copiedAll ? '✓ 已复制全部 Token' : `📋 一键复制全部 ${results.length} 个 Token`}
+          </button>
+        )}
         <button onClick={onClose}
           className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:opacity-90 transition">
-          我已保存，关闭
+          好的，去训练他们！
         </button>
       </div>
     </div>
+  )
+}
+
+function TokenRow({ agentName, token }: { agentName: string; token: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(token).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-emerald-400">✓</span>
+        <span className="text-slate-200 font-medium">{agentName}</span>
+      </div>
+      <div className="flex items-center gap-1.5 pl-5">
+        <code className="flex-1 min-w-0 text-[10px] text-orange-300 bg-slate-800 px-2 py-1 rounded font-mono break-all select-all">{token}</code>
+        <button
+          onClick={copy}
+          title="点击复制"
+          className={`shrink-0 text-xs px-2 py-1 rounded transition ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-slate-200'}`}>
+          {copied ? '✓' : '复制'}
+        </button>
+      </div>
+      <p className="text-[10px] text-slate-500 pl-5">激活：<code className="text-slate-400">teamagent set-token {token}</code></p>
+    </div>
+  )
+}
+
+function CreateSubAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [count, setCount] = useState(1)
+  const [teamName, setTeamName] = useState('')
+  const [goal, setGoal] = useState('')
+  const [styleInput, setStyleInput] = useState('')
+  const [styles, setStyles] = useState<string[]>([])
+  const [creating, setCreating] = useState(false)
+  const [creatingIndex, setCreatingIndex] = useState(0)
+  const [results, setResults] = useState<{ agentName: string; token: string; agentId: string }[] | null>(null)
+  const [error, setError] = useState('')
+
+  const addStyle = () => {
+    const v = styleInput.trim()
+    if (v && !styles.includes(v)) { setStyles([...styles, v]); setStyleInput('') }
+  }
+  const removeStyle = (s: string) => setStyles(styles.filter(x => x !== s))
+
+  const canCreate = teamName.trim().length > 0
+
+  const handleCreate = async () => {
+    if (!canCreate || creating) return
+    setCreating(true); setError('')
+    try {
+      const created: { agentName: string; token: string; agentId: string }[] = []
+      for (let i = 0; i < count; i++) {
+        setCreatingIndex(i + 1)
+        const name = count === 1 ? teamName.trim() : `${teamName.trim()}-${i + 1}`
+        const res = await fetch('/api/agents/create-sub', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            personality: goal.trim() || undefined,
+            capabilities: styles.length > 0 ? styles : undefined,
+          })
+        })
+        const data = await res.json()
+        if (!res.ok) { setError(data.error || '创建失败'); return }
+        created.push({ agentName: name, token: data.token, agentId: data.agent.id })
+      }
+
+      setResults(created)
+      onCreated()
+    } catch { setError('网络错误，请重试') }
+    finally { setCreating(false) }
+  }
+
+  // 成功界面
+  if (results) return (
+    <ResultPanel results={results} onClose={onClose} />
   )
 
   return (
@@ -393,45 +460,77 @@ function CreateSubAgentModal({ onClose, onCreated }: { onClose: () => void; onCr
       <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <span>⚙️</span> 创建子 Agent
+            <span>⚔️</span> 创建 Agent 军团
           </h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-lg">✕</button>
         </div>
 
-        <p className="text-xs text-slate-500">子 Agent 归属于你的主 Agent，可以执行分配的任务步骤</p>
+        <p className="text-xs text-slate-500">填团队方向，名字和职责由主 Agent 自行分配</p>
 
-        {/* Name */}
+        {/* 团队名 */}
         <div>
-          <label className="text-sm text-slate-300 mb-1 block">名称 <span className="text-rose-400">*</span></label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="如：Galileo、Compass..."
-            className="w-full px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition" />
+          <label className="text-sm text-slate-300 mb-1.5 block">
+            团队名 <span className="text-rose-400">*</span>
+            <span className="text-xs text-slate-500 ml-2">如：开发、运营、测试</span>
+          </label>
+          <input
+            value={teamName}
+            onChange={e => setTeamName(e.target.value)}
+            placeholder="如：开发"
+            className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition"
+          />
+          {teamName && count > 1 && (
+            <p className="text-[11px] text-slate-500 mt-1">
+              将创建 {count} 位「{teamName.trim()}」成员，名字由主 Agent 自由命名
+            </p>
+          )}
         </div>
 
-        {/* Personality */}
+        {/* 目标描述 */}
         <div>
-          <label className="text-sm text-slate-300 mb-1 block">个性描述</label>
-          <textarea value={personality} onChange={e => setPersonality(e.target.value)} rows={2}
-            placeholder="如：擅长市场调研，行事严谨..."
-            className="w-full px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition resize-none" />
+          <label className="text-sm text-slate-300 mb-1.5 block">目标描述</label>
+          <textarea
+            value={goal}
+            onChange={e => setGoal(e.target.value)}
+            placeholder="这支团队要做什么？主 Agent 会据此分配职责"
+            rows={3}
+            className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition resize-none"
+          />
         </div>
 
-        {/* Capabilities */}
+        {/* 数量选择器 */}
         <div>
-          <label className="text-sm text-slate-300 mb-1 block">能力标签</label>
+          <label className="text-sm text-slate-300 mb-2 block">人数</label>
+          <div className="flex items-center gap-2">
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} onClick={() => setCount(n)}
+                className={`w-10 h-10 rounded-full text-sm font-bold transition-all ${count === n ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30 scale-110' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-slate-200'}`}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 风格标签 */}
+        <div>
+          <label className="text-sm text-slate-300 mb-1.5 block">
+            风格标签
+            <span className="text-xs text-slate-500 ml-2">如：严谨、高效、创意</span>
+          </label>
           <div className="flex items-center gap-1.5">
-            <input value={capInput} onChange={e => setCapInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCap() } }}
-              placeholder="输入标签后回车"
+            <input value={styleInput} onChange={e => setStyleInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addStyle() } }}
+              placeholder="输入后回车添加"
               className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition" />
-            <button onClick={addCap}
+            <button onClick={addStyle}
               className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-lg transition">+</button>
           </div>
-          {caps.length > 0 && (
+          {styles.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {caps.map(c => (
-                <span key={c} className="text-xs px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
-                  {c}
-                  <button onClick={() => removeCap(c)} className="text-cyan-400 hover:text-white">×</button>
+              {styles.map(s => (
+                <span key={s} className="text-xs px-2 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 flex items-center gap-1">
+                  {s}
+                  <button onClick={() => removeStyle(s)} className="text-violet-400 hover:text-white">×</button>
                 </span>
               ))}
             </div>
@@ -440,11 +539,116 @@ function CreateSubAgentModal({ onClose, onCreated }: { onClose: () => void; onCr
 
         {error && <div className="text-sm text-rose-400 text-center">{error}</div>}
 
-        <button onClick={handleCreate} disabled={!name.trim() || creating}
-          className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
-          {creating ? '⏳ 创建中...' : '🚀 创建子 Agent'}
+        <button onClick={handleCreate} disabled={!canCreate || creating}
+          className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
+          {creating
+            ? `⏳ 创建中 ${creatingIndex}/${count}...`
+            : `🚀 组建 ${count} 人${teamName ? `「${teamName}」` : ''}团队`}
         </button>
       </div>
+    </div>
+  )
+}
+
+// ============ Organization Mode Settings ============
+const ORG_TYPES = [
+  { value: 'academy', label: '🎓 学院', desc: '高校/教育机构' },
+  { value: 'enterprise', label: '🏢 企业', desc: '公司/商业组织' },
+  { value: 'studio', label: '🎨 工作室', desc: '创意团队/独立工作室' },
+]
+
+function OrgModeSettings({ workspaceId, wsType, wsOrgType, isOwner, onUpdated }: {
+  workspaceId: string; wsType: string; wsOrgType: string | null; isOwner: boolean; onUpdated: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const isOrg = wsType === 'organization'
+
+  const toggleOrg = async () => {
+    if (!isOwner) return
+    setSaving(true)
+    try {
+      const newType = isOrg ? 'normal' : 'organization'
+      const res = await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: newType }),
+      })
+      if (res.ok) onUpdated()
+      else {
+        const d = await res.json()
+        alert(d.error || '操作失败')
+      }
+    } catch { alert('网络错误') }
+    finally { setSaving(false) }
+  }
+
+  const changeOrgType = async (orgType: string) => {
+    if (!isOwner) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgType }),
+      })
+      if (res.ok) onUpdated()
+      else {
+        const d = await res.json()
+        alert(d.error || '操作失败')
+      }
+    } catch { alert('网络错误') }
+    finally { setSaving(false) }
+  }
+
+  if (!isOwner) return null
+
+  return (
+    <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 p-4">
+      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">🏛️ 组织模式</h3>
+
+      {/* Toggle */}
+      <button
+        onClick={toggleOrg}
+        disabled={saving}
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-900/50 border border-slate-700/50 hover:border-slate-600 transition-all disabled:opacity-50"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{isOrg ? '🏛️' : '👤'}</span>
+          <span className="text-sm text-slate-300">{isOrg ? '组织模式' : '个人模式'}</span>
+        </div>
+        <div className={`w-10 h-5 rounded-full transition-colors relative ${isOrg ? 'bg-orange-500' : 'bg-slate-600'}`}>
+          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${isOrg ? 'left-5.5' : 'left-0.5'}`}
+            style={{ left: isOrg ? '22px' : '2px' }} />
+        </div>
+      </button>
+      <p className="text-xs text-slate-600 mt-1.5 px-1">
+        {isOrg ? '已启用组织模式，可发布课程至龙虾学院' : '切换为组织模式以启用高校/企业功能'}
+      </p>
+
+      {/* Org Type selector */}
+      {isOrg && (
+        <div className="mt-3 space-y-1.5">
+          {ORG_TYPES.map(t => (
+            <button
+              key={t.value}
+              onClick={() => changeOrgType(t.value)}
+              disabled={saving}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all ${
+                wsOrgType === t.value
+                  ? 'bg-orange-500/15 border border-orange-500/40 text-orange-300'
+                  : 'bg-slate-900/30 border border-slate-700/40 text-slate-400 hover:text-slate-300 hover:border-slate-600'
+              } disabled:opacity-50`}
+            >
+              <span className="text-base">{t.label.split(' ')[0]}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium">{t.label.split(' ')[1]}</span>
+                <span className="text-xs text-slate-500 ml-2">{t.desc}</span>
+              </div>
+              {wsOrgType === t.value && <span className="text-orange-400 text-sm">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -459,6 +663,7 @@ export default function WorkspacePage() {
   const [showPairing, setShowPairing] = useState(false)
   const [showCreateSub, setShowCreateSub] = useState(false)
   const [liveStatus, setLiveStatus] = useState('offline')
+  const [learningData, setLearningData] = useState<any>(null)
 
   // Editable fields
   const [nameValue, setNameValue] = useState('')
@@ -484,9 +689,10 @@ export default function WorkspacePage() {
 
   const fetchAll = async () => {
     try {
-      const [teamRes, wsRes] = await Promise.all([
+      const [teamRes, wsRes, learningRes] = await Promise.all([
         fetch('/api/agents/team'),
-        fetch('/api/workspace/team')
+        fetch('/api/workspace/team'),
+        fetch('/api/academy/my-learning'),
       ])
       if (teamRes.ok) {
         const d: TeamData = await teamRes.json()
@@ -497,6 +703,9 @@ export default function WorkspacePage() {
       if (wsRes.ok) {
         const d: WorkspaceData = await wsRes.json()
         setWsData(d)
+      }
+      if (learningRes.ok) {
+        setLearningData(await learningRes.json())
       }
     } finally { setLoading(false) }
   }
@@ -533,6 +742,17 @@ export default function WorkspacePage() {
     <div className="min-h-screen bg-slate-900 pb-24 md:pb-0">
       <Navbar />
 
+      {/* 返回首页 + 移动端设置入口 */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4 flex items-center justify-between">
+        <a href="/" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-orange-400 transition-colors">
+          <span>←</span><span>返回首页</span>
+        </a>
+        <a href="/settings" className="md:hidden inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-orange-400 transition-colors" title="设置">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          <span>设置</span>
+        </a>
+      </div>
+
       {/* ── Hero Banner ── */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden">
@@ -563,9 +783,14 @@ export default function WorkspacePage() {
                 placeholder="「点击填写你的使命宣言」"
                 className="text-slate-400 text-sm italic hover:text-slate-300 block max-w-xl leading-relaxed"
               />
-              <p className="text-slate-600 text-xs mt-1.5">
-                {c ? `自 ${new Date(c.createdAt).getFullYear()}年${new Date(c.createdAt).getMonth() + 1}月起` : ''}
-                {wsData ? ` · ${wsData.workspaceName}` : ''}
+              <p className="text-slate-600 text-xs mt-1.5 flex items-center gap-1.5 flex-wrap">
+                <span>{c ? `自 ${new Date(c.createdAt).getFullYear()}年${new Date(c.createdAt).getMonth() + 1}月起` : ''}</span>
+                {wsData && <span>· {wsData.workspaceName}</span>}
+                {wsData?.workspaceType === 'organization' && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-orange-500/15 text-orange-400 border border-orange-500/25">
+                    {wsData.workspaceOrgType === 'enterprise' ? '🏢 企业' : wsData.workspaceOrgType === 'studio' ? '🎨 工作室' : '🎓 学院'}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -627,8 +852,8 @@ export default function WorkspacePage() {
               </button>
               {mainAgent && (
                 <button onClick={() => setShowCreateSub(true)}
-                  className="flex-1 py-2.5 rounded-xl border-2 border-dashed border-slate-600 hover:border-cyan-500/50 text-slate-400 hover:text-cyan-300 hover:bg-cyan-900/10 transition-all text-sm font-medium flex items-center justify-center gap-1.5">
-                  <span>⚙️</span><span>创建子Agent</span>
+                  className="flex-1 py-2.5 rounded-xl border-2 border-dashed border-slate-600 hover:border-orange-500/50 text-slate-400 hover:text-orange-300 hover:bg-orange-900/10 transition-all text-sm font-medium flex items-center justify-center gap-1.5">
+                  <span>⚔️</span><span>创建Agent军团</span>
                 </button>
               )}
             </div>
@@ -671,6 +896,63 @@ export default function WorkspacePage() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* 🎓 学习档案 */}
+            {learningData && learningData.stats?.total > 0 && (
+              <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 p-4">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">🎓 学习档案</h3>
+
+                {/* 总进度 */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-purple-400 font-medium">📚 全部课程</span>
+                    <span className="text-xs text-slate-500">{learningData.stats.completed}/{learningData.stats.total} 完成</span>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">
+                    <div className="bg-purple-500 h-1.5 rounded-full transition-all" style={{ width: `${learningData.stats.total > 0 ? (learningData.stats.completed / learningData.stats.total * 100) : 0}%` }} />
+                  </div>
+                  <div className="space-y-1">
+                    {(learningData.allEnrollments || learningData.myEnrollments || []).slice(0, 5).map((e: any) => (
+                      <a key={e.id} href={`/academy/learn/${e.id}`}
+                        className="flex items-center justify-between text-xs py-1 px-2 rounded-lg hover:bg-slate-700/50 transition-colors group">
+                        <span className="text-slate-300 group-hover:text-white truncate flex-1">
+                          {e.enrolledByAgentId ? '🤖 ' : ''}{e.template.name}
+                        </span>
+                        <span className={`ml-2 flex-shrink-0 ${
+                          e.status === 'completed' || e.status === 'graduated' ? 'text-emerald-400' :
+                          e.status === 'learning' ? 'text-blue-400' : 'text-slate-500'
+                        }`}>
+                          {e.status === 'completed' || e.status === 'graduated' ? '✅' : e.status === 'learning' ? `${e.progress}%` : '📖'}
+                        </span>
+                      </a>
+                    ))}
+                    {(learningData.allEnrollments || learningData.myEnrollments || []).length > 5 && (
+                      <a href="/academy/my-courses" className="block text-center text-xs text-orange-400 hover:text-orange-300 py-1">
+                        查看全部 {(learningData.allEnrollments || learningData.myEnrollments).length} 门 →
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* 考试通过 */}
+                {learningData.stats.passed > 0 && (
+                  <div className="pt-3 border-t border-slate-700/50">
+                    <span className="text-xs text-emerald-400">🏅 通过 {learningData.stats.passed} 门考试</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Organization Mode Settings */}
+            {wsData && (
+              <OrgModeSettings
+                workspaceId={wsData.workspaceId}
+                wsType={wsData.workspaceType || 'normal'}
+                wsOrgType={wsData.workspaceOrgType || null}
+                isOwner={wsData.members.some(m => m.isSelf && m.role === 'owner')}
+                onUpdated={fetchAll}
+              />
             )}
           </div>
 
@@ -740,8 +1022,6 @@ export default function WorkspacePage() {
                   </div>
                 )}
 
-                {/* Invite button */}
-                <InvitePartnerInline />
               </div>
             </div>
 

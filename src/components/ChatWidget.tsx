@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { usePathname } from 'next/navigation'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -10,6 +11,7 @@ interface Message {
 
 export function ChatWidget() {
   const { status } = useSession()
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -105,8 +107,9 @@ export function ChatWidget() {
     }
   }
 
-  // 未登录不显示
+  // 未登录不显示；/chat 和 /tasks 页面不显示（那两个页面自带对话入口）
   if (status !== 'authenticated') return null
+  if (pathname === '/chat' || pathname === '/tasks') return null
 
   return (
     <>
@@ -114,7 +117,7 @@ export function ChatWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-110 transition-all duration-300 flex items-center justify-center text-2xl"
+          className="fixed bottom-32 right-4 md:bottom-8 md:right-6 z-40 w-10 h-10 md:w-14 md:h-14 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-110 transition-all duration-300 flex items-center justify-center text-lg md:text-2xl"
           title="跟八爪聊天"
         >
           🐙

@@ -24,18 +24,40 @@ export async function GET(
       return NextResponse.json({ error: '请先登录' }, { status: 401 })
     }
 
+    // 获取 viewer userId
+    let viewerUserId: string | null = null
+    if (tokenAuth) {
+      viewerUserId = tokenAuth.user.id
+    } else if (session?.user?.email) {
+      const u = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+      viewerUserId = u?.id ?? null
+    }
+
     const step = await prisma.taskStep.findUnique({
       where: { id },
       include: {
         task: {
-          select: { id: true, title: true, creatorId: true }
-        }
+          select: { id: true, title: true, creatorId: true, mode: true }
+        },
+        assignees: { select: { userId: true } }
       }
     })
 
     if (!step) {
       return NextResponse.json({ error: '步骤不存在' }, { status: 404 })
     }
+
+    // 隐私遮罩：team 任务 requiresApproval 步骤，只有己方可看历史，对方须等 done
+    const isTeamTask = (step.task as any)?.mode === 'team'
+    const isStepAssignee = viewerUserId != null && (
+      step.assigneeId === viewerUserId ||
+      ((step as any).assignees?.some((a: any) => a.userId === viewerUserId) ?? false)
+    )
+    const isTaskCreator = viewerUserId != null && viewerUserId === step.task?.creatorId
+    const canSeeResult = isTeamTask
+      ? isStepAssignee
+      : (isTaskCreator || isStepAssignee)
+    const shouldMask = step.requiresApproval && step.status !== 'done' && !canSeeResult
 
     // 获取所有提交记录（倒序）
     const submissions = await prisma.stepSubmission.findMany({
@@ -63,11 +85,11 @@ export async function GET(
 
     const reviewerMap = new Map(reviewers.map(r => [r.id, r]))
 
-    // 组装结果
+    // 组装结果（shouldMask 时对方看不到 result/summary）
     const history = submissions.map(s => ({
       id: s.id,
-      result: s.result,
-      summary: s.summary,
+      result: shouldMask ? null : s.result,
+      summary: shouldMask ? null : s.summary,
       status: s.status,
       createdAt: s.createdAt,
       durationMs: s.durationMs,
@@ -77,9 +99,9 @@ export async function GET(
         name: (s.submitter as any).agent?.name || s.submitter.name,
         email: s.submitter.email,
       },
-      reviewedAt: s.reviewedAt,
-      reviewedBy: s.reviewedBy ? reviewerMap.get(s.reviewedBy) : null,
-      reviewNote: s.reviewNote,
+      reviewedAt: shouldMask ? null : s.reviewedAt,
+      reviewedBy: shouldMask ? null : (s.reviewedBy ? reviewerMap.get(s.reviewedBy) : null),
+      reviewNote: shouldMask ? null : s.reviewNote,
       attachments: s.attachments
     }))
 

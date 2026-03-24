@@ -18,7 +18,8 @@ export interface StepTemplate {
   description?: string
   skillRef?: string | null
   promptTemplate?: string | null
-  assigneeRole?: string        // "agent" | "human" | "auto"
+  assigneeRole?: string        // "agent" | "human" | "external" | "auto"
+  assigneeHint?: string | null // 分配提示（给 Hub 分配引擎的参考）
   assigneeId?: string | null   // 兼容旧格式
   assigneeType?: string        // 兼容旧格式
   requiresApproval?: boolean
@@ -27,6 +28,11 @@ export interface StepTemplate {
   outputs?: string[] | null
   skills?: string[] | null
   stepType?: string
+  // V1.1: 人类资料补充
+  needsHumanInput?: boolean
+  humanInputPrompt?: string | null
+  // V1.1: 未分配标记
+  unassignedReason?: string | null
 }
 
 /**
@@ -46,7 +52,7 @@ export function getBuiltinVariables(creatorName?: string, workspaceName?: string
  * 替换字符串中的 {{变量}} 占位符
  */
 export function resolveVariables(text: string, variables: Record<string, any>): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (match, name) => {
+  return text.replace(/\{\{([^}]+)\}\}/g, (match, name) => {
     if (name in variables) {
       return String(variables[name])
     }
@@ -92,12 +98,9 @@ export function validateVariables(
 }
 
 /**
- * 将步骤模板实例化为真实的步骤数据（替换变量、生成标题描述）
+ * 步骤实例化结果
  */
-export function instantiateSteps(
-  stepsTemplate: StepTemplate[],
-  variables: Record<string, any>
-): Array<{
+export interface InstantiatedStep {
   title: string
   description: string | null
   order: number
@@ -108,16 +111,49 @@ export function instantiateSteps(
   inputs: string | null
   outputs: string | null
   skills: string | null
-}> {
+  // V1.1
+  needsHumanInput: boolean
+  humanInputPrompt: string | null
+  humanInputStatus: string | null
+  unassigned: boolean
+  unassignedReason: string | null
+}
+
+/**
+ * 将步骤模板实例化为真实的步骤数据（替换变量、生成标题描述）
+ *
+ * V1.1: executionProtocol 参数 — 模版级的执行规范，拼接到每个步骤的 description 前
+ */
+export function instantiateSteps(
+  stepsTemplate: StepTemplate[],
+  variables: Record<string, any>,
+  executionProtocol?: string | null
+): InstantiatedStep[] {
   return stepsTemplate.map((s, i) => {
     const title = resolveVariables(s.title, variables)
-    const description = s.description ? resolveVariables(s.description, variables) : null
 
-    // 如果有 promptTemplate，把它追加到 description 中（Agent 执行时可读）
-    let finalDesc = description
+    // V1.1: 拼接 executionProtocol + promptTemplate → step.description
+    // 格式: {executionProtocol}\n\n---\n\n## 本步骤任务\n\n{promptTemplate}
+    let finalDesc: string | null = null
+
     if (s.promptTemplate) {
       const prompt = resolveVariables(s.promptTemplate, variables)
-      finalDesc = finalDesc ? `${finalDesc}\n\n---\n**Prompt:** ${prompt}` : prompt
+      if (executionProtocol) {
+        finalDesc = `${executionProtocol}\n\n---\n\n## 本步骤任务\n\n${prompt}`
+      } else {
+        finalDesc = prompt
+      }
+    } else if (s.description) {
+      // 没有 promptTemplate 时用 description（兼容旧格式）
+      const desc = resolveVariables(s.description, variables)
+      if (executionProtocol) {
+        finalDesc = `${executionProtocol}\n\n---\n\n## 本步骤任务\n\n${desc}`
+      } else {
+        finalDesc = desc
+      }
+    } else if (executionProtocol) {
+      // 只有 executionProtocol，没有步骤描述
+      finalDesc = executionProtocol
     }
 
     // 处理 skills：合并 skillRef 和 skills
@@ -125,6 +161,16 @@ export function instantiateSteps(
     if (s.skillRef && !skillsList.includes(s.skillRef)) {
       skillsList.unshift(s.skillRef)
     }
+
+    // V1.1: 未分配判定 — assigneeId 为空且 assigneeRole 是 external 或未知
+    const hasAssignee = !!s.assigneeId
+    const isUnassigned = !hasAssignee && (s.assigneeRole === 'external' || !!s.unassignedReason)
+
+    // V1.1: 人类资料补充
+    const needsHumanInput = s.needsHumanInput === true
+    const humanInputPrompt = needsHumanInput && s.humanInputPrompt
+      ? resolveVariables(s.humanInputPrompt, variables)
+      : null
 
     return {
       title,
@@ -137,6 +183,12 @@ export function instantiateSteps(
       inputs: s.inputs ? JSON.stringify(s.inputs.map(inp => resolveVariables(inp, variables))) : null,
       outputs: s.outputs ? JSON.stringify(s.outputs.map(out => resolveVariables(out, variables))) : null,
       skills: skillsList.length > 0 ? JSON.stringify(skillsList) : null,
+      // V1.1
+      needsHumanInput,
+      humanInputPrompt,
+      humanInputStatus: needsHumanInput ? 'waiting' : 'not_needed',
+      unassigned: isUnassigned,
+      unassignedReason: isUnassigned ? (s.unassignedReason || '待分配') : null,
     }
   })
 }

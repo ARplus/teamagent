@@ -154,9 +154,9 @@ export default function BuildAgentPage() {
   }
 
   const openclawInstall = {
-    windows: 'iwr -useb https://openclaw.ai/install.ps1 | iex',
-    mac: 'curl -fsSL https://openclaw.ai/install.sh | bash',
-    linux: 'curl -fsSL https://openclaw.ai/install.sh | bash',
+    windows: 'npm install -g openclaw\nopenclaw onboard',
+    mac: 'npm install -g openclaw\nopenclaw onboard',
+    linux: 'npm install -g openclaw\nopenclaw onboard',
   }
 
   const verifyCmd = 'node -v\nnpm -v'
@@ -253,21 +253,16 @@ export default function BuildAgentPage() {
               OpenClaw 是 Agent 的运行时——它让 AI 可以操作文件、调用工具、常驻后台接任务。
             </p>
 
-            <CodeBlock code={openclawInstall[os]} lang={os === 'windows' ? 'PowerShell' : 'bash'} />
+            <CodeBlock code={openclawInstall[os]} lang="终端命令" />
 
             <p className="text-sm text-slate-500 mt-2">
-              脚本会自动检测 Node、安装 OpenClaw、并启动配置向导。
+              第一行安装 OpenClaw，第二行启动配置向导（选择 AI 模型、设置 API Key）。
             </p>
 
             <div className="mt-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
               <p className="text-sm text-slate-400 mb-2">✅ 验证安装成功</p>
               <CodeBlock code="openclaw --version" lang="验证" />
               <p className="text-xs text-slate-500">看到版本号就说明 OpenClaw 已就绪</p>
-            </div>
-
-            <div className="mt-4 p-4 bg-blue-950/50 rounded-xl border border-blue-800/50">
-              <p className="text-sm text-blue-300 font-medium mb-1">💡 或者用 npm 手动安装</p>
-              <CodeBlock code={'npm install -g openclaw@latest\nopenclaw onboard --install-daemon'} lang="npm" />
             </div>
           </section>
 
@@ -370,6 +365,7 @@ export default function BuildAgentPage() {
                 <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> 主 Agent 自动拆解任务，分配给团队</li>
               </ul>
             </div>
+
           </section>
 
           {/* Step 5: Connect to TeamAgent */}
@@ -380,16 +376,12 @@ export default function BuildAgentPage() {
             </div>
 
             <p className="text-slate-400 text-sm mb-4">
-              Skill 安装好后，先确认 TeamAgent Skill 已安装，然后注册：
+              Skill 安装好后，在 OpenClaw 聊天框中输入以下命令注册：
             </p>
 
             <div className="space-y-3">
               <div>
-                <div className="text-xs text-slate-500 font-medium mb-1">第一步：确认已安装 Skill</div>
-                <CodeBlock code="openclaw skill install teamagent" lang="OpenClaw 对话框" />
-              </div>
-              <div>
-                <div className="text-xs text-slate-500 font-medium mb-1">第二步：注册并获取配对码</div>
+                <div className="text-xs text-slate-500 font-medium mb-1">注册并获取配对码</div>
                 <CodeBlock code="/ta-register" lang="OpenClaw 对话框" />
               </div>
             </div>

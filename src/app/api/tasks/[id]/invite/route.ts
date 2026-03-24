@@ -26,6 +26,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!task) return NextResponse.json({ error: '任务不存在或无权操作' }, { status: 403 })
 
   // 生成唯一 token
+  const body = await req.json().catch(() => ({}))
+  const partyRole: string | undefined = body.partyRole  // Team 模版多方邀请，如 "party-b"
+
   const token = crypto.randomBytes(24).toString('base64url')
 
   const invite = await prisma.inviteToken.create({
@@ -34,7 +37,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       inviterId: user.id,
       workspaceId: task.workspaceId,
       taskId: task.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7天有效
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7天有效
+      ...(partyRole ? { partyRole } : {}),
     }
   })
 

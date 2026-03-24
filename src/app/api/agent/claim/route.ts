@@ -58,15 +58,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 检查用户是否已有 Agent
+    // 如果用户已有 Agent，解绑旧的（支持重装后重新配对）
+    let replacedAgent: string | null = null
     if (user.agent) {
-      return NextResponse.json(
-        { 
-          error: '你已经有一个 Agent 了',
-          agent: user.agent
-        },
-        { status: 409 }
-      )
+      replacedAgent = user.agent.name
+      await prisma.agent.update({
+        where: { id: user.agent.id },
+        data: {
+          userId: null,
+          claimedAt: null,
+          status: 'offline',
+          isMainAgent: false,
+        }
+      })
+      console.log(`[Claim] 用户 ${user.id} 解绑旧 Agent "${replacedAgent}"，准备配对新 Agent`)
     }
 
     const body = await req.json()
@@ -141,41 +146,47 @@ export async function POST(req: NextRequest) {
       })
     ])
 
-    // 🆕 自动设置 isMainAgent：工作区首个被认领的 Agent 自动成为主 Agent
+    // 🆕 自动设置 isMainAgent：该用户还没有主 Agent 时，认领的第一个自动成为主 Agent
     try {
-      const workspaceIds = (await prisma.workspaceMember.findMany({
-        where: { userId: user.id },
-        select: { workspaceId: true }
-      })).map(m => m.workspaceId)
-
-      if (workspaceIds.length > 0) {
-        const mainAgentCount = await prisma.agent.count({
-          where: {
-            isMainAgent: true,
-            user: {
-              workspaces: {
-                some: { workspaceId: { in: workspaceIds } }
-              }
-            }
-          }
+      const userMainAgentCount = await prisma.agent.count({
+        where: { userId: user.id, isMainAgent: true }
+      })
+      if (userMainAgentCount === 0) {
+        await prisma.agent.update({
+          where: { id: updatedAgent.id },
+          data: { isMainAgent: true }
         })
-
-        if (mainAgentCount === 0) {
-          await prisma.agent.update({
-            where: { id: updatedAgent.id },
-            data: { isMainAgent: true }
-          })
-          console.log(`[isMainAgent] ${agent.name} 自动设为工作区主 Agent`)
-        }
+        console.log(`[isMainAgent] ${agent.name} 自动设为 ${user.id} 的主 Agent`)
       }
     } catch (e) {
       // 非致命错误，不影响认领流程
       console.warn('[isMainAgent] 自动设置失败:', e)
     }
 
+    // 🆕 自动报名 M0 必修课（fire-and-forget，不影响认领主流程）
+    const M0_TEMPLATE_ID = 'cmmwzpb3k0013v7541hwsz8ab' // TeamAgent 基础入门
+    prisma.courseEnrollment.upsert({
+      where: { userId_templateId: { userId: user.id, templateId: M0_TEMPLATE_ID } },
+      update: {},
+      create: {
+        userId: user.id,
+        templateId: M0_TEMPLATE_ID,
+        status: 'active',
+        paidTokens: 0,
+        enrolledByAgentId: updatedAgent.id,
+      }
+    }).then(() => {
+      console.log(`[Claim] 自动报名 M0 → userId ${user.id}`)
+    }).catch(e => {
+      console.warn('[Claim] M0 自动报名失败（非致命）:', e)
+    })
+
     return NextResponse.json({
       success: true,
-      message: `🎉 恭喜！${agent.name} 已成为你的 Agent！`,
+      message: replacedAgent
+        ? `🔄 已替换旧 Agent「${replacedAgent}」，${agent.name} 现在是你的新 Agent！`
+        : `🎉 恭喜！${agent.name} 已成为你的 Agent！`,
+      replacedAgent,
       agent: {
         id: updatedAgent.id,
         name: updatedAgent.name,

@@ -1,0 +1,7 @@
+{
+  "title": "龙虾学院测试 — 付费学生角色：付费报名并完成学习",
+  "description": "胖头鱼请执行以下测试：\n\n等 Professor Lobster 创建一门付费课程（10 Token）并通过审核后：\n\n1. 打开 https://agent.avatargaia.top/academy\n2. 找到付费课程 → 点进详情\n3. 点击报名 → 确认扣除 10 Token\n4. 验证余额从 2097 变为 2087\n5. 进入学习页面 → 完成全部课时\n6. 验证进度100%\n\n如果没有付费课程，先测试免费课程的报名和学习流程。\n\n验收标准：\n- Token 正确扣除\n- 学习流程与免费课一致\n- 进度持久化正常（刷新不丢失）",
+  "priority": "medium",
+  "workspaceId": "cmm9enq2k0001v78fuvpcfhqy",
+  "assigneeId": "cmmisfl82000av704acililg5"
+}

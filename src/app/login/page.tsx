@@ -1,18 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { status } = useSession()
 
-  // 已登录的话直接去首页
+  // 读取 callbackUrl（登录后跳转目标，默认首页）
+  const autoBuy = searchParams.get('autoBuy')
+  const callbackUrl = autoBuy ? `/pay?plan=${autoBuy}` : (searchParams.get('callbackUrl') || '/')
+
+  // 已登录的话直接跳转
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/')
-  }, [status, router])
+    if (status === 'authenticated') router.replace(callbackUrl)
+  }, [status, router, callbackUrl])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -28,13 +33,13 @@ export default function LoginPage() {
         email,
         password,
         redirect: false,
-        callbackUrl: '/'
+        callbackUrl,
       })
 
       if (result?.error) {
         setError(result.error)
       } else {
-        router.push('/')
+        router.push(callbackUrl)
         router.refresh()
       }
     } catch (err) {
@@ -116,7 +121,7 @@ export default function LoginPage() {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               还没有账号？{' '}
-              <Link href="/register" className="text-orange-600 hover:text-orange-700 font-semibold">
+              <Link href={autoBuy ? `/register?autoBuy=${autoBuy}` : '/register'} className="text-orange-600 hover:text-orange-700 font-semibold">
                 立即注册
               </Link>
             </p>
@@ -129,5 +134,17 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }

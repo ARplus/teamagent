@@ -41,17 +41,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Agent 不存在' }, { status: 404 })
     }
 
-    // 根据 updatedAt 判断真实状态：超过 5 分钟无心跳视为离线
+    // 根据 lastHeartbeatAt 判断真实状态：超过 3 分钟无心跳视为离线
+    // （Agent Worker 每 60s 发一次心跳，3min = 允许 3 次失败）
     let effectiveStatus = agent.status
-    if (agent.updatedAt && (agent.status === 'online' || agent.status === 'working')) {
-      const diff = Date.now() - new Date(agent.updatedAt).getTime()
-      const TIMEOUT_MS = 5 * 60 * 1000 // 5分钟
+    if (agent.status === 'online' || agent.status === 'working') {
+      // 优先用 lastHeartbeatAt，无心跳记录则用 updatedAt（兼容旧数据）
+      const heartbeatTime = (agent as any).lastHeartbeatAt ?? agent.updatedAt
+      const diff = Date.now() - new Date(heartbeatTime).getTime()
+      const TIMEOUT_MS = 3 * 60 * 1000 // 3分钟
       if (diff > TIMEOUT_MS) {
         effectiveStatus = 'offline'
-        // 异步更新数据库（不阻塞响应）
+        // 异步更新数据库（不阻塞响应），同步子 Agent 状态
         prisma.agent.update({
           where: { id: agent.id },
           data: { status: 'offline' }
+        }).then(() => {
+          if (!agent.parentAgentId) {
+            prisma.agent.updateMany({
+              where: { parentAgentId: agent.id },
+              data: { status: 'offline' },
+            }).catch(() => {})
+          }
         }).catch(() => {})
       }
     }
@@ -61,6 +71,7 @@ export async function GET(req: NextRequest) {
       name: agent.name,
       avatar: agent.avatar,
       status: effectiveStatus,
+      lastHeartbeatAt: (agent as any).lastHeartbeatAt,
       updatedAt: agent.updatedAt
     })
 
@@ -89,8 +100,20 @@ export async function PATCH(req: NextRequest) {
 
     const agent = await prisma.agent.update({
       where: { userId: auth.userId },
-      data: { status }
+      data: {
+        status,
+        // 在线/工作状态同步更新心跳时间，供 SSE 断连时判断是否真的离线
+        ...(['online', 'working'].includes(status) ? { lastHeartbeatAt: new Date() } : {})
+      }
     })
+
+    // 影子军团同步：主 Agent 状态变更时，自动同步所有子 Agent 到相同状态
+    if (!agent.parentAgentId) {
+      await prisma.agent.updateMany({
+        where: { parentAgentId: agent.id },
+        data: { status },
+      }).catch(() => {})
+    }
 
     return NextResponse.json({
       id: agent.id,

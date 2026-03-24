@@ -5,9 +5,11 @@ import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { sendToUser, sendToUsers } from '@/lib/events'
 import { processWorkflowAfterSubmit } from '@/lib/workflow-engine'
-import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
+import { getStartableSteps, activateAndNotifySteps, checkAndCompleteParentStep } from '@/lib/step-scheduling'
 import { generateSummary } from '@/lib/ai-summary'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
+import { extractIdempotencyKey, checkIdempotency, saveIdempotency } from '@/lib/idempotency'
+import { SOLO_EXECUTION_PROTOCOL } from '@/lib/decompose-prompt'
 
 // 统一认证：支持 Token 或 Session
 async function authenticate(req: NextRequest) {
@@ -62,7 +64,23 @@ export async function POST(
     const auth = await authenticate(req)
     if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
-    const { result, summary, attachments } = await req.json()
+    const body = await req.json()
+    const { result, summary, attachments } = body
+    // 兼容两种写法：waitingForHuman: true 或 status: "waiting_human"
+    const waitingForHuman = body.waitingForHuman === true || body.status === 'waiting_human'
+    // 影子军团：Watch 可在 body 中传 onBehalfOf，声明代哪个子 Agent 提交
+    const onBehalfOf: string | undefined = body.onBehalfOf || undefined
+    // 军费统计：Watch 上报的精细指标（优先使用真实 token，兼容旧版字符估算）
+    const metrics: { durationMs?: number; promptChars?: number; resultChars?: number; promptTokens?: number; completionTokens?: number; totalTokens?: number; model?: string; assigneeName?: string } | undefined = body.metrics || undefined
+
+    // A2A: 幂等键检查 — 防止重复提交
+    const idempotencyKey = extractIdempotencyKey(req, body)
+    if (idempotencyKey) {
+      const cached = await checkIdempotency(idempotencyKey)
+      if (cached.hit) {
+        return NextResponse.json(cached.cachedBody, { status: cached.cachedStatus })
+      }
+    }
 
     const step = await prisma.taskStep.findUnique({
       where: { id },
@@ -70,6 +88,7 @@ export async function POST(
         task: {
           select: {
             id: true, title: true, creatorId: true, workspaceId: true,
+            mode: true,
             steps: { select: { id: true, order: true } }
           }
         }
@@ -82,12 +101,65 @@ export async function POST(
       where: { stepId_userId: { stepId: id, userId: auth.userId } }
     }).catch(() => null)
     const isTaskCreator = step.task.creatorId === auth.userId
-    if (step.assigneeId !== auth.userId && !stepAssigneeRecord && !isTaskCreator) {
+
+    // 影子军团：主 Agent 可代子 Agent 提交
+    let isParentAgentSubmitting = false
+    if (step.assigneeId && step.assigneeId !== auth.userId && !stepAssigneeRecord && !isTaskCreator) {
+      const submittingAgent = await prisma.agent.findUnique({
+        where: { userId: auth.userId },
+        select: { id: true, parentAgentId: true }
+      }).catch(() => null)
+      if (submittingAgent && !submittingAgent.parentAgentId) {
+        const assigneeAgent = await prisma.agent.findUnique({
+          where: { userId: step.assigneeId },
+          select: { parentAgentId: true }
+        }).catch(() => null)
+        isParentAgentSubmitting = assigneeAgent?.parentAgentId === submittingAgent.id
+      }
+    }
+
+    if (step.assigneeId !== auth.userId && !stepAssigneeRecord && !isTaskCreator && !isParentAgentSubmitting) {
       return NextResponse.json({ error: '你不是此步骤的负责人' }, { status: 403 })
     }
-    // 允许 pending 和 in_progress 状态提交（人类步骤可能停留在 pending）
-    if (step.status !== 'in_progress' && step.status !== 'pending') {
+
+    // 影子军团：计算实际提交者 ID（显示在提交历史中的人）
+    // 优先级：body.onBehalfOf > 自动检测(isParentAgentSubmitting → step.assigneeId) > auth.userId
+    const effectiveSubmitterId = onBehalfOf || (isParentAgentSubmitting && step.assigneeId ? step.assigneeId : auth.userId)
+    // 允许 pending / in_progress / waiting_human 状态提交（人类步骤用 waiting_human）
+    if (step.status !== 'in_progress' && step.status !== 'pending' && step.status !== 'waiting_human') {
       return NextResponse.json({ error: '步骤不在可提交状态' }, { status: 400 })
+    }
+
+    // Team 任务：拦截 Watch fallback 自动提交（OpenClaw 不在线时生成的占位文本）
+    // 重置回 pending，等 OpenClaw 在线后 Watch 重连补发再执行
+    const isTeamTask = (step.task as any).mode === 'team'
+    const FALLBACK_PATTERN = /^步骤 ".+?" 已由 Agent 完成。\s*执行时间:/
+    if (isTeamTask && result && FALLBACK_PATTERN.test(result.trim())) {
+      await prisma.taskStep.update({
+        where: { id },
+        data: { status: 'pending', agentStatus: 'pending' }
+      })
+      return NextResponse.json({ error: 'Team任务步骤须通过主会话执行，请确保 OpenClaw 在线后重试' }, { status: 400 })
+    }
+
+    // B-000: 串行顺序强制 — 前序步骤未完成时不能提交
+    const allSteps = await prisma.taskStep.findMany({
+      where: { taskId: step.taskId },
+      select: { id: true, order: true, status: true, parallelGroup: true, requiresApproval: true },
+      orderBy: { order: 'asc' },
+    })
+    const myGroup = (step as any).parallelGroup as string | null
+    const blockers = allSteps.filter(s => {
+      if (s.order >= step.order) return false
+      // waiting_approval + requiresApproval=true：必须等人类审批通过，不能跳过
+      if (s.status === 'waiting_approval' && s.requiresApproval) return true
+      if (['done', 'skipped', 'waiting_approval', 'waiting_human'].includes(s.status)) return false
+      if (myGroup && s.parallelGroup === myGroup) return false
+      return true
+    })
+    if (blockers.length > 0) {
+      const names = blockers.map(b => `步骤${b.order}`).join('、')
+      return NextResponse.json({ error: `前序步骤未完成（${names}），请按顺序执行` }, { status: 409 })
     }
 
     const now = new Date()
@@ -142,13 +214,27 @@ export async function POST(
 
       for (const s of parsedSteps) {
         orderOffset++
-        const assigneeId = s.assignee ? findUserByAgentName(s.assignee) : null
+        const isHumanStep = s.assigneeType === 'human'
+        // 人类步骤找不到时 fallback 到任务创建者
+        let assigneeId = s.assignee ? findUserByAgentName(s.assignee) : null
+        if (isHumanStep && !assigneeId && step.task.creatorId) {
+          assigneeId = step.task.creatorId
+        }
         if (assigneeId) involvedUserIds.add(assigneeId)
+
+        // 注入全局硬指令到每个 Agent 步骤的 description
+        const isHumanAssigned = s.assigneeType === 'human'
+        let finalDesc = s.description || null
+        if (!isHumanAssigned) {
+          finalDesc = finalDesc
+            ? `${SOLO_EXECUTION_PROTOCOL}\n\n---\n\n## 本步骤任务\n\n${finalDesc}`
+            : SOLO_EXECUTION_PROTOCOL
+        }
 
         const created = await prisma.taskStep.create({
           data: {
             title: s.title,
-            description: s.description || null,
+            description: finalDesc,
             order: orderOffset,
             taskId: step.task.id,
             stepType: s.stepType || 'task',
@@ -165,6 +251,14 @@ export async function POST(
             agentStatus: assigneeId ? 'pending' : null,
           }
         })
+
+        // human 步骤：创建 StepAssignee 记录，让 activateAndNotifySteps 能识别 allHuman=true
+        if (isHumanStep && assigneeId) {
+          await prisma.stepAssignee.create({
+            data: { stepId: created.id, userId: assigneeId, assigneeType: 'human', status: 'pending' }
+          })
+        }
+
         createdSteps.push(created)
       }
 
@@ -198,19 +292,94 @@ export async function POST(
       // 通知任务创建者
       if (step.task.creatorId) {
         sendToUser(step.task.creatorId, {
-          type: 'task:decomposed',
+          type: 'task:parsed',
           taskId: step.task.id,
-          stepsCount: createdSteps.length
+          stepCount: createdSteps.length,
+          engine: 'agent'
         })
       }
 
       console.log(`[Decompose] 任务 ${step.task.id} 已拆解为 ${createdSteps.length} 步，通知 ${involvedUserIds.size} 个 Agent`)
 
-      return NextResponse.json({
+      const decomposeResponse = {
         message: `✅ 任务已拆解为 ${createdSteps.length} 个步骤，已通知相关 Agent`,
         steps: createdSteps,
         involvedAgents: involvedUserIds.size
-      })
+      }
+      if (idempotencyKey) {
+        await saveIdempotency(idempotencyKey, 'POST', `/api/steps/${id}/submit`, 200, decomposeResponse)
+      }
+      return NextResponse.json(decomposeResponse)
+    }
+
+    // ================================================================
+    // 📋 pre_check 步骤：解析补充子步骤并追加（Solo 专属）
+    // ================================================================
+    if (step.stepType === 'pre_check') {
+      // 尝试从 result 中解析 extraSteps（可选，Agent 可以不提供）
+      let extraSteps: any[] = []
+      try {
+        const raw = typeof result === 'string' ? result : JSON.stringify(result || '')
+        // 支持 JSON 内嵌在 Markdown 代码块中
+        const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/) || raw.match(/(\{[\s\S]*\})/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0])
+          if (Array.isArray(parsed.extraSteps) && parsed.extraSteps.length > 0) {
+            extraSteps = parsed.extraSteps
+          }
+        }
+      } catch { /* extraSteps 是可选的，解析失败不影响流程 */ }
+
+      if (extraSteps.length > 0) {
+        // 追加子步骤到任务末尾
+        const workspaceMembers = await prisma.workspaceMember.findMany({
+          where: { workspaceId: step.task.workspaceId },
+          include: {
+            user: {
+              select: { id: true, name: true, nickname: true, agent: { select: { name: true } } }
+            }
+          }
+        })
+        function findMemberId(hint: string): string | null {
+          const m = workspaceMembers.find(m =>
+            (m.user.agent as any)?.name === hint ||
+            m.user.name === hint || m.user.nickname === hint
+          )
+          return m?.user.id ?? null
+        }
+
+        const currentMaxOrder = Math.max(...step.task.steps.map(s => s.order), 1)
+        let orderOffset = currentMaxOrder
+
+        for (const s of extraSteps) {
+          orderOffset++
+          const isHumanStep = s.assigneeType === 'human'
+          // fallback: 没指定 assignee 时，agent步骤给任务创建者，防止孤儿步骤卡住工作流
+          const assigneeId = s.assignee ? findMemberId(s.assignee) : (isHumanStep ? step.task.creatorId : step.task.creatorId)
+          await prisma.taskStep.create({
+            data: {
+              title: s.title,
+              description: s.description || null,
+              order: orderOffset,
+              taskId: step.task.id,
+              stepType: s.stepType || 'task',
+              assigneeId,
+              requiresApproval: s.requiresApproval !== false,
+              status: 'pending',
+              agentStatus: assigneeId && !isHumanStep ? 'pending' : null,
+            }
+          })
+          if (assigneeId && isHumanStep) {
+            await prisma.stepAssignee.create({
+              data: { stepId: (await prisma.taskStep.findFirst({ where: { taskId: step.task.id, order: orderOffset }, select: { id: true } }))!.id, userId: assigneeId, assigneeType: 'human' }
+            }).catch(() => {})
+          }
+        }
+        console.log(`[PreCheck] 追加 ${extraSteps.length} 个补充子步骤到任务 ${step.task.id}`)
+      }
+
+      // pre_check 继续走普通提交流程（requiresApproval=true → waiting_approval，等学员确认）
+      console.log(`[PreCheck] 发布者 Agent 提交执行计划，等待学员确认${extraSteps.length > 0 ? `（含 ${extraSteps.length} 个补充步骤）` : ''}`)
     }
 
     // ================================================================
@@ -218,21 +387,24 @@ export async function POST(
     // ================================================================
     const agentDurationMs = step.startedAt ? now.getTime() - new Date(step.startedAt).getTime() : null
 
-    // 自动生成 summary
-    let finalSummary = summary
-    if (!summary && result) {
-      const aiSummary = await generateSummary({
-        stepTitle: step.title,
-        result: result,
-        attachmentCount: attachments?.length || 0
-      })
-      if (aiSummary) finalSummary = aiSummary
-    }
+    // P1-C4: summary 不再阻塞提交 — 先提交，后台异步生成
+    let finalSummary = summary || null
 
     const resultText = result || '任务已完成，等待审核'
 
-    // B08: 更新该用户的 StepAssignee 状态
-    if (stepAssigneeRecord) {
+    // B08: 更新该用户的 StepAssignee 状态（影子军团：更新子 Agent 的记录，不是 Lobster 的）
+    if (isParentAgentSubmitting && effectiveSubmitterId !== auth.userId) {
+      // 代提交：找子 Agent 的 StepAssignee 记录并更新
+      const subAssigneeRecord = await prisma.stepAssignee.findUnique({
+        where: { stepId_userId: { stepId: id, userId: effectiveSubmitterId } }
+      }).catch(() => null)
+      if (subAssigneeRecord) {
+        await prisma.stepAssignee.update({
+          where: { id: subAssigneeRecord.id },
+          data: { status: 'submitted', submittedAt: now, result: resultText }
+        })
+      }
+    } else if (stepAssigneeRecord) {
       await prisma.stepAssignee.update({
         where: { id: stepAssigneeRecord.id },
         data: { status: 'submitted', submittedAt: now, result: resultText }
@@ -245,14 +417,15 @@ export async function POST(
     let isStepComplete = true // 默认单人模式直接完成
 
     if (isMultiAssignee) {
-      if (step.completionMode === 'any') {
-        isStepComplete = true // 任一提交即完成
-      } else {
-        // "all" 模式：检查是否所有人都已提交
+      if (step.completionMode === 'all') {
+        // 显式要求全员完成时才等所有人
         const allSubmitted = allAssignees.every(a =>
           a.status === 'submitted' || a.userId === auth.userId
         )
         isStepComplete = allSubmitted
+      } else {
+        // 默认 "any" 模式：任一人提交即完成（影子军团 — 主Agent代子Agent执行，只需一人提交）
+        isStepComplete = true
       }
     }
 
@@ -261,7 +434,7 @@ export async function POST(
       const sub = await prisma.stepSubmission.create({
         data: {
           stepId: id,
-          submitterId: auth.userId,
+          submitterId: effectiveSubmitterId,  // 影子军团：记录实际执行的子 Agent
           result: resultText,
           summary: finalSummary || null,
           durationMs: agentDurationMs
@@ -271,7 +444,7 @@ export async function POST(
         await prisma.attachment.createMany({
           data: attachments.map((att: { name: string; url: string; type?: string }) => ({
             name: att.name, url: att.url, type: att.type || 'file',
-            submissionId: sub.id, uploaderId: auth.userId
+            submissionId: sub.id, uploaderId: effectiveSubmitterId
           }))
         })
       }
@@ -288,15 +461,18 @@ export async function POST(
       const sub = await tx.stepSubmission.create({
         data: {
           stepId: id,
-          submitterId: auth.userId,
+          submitterId: effectiveSubmitterId,  // 影子军团：记录实际执行的子 Agent，不是 Watch
           result: resultText,
           summary: finalSummary || null,
           durationMs: agentDurationMs
         }
       })
 
-      const autoApprove = step.requiresApproval === false
-      const newStatus = autoApprove ? 'done' : 'waiting_approval'
+      // waitingForHuman: Agent 无法独立完成（缺少 API/授权/信息），需要人类提供后再继续
+      // 优先级：waitingForHuman > 自动审批（防止"我需要帮助"被误判为成功）
+      const isWaitingHuman = waitingForHuman === true
+      const autoApprove = !isWaitingHuman && (step.status === 'waiting_human' || step.requiresApproval === false)
+      const newStatus = isWaitingHuman ? 'waiting_human' : (autoApprove ? 'done' : 'waiting_approval')
 
       const upd = await tx.taskStep.update({
         where: { id },
@@ -308,7 +484,8 @@ export async function POST(
           completedAt: now,
           reviewStartedAt: autoApprove ? null : now,
           approvedAt: autoApprove ? now : null,
-          agentDurationMs
+          agentDurationMs,
+          ...(metrics ? { agentMetrics: metrics as any } : {})
         }
       })
 
@@ -335,13 +512,51 @@ export async function POST(
       return [sub, upd]
     })
 
-    // 更新 Agent 状态
+    // P1-C4: 异步生成 summary（不阻塞响应）
+    if (!summary && result && result.length >= 20) {
+      generateSummary({ stepTitle: step.title, result, attachmentCount: attachments?.length || 0 })
+        .then(async (aiSummary) => {
+          if (aiSummary) {
+            await prisma.taskStep.update({ where: { id }, data: { summary: aiSummary } })
+            await prisma.stepSubmission.update({ where: { id: submission.id }, data: { summary: aiSummary } })
+            console.log(`[Summary] 异步更新步骤 ${id} 摘要: ${aiSummary}`)
+          }
+        })
+        .catch(e => console.warn('[Summary] 异步摘要失败（非关键）:', e?.message))
+    }
+
+    // 更新 Agent 状态（影子军团：代提交时同时更新子 Agent 和主 Agent 的状态）
+    if (isParentAgentSubmitting && effectiveSubmitterId !== auth.userId) {
+      // 子 Agent 状态 → online（此步骤完成）
+      await prisma.agent.updateMany({ where: { userId: effectiveSubmitterId }, data: { status: 'online' } })
+    }
     const agent = await prisma.agent.findUnique({ where: { userId: auth.userId } })
     if (agent) await prisma.agent.update({ where: { userId: auth.userId }, data: { status: 'online' } })
 
-    const autoApproved = step.requiresApproval === false
+    // 以实际更新后的状态判断是否自动通过（覆盖所有场景：requiresApproval=false / waiting_human 人类提交）
+    const autoApproved = updated.status === 'done'
 
-    if (!autoApproved && step.task.creatorId) {
+    if (waitingForHuman === true) {
+      // Agent 标记"需要人类提供信息" → 通知任务创建者
+      if (step.task.creatorId) {
+        sendToUser(step.task.creatorId, {
+          type: 'step:waiting-human',
+          taskId: step.task.id,
+          stepId: id,
+          title: step.title,
+          message: `⏸️ 步骤「${step.title}」需要你提供信息后才能继续`,
+        })
+        createNotification({
+          userId: step.task.creatorId,
+          type: 'step_assigned',
+          title: `⏸️ 任务暂停，等待你的输入`,
+          content: `步骤「${step.title}」需要你提供信息才能继续，请查看步骤描述`,
+          taskId: step.task.id,
+          stepId: id,
+        }).catch(() => {})
+      }
+      console.log(`[Submit] ⏸️ 步骤 "${step.title}" 被 Agent 标记为需要人类输入 → waiting_human`)
+    } else if (!autoApproved && step.task.creatorId) {
       sendToUser(step.task.creatorId, {
         type: 'approval:requested',
         taskId: step.task.id,
@@ -365,19 +580,208 @@ export async function POST(
       title: step.title
     })
 
-    let workflowResult = null
-    try {
-      workflowResult = await processWorkflowAfterSubmit(id, result || '', summary)
-    } catch (error) {
-      console.error('[Submit] 工作流处理失败:', error)
+    // P2: 步骤实际完成（done）→ 检查父步骤自动完成 + 任务完成
+    // 修复：之前只检查 requiresApproval === false，waiting_human 人类提交完成时也需要运行
+    if (autoApproved) {
+      const parentDone = await checkAndCompleteParentStep(id)
+      if (parentDone) console.log(`[Submit/AutoApprove] 子步骤 ${id} → 父步骤自动完成`)
+
+      // 检查任务是否全部步骤完成 → 自动标记任务为 done
+      const remainingSteps = await prisma.taskStep.count({
+        where: {
+          taskId: step.taskId,
+          status: { notIn: ['done', 'skipped'] }
+        }
+      })
+      if (remainingSteps === 0) {
+        const endTime = new Date().toLocaleString('zh-CN', {
+          timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+        })
+        const taskFull = await prisma.task.findUnique({
+          where: { id: step.taskId },
+          select: { createdAt: true }
+        })
+        const startTime = taskFull?.createdAt
+          ? taskFull.createdAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : '—'
+        const allDoneSteps = await prisma.taskStep.findMany({
+          where: { taskId: step.taskId, status: 'done' },
+          orderBy: { order: 'asc' },
+          select: { title: true, agentDurationMs: true, humanDurationMs: true, agentMetrics: true }
+        })
+        // ── 军费统计聚合 ──
+        // 优先使用 Watch 上报的真实 token（精确）；兜底用字符数估算（旧版兼容）
+        const MODEL_PRICE_PER_M: Record<string, number> = {
+          // Claude（输入+输出均价近似值，便于展示）
+          'claude-opus-4': 45, 'claude-opus': 45,
+          'claude-sonnet-4': 9, 'claude-sonnet-3-7': 9, 'claude-sonnet-3-5': 9, 'claude-sonnet': 9,
+          'claude-haiku-3-5': 2, 'claude-haiku-3': 1.25, 'claude-haiku': 1.25,
+          // OpenAI
+          'gpt-4o-mini': 0.3, 'gpt-4o': 7.5, 'gpt-4-turbo': 30, 'gpt-4': 15, 'gpt-3.5': 1.5,
+          // DeepSeek
+          'deepseek-r1': 2, 'deepseek-chat': 0.5, 'deepseek': 0.5,
+          // Gemini
+          'gemini-2.0-flash': 0.5, 'gemini-1.5-pro': 5, 'gemini': 2,
+        }
+        function getModelPrice(modelName: string | null | undefined): { price: number; label: string } {
+          if (!modelName) return { price: 9, label: '' }
+          const lower = modelName.toLowerCase()
+          for (const [key, price] of Object.entries(MODEL_PRICE_PER_M)) {
+            if (lower.includes(key)) return { price, label: key.replace('claude-', '').replace('gpt-', 'GPT-') }
+          }
+          return { price: 9, label: '' }
+        }
+
+        let totalActualTokens = 0, totalPromptChars = 0, totalResultChars = 0, totalAgentMs = 0
+        let agentStepCount = 0, humanStepCount = 0
+        const modelTokenMap: Record<string, number> = {}
+
+        for (const s of allDoneSteps) {
+          const isHuman = !s.agentDurationMs && s.humanDurationMs
+          if (isHuman) { humanStepCount++ }
+          else {
+            agentStepCount++
+            totalAgentMs += s.agentDurationMs || 0
+            const m = s.agentMetrics as any
+            if (m) {
+              // 真实 token 路径（新版 Watch 上报）
+              if (m.promptTokens || m.completionTokens || m.totalTokens) {
+                const t = m.totalTokens || (m.promptTokens || 0) + (m.completionTokens || 0)
+                totalActualTokens += t
+                const mdl = m.model || 'unknown'
+                modelTokenMap[mdl] = (modelTokenMap[mdl] || 0) + t
+              } else {
+                // 字符估算兜底（旧版兼容）
+                totalPromptChars += m.promptChars || 0
+                totalResultChars += m.resultChars || 0
+              }
+            }
+          }
+        }
+
+        // 计算费用
+        let costLine = ''
+        if (totalActualTokens > 0) {
+          // 精确路径：用真实 token + 模型定价
+          const dominantModel = Object.entries(modelTokenMap).sort(([,a],[,b]) => b - a)[0]?.[0] || null
+          const { price: pricePerM, label: modelLabel } = getModelPrice(dominantModel)
+          const estCostUSD = (totalActualTokens / 1_000_000 * pricePerM).toFixed(3)
+          const modelSuffix = modelLabel ? `（${modelLabel}）` : ''
+          costLine = `💰 军费：~${(totalActualTokens / 1000).toFixed(1)}K token，约 $${estCostUSD}${modelSuffix}`
+        } else {
+          // 兜底估算：字符数 / 1.5 ≈ token（中文）
+          const totalChars = totalPromptChars + totalResultChars
+          if (totalChars > 0) {
+            const estTokens = Math.round(totalChars / 1.5)
+            const estCostUSD = (estTokens / 1_000_000 * 9).toFixed(3)
+            costLine = `💰 军费：~${(estTokens / 1000).toFixed(1)}K token，约 $${estCostUSD}`
+          }
+        }
+
+        const totalChars = totalPromptChars + totalResultChars
+        const estTokens = totalActualTokens > 0 ? totalActualTokens : Math.round(totalChars / 1.5)
+        const agentMinutes = Math.round(totalAgentMs / 60000)
+        const ratioLine = agentStepCount + humanStepCount > 0
+          ? `🤖 人机比：Agent ${agentStepCount} 步 / 人类 ${humanStepCount} 步`
+          : ''
+
+        const autoSummary = [
+          `开始：${startTime}`,
+          `完成：${endTime}`,
+          ratioLine,
+          agentMinutes > 0 ? `⚡ Agent 执行：${agentMinutes} 分钟` : '',
+          costLine,
+          `产出物：${allDoneSteps.slice(0, 6).map(s => s.title).join('、')}`,
+        ].filter(Boolean).join('\n')
+
+        await prisma.task.update({
+          where: { id: step.taskId },
+          data: { status: 'done', autoSummary }
+        })
+        // 通知任务创建者
+        if (step.task.creatorId) {
+          sendToUser(step.task.creatorId, {
+            type: 'task:completed',
+            taskId: step.taskId,
+            title: step.task.title
+          })
+          const template = notificationTemplates.taskCompleted(step.task.title)
+          await createNotification({
+            userId: step.task.creatorId,
+            ...template,
+            taskId: step.taskId
+          })
+        }
+        console.log(`[Submit/AutoApprove] 任务 ${step.taskId} 全部步骤完成，已标记为 done`)
+
+        // 🎓 课程任务完成 → 自动下发 Principle（submit 路由补全，approve 路由已有）
+        try {
+          const enrollment = await prisma.courseEnrollment.findFirst({
+            where: { taskId: step.taskId, principleDelivered: false },
+            include: { template: { select: { name: true, principleTemplate: true } } }
+          })
+          if (enrollment?.template?.principleTemplate) {
+            const nowPrinciple = new Date()
+            let principleData: any = null
+            try {
+              const parsed = JSON.parse(enrollment.template.principleTemplate)
+              if (parsed.coreInsight || parsed.keyPrinciples || parsed.checklist) {
+                principleData = parsed
+              }
+            } catch {
+              principleData = {
+                coreInsight: `完成课程「${enrollment.template.name}」`,
+                keyPrinciples: [enrollment.template.principleTemplate],
+                forbiddenList: [],
+                checklist: []
+              }
+            }
+            if (principleData) {
+              await prisma.courseEnrollment.update({
+                where: { id: enrollment.id },
+                data: {
+                  status: 'graduated',
+                  principleDelivered: true,
+                  principleDeliveredAt: nowPrinciple,
+                  completedAt: nowPrinciple,
+                }
+              })
+              sendToUser(enrollment.userId, {
+                type: 'principle:received',
+                enrollmentId: enrollment.id,
+                courseName: enrollment.template.name,
+                principleTemplate: principleData,
+              })
+              console.log(`[Submit/Course] Principle 已下发 userId=${enrollment.userId} 课程「${enrollment.template.name}」`)
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Submit/Course] Principle 下发失败（非关键）:', e?.message)
+        }
+      }
     }
 
-    return NextResponse.json({
+    // Issue 3 修复：只有步骤实际完成（done）时才推进下游工作流
+    // waiting_approval / waiting_human 状态下不推进，下游等审批通过后由 approve API 触发
+    let workflowResult = null
+    if (autoApproved) {
+      try {
+        workflowResult = await processWorkflowAfterSubmit(id, result || '', summary)
+      } catch (error) {
+        console.error('[Submit] 工作流处理失败:', error)
+      }
+    }
+
+    const responseBody = {
       message: autoApproved ? '已提交并自动通过（无需人工审核）' : '已提交，等待人类审核',
       autoApproved,
       step: updated,
       workflow: workflowResult
-    })
+    }
+    if (idempotencyKey) {
+      await saveIdempotency(idempotencyKey, 'POST', `/api/steps/${id}/submit`, 200, responseBody)
+    }
+    return NextResponse.json(responseBody)
 
   } catch (error) {
     console.error('提交步骤失败:', error)

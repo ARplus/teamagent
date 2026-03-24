@@ -55,7 +55,7 @@ ${input.attachmentCount ? `附件数量: ${input.attachmentCount}` : ''}`
         'Authorization': `Bearer ${QWEN_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'qwen-turbo', // 用快速模型
+        model: 'qwen3.5-flash', // 用快速模型
         messages: [
           { role: 'system', content: SUMMARY_PROMPT },
           { role: 'user', content: context }

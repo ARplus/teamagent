@@ -75,16 +75,38 @@ function GuideContent() {
         <Link href="/guide/macos-install" className="text-orange-600 hover:underline ml-1 font-medium">🍎 MacOS 安装指南（含截图）</Link>
       </div>
 
-      {/* 速查总览 */}
+      {/* ⚡ 一键安装（推荐） */}
+      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl p-5">
+        <h2 className="text-lg font-bold text-emerald-800 mb-1 flex items-center gap-2">
+          ⚡ 一键安装（推荐）
+        </h2>
+        <p className="text-sm text-emerald-700 mb-4">自动完成所有步骤：Node.js 检测、OpenClaw 安装、Token 配置、Skill 下载、Watch 守护进程启动。</p>
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">🪟 Windows PowerShell</p>
+          <pre className="bg-slate-900 text-green-300 rounded-xl p-4 text-sm overflow-x-auto select-all"><code>irm https://agent.avatargaia.top/static/install.ps1 | iex</code></pre>
+        </div>
+        <div className="bg-emerald-100 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 space-y-1">
+          <p>✅ 运行后按提示操作，输入你的 <strong>TeamAgent Token</strong>（在网站 → 设置 → Token 里复制）</p>
+          <p>✅ 安装完成后浏览器会自动打开对话界面</p>
+        </div>
+        <div className="mt-4 pt-4 border-t border-emerald-200">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">已安装过？更新到最新版：</p>
+          <pre className="bg-slate-900 text-green-300 rounded-xl p-3 text-sm overflow-x-auto"><code>node teamagent-client.js update</code></pre>
+          <p className="text-xs text-slate-500 mt-1">验证版本：<code className="bg-slate-100 px-1 rounded">node teamagent-client.js version</code></p>
+        </div>
+      </div>
+
+      {/* 速查总览（手动安装） */}
       <div className="bg-gradient-to-br from-orange-50 to-red-50 border border-orange-200 rounded-2xl p-5">
-        <h2 className="text-lg font-semibold text-orange-800 mb-3">🗺️ 安装全流程速查</h2>
+        <h2 className="text-lg font-semibold text-orange-800 mb-1">🛠️ 手动安装（一键安装失败时）</h2>
+        <p className="text-sm text-orange-700 mb-3">如果一键安装遇到问题，可以按以下步骤手动完成：</p>
         <div className="space-y-2">
           {[
             '安装 Node.js',
             '解决 PowerShell 执行策略问题（如需要）',
             '配置 npm 国内镜像',
             '安装 OpenClaw',
-            '配置 AI API Key',
+            '配置 TeamAgent Token',
             '启动网关',
             '打开控制界面并连接',
             '安装 TeamAgent Skill（协作技能包）',
@@ -124,17 +146,14 @@ function GuideContent() {
           解决 PowerShell 执行策略问题
         </h2>
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 mb-3">
-          ⚠️ 如果运行命令显示「<strong>此系统上禁止运行脚本</strong>」，按以下步骤修复。
+          ⚠️ Windows 默认禁止运行脚本。如果后续 <code className="bg-yellow-100 px-1 rounded text-sm">npm install</code> 或 <code className="bg-yellow-100 px-1 rounded text-sm">openclaw</code> 命令报错，按以下步骤修复。
         </div>
         <ol className="list-decimal list-inside space-y-2 ml-2">
-          <li>右键点击开始菜单 → 选择「<strong>Windows PowerShell (管理员)</strong>」</li>
-          <li>输入以下命令并回车：</li>
+          <li>右键点击 PowerShell → 选择「<strong>以管理员身份运行</strong>」</li>
+          <li>运行以下命令（仅对当前窗口生效，关掉就恢复）：</li>
         </ol>
-        <pre className="bg-slate-900 text-blue-300 rounded-xl p-4 mt-3 text-sm overflow-x-auto"><code>Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</code></pre>
-        <ol className="list-decimal list-inside space-y-2 ml-2 mt-3" start={3}>
-          <li>提示确认时输入 <code className="bg-slate-100 px-1 rounded text-sm">Y</code> 回车</li>
-          <li>关闭 PowerShell，重新打开，问题解决</li>
-        </ol>
+        <pre className="bg-slate-900 text-blue-300 rounded-xl p-4 mt-3 text-sm overflow-x-auto"><code>{`Set-ExecutionPolicy Bypass -Scope Process -Force`}</code></pre>
+        <p className="text-sm text-slate-500 mt-2 ml-2">如果想永久修改（不用每次都运行），可以执行 <code className="bg-slate-100 px-1 rounded text-sm">Set-ExecutionPolicy RemoteSigned -Scope CurrentUser</code> 然后输入 Y 确认。</p>
       </section>
 
       {/* Step 3 */}

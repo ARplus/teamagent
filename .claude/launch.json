@@ -2,15 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "next-dev",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
-      "port": 3000
-    },
-    {
-      "name": "next-start",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "start"],
+      "name": "teamagent-dev",
+      "runtimeExecutable": "C:/nvm4w/nodejs/node.exe",
+      "runtimeArgs": [
+        "C:/nvm4w/nodejs/node_modules/npm/bin/npm-cli.js",
+        "run",
+        "dev"
+      ],
       "port": 3000
     }
   ]

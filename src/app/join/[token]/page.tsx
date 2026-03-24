@@ -26,7 +26,7 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
   }, [])
 
   const fetchInvite = async () => {
-    const res = await fetch(`/api/invite/${token}`)
+    const res = await fetch(`/api/join/${token}`)
     const data = await res.json()
     if (res.ok) setInvite(data)
     else setError(data.error)
@@ -38,13 +38,18 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
       return
     }
     setJoining(true)
-    const res = await fetch(`/api/invite/${token}`, { method: 'POST' })
+    const res = await fetch(`/api/join/${token}`, { method: 'POST' })
     const data = await res.json()
     if (res.ok) {
       setJoined(true)
+      // 跳转到任务详情页（有 taskId 则进任务，否则进首页）
       setTimeout(() => {
-        router.push('/')
-      }, 2000)
+        if (data.taskId) {
+          router.push(`/tasks?id=${data.taskId}`)
+        } else {
+          router.push('/')
+        }
+      }, 1500)
     } else {
       setError(data.error)
     }

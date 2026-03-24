@@ -20,9 +20,23 @@ export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req)
   if (!auth) return NextResponse.json({ error: '需要 API Token' }, { status: 401 })
 
-  const { content, targetUserId } = await req.json()
+  const { content, targetUserId, attachments } = await req.json()
   if (!content?.trim()) {
     return NextResponse.json({ error: '消息内容不能为空' }, { status: 400 })
+  }
+
+  // v15.1: 附件校验（可选）
+  // attachments: [{ type: "image/png", name: "封面.png", url: "https://..." }]
+  let validAttachments: { type: string; name: string; url: string }[] | null = null
+  if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+    validAttachments = attachments
+      .filter((a: any) => a.url && typeof a.url === 'string')
+      .slice(0, 10)  // 最多 10 个附件
+      .map((a: any) => ({
+        type: a.type || 'application/octet-stream',
+        name: a.name || '附件',
+        url: a.url,
+      }))
   }
 
   // 找到发送者 Agent
@@ -52,6 +66,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 构建 metadata（附件存这里）
+  const metadata = validAttachments ? JSON.stringify({ attachments: validAttachments }) : null
+
   // 创建全新消息（每次调用都生成新 ID）
   const message = await prisma.chatMessage.create({
     data: {
@@ -59,6 +76,7 @@ export async function POST(req: NextRequest) {
       role: 'agent',
       userId: recipientId,
       agentId: agent.id,
+      metadata,
     },
   })
 
@@ -70,11 +88,13 @@ export async function POST(req: NextRequest) {
     agentId: agent.id,
     agentName: agent.name,
     fromAgent: true,
+    ...(validAttachments && { attachments: validAttachments }),
   } as any)
 
   return NextResponse.json({
     ok: true,
     messageId: message.id,
     sentTo: recipientId,
+    ...(validAttachments && { attachments: validAttachments.length }),
   })
 }

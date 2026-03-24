@@ -1,0 +1,68 @@
+{
+  "name": "Skill Bundle 更新发布",
+  "description": "Skill 技能包更新标准流程：修改 → 基线校验 → 模块加载测试 → 打包 → 部署验证。仅管理员可见。",
+  "icon": "🔧",
+  "category": "ops",
+  "tags": ["运维", "skill", "发布", "admin"],
+  "isPublic": false,
+  "defaultMode": "solo",
+  "executionProtocol": "# 执行规范\n- 所有操作在 D:\\Projects\\teamagent\\skills\\teamagent-client-skill-v2 目录下进行\n- 每步完成后必须贴出命令输出作为证据\n- 校验失败则停止流程，报告失败项\n- 打包前必须通过全部基线校验",
+  "variables": [
+    {
+      "name": "version",
+      "label": "版本号",
+      "type": "text",
+      "required": true,
+      "description": "新版本号，如 2.0.1"
+    },
+    {
+      "name": "changeLog",
+      "label": "更新内容",
+      "type": "text",
+      "required": true,
+      "description": "本次更新的主要内容，简述改了什么"
+    }
+  ],
+  "stepsTemplate": [
+    {
+      "order": 1,
+      "title": "代码修改 & 版本号更新",
+      "promptTemplate": "根据更新需求完成代码修改：\n\n更新内容：{{changeLog}}\n目标版本：{{version}}\n\n1. 修改 SKILL.md 中的 version 字段为 {{version}}\n2. 完成所有代码改动\n3. 列出所有修改的文件清单",
+      "assigneeHint": "agent",
+      "requiresApproval": false,
+      "parallelGroup": null
+    },
+    {
+      "order": 2,
+      "title": "基线规则校验（R1~R10）",
+      "promptTemplate": "读取 skills/teamagent-client-skill-v2/BASELINE-RULES.md，逐条校验 R1~R10 全部规则：\n\n1. 对每条规则，检查对应代码是否满足\n2. 输出校验报告：每条 ✅ 或 ❌\n3. 如有 ❌ 项，列出具体问题和修复建议\n4. 全部 ✅ 才算通过\n\n版本：{{version}}\n更新内容：{{changeLog}}",
+      "assigneeHint": "agent",
+      "requiresApproval": true,
+      "parallelGroup": null
+    },
+    {
+      "order": 3,
+      "title": "模块加载测试",
+      "promptTemplate": "在 v2 目录下执行模块加载验证：\n\n```bash\ncd skills/teamagent-client-skill-v2/teamagent-client-skill\nnode -e \"require('./lib/dedup'); require('./lib/openclaw-bridge'); require('./lib/step-executor'); require('./lib/event-handlers'); require('./lib/sse-watcher'); console.log('ALL OK')\"\n```\n\n1. 全部 5 模块加载成功\n2. wc -l 统计各文件行数，与上一版本对比\n3. 确认文件清单完整（R10）",
+      "assigneeHint": "agent",
+      "requiresApproval": false,
+      "parallelGroup": null
+    },
+    {
+      "order": 4,
+      "title": "打包 ZIP",
+      "promptTemplate": "打包 Skill Bundle：\n\n1. 进入 skills/teamagent-client-skill-v2/ 目录\n2. 确认只打包 teamagent-client-skill/ 子目录（不含 BASELINE-RULES.md）\n3. 打包命令（PowerShell）：\n   Compress-Archive -Path teamagent-client-skill -DestinationPath teamagent-client-skill-v{{version}}.zip -Force\n4. 复制到发布目录：\n   Copy-Item teamagent-client-skill-v{{version}}.zip ..\\..\\public\\downloads\\teamagent-client-skill.zip -Force\n   Copy-Item teamagent-client-skill-v{{version}}.zip ..\\..\\skills\\teamagent-client-skill.zip -Force\n5. 验证 ZIP 内容：列出 ZIP 内的文件确认完整",
+      "assigneeHint": "agent",
+      "requiresApproval": true,
+      "parallelGroup": null
+    },
+    {
+      "order": 5,
+      "title": "部署验证",
+      "promptTemplate": "最终验证：\n\n1. 用 node agent-worker.js check 测试连通性（用凯凯的 Token）\n2. 确认 public/downloads/teamagent-client-skill.zip 存在且大小合理\n3. 记录发布信息：\n   - 版本：{{version}}\n   - 更新：{{changeLog}}\n   - 文件数量和总行数\n   - ZIP 大小",
+      "assigneeHint": "agent",
+      "requiresApproval": true,
+      "parallelGroup": null
+    }
+  ]
+}

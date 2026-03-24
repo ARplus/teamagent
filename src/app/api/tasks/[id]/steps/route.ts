@@ -49,10 +49,32 @@ export async function POST(
 
     const { title, description, assigneeId, assigneeEmail, assigneeType: hintAssigneeType,
             stepType, agenda, participants, scheduledAt,
-            requiresApproval, insertAfterOrder, parallelGroup } = await req.json()
+            requiresApproval, insertAfterOrder, parallelGroup,
+            // V1.1: 步骤展开
+            parentStepId,
+            // V1.1: 人类资料补充
+            needsHumanInput, humanInputPrompt,
+            } = await req.json()
 
     if (!title) {
       return NextResponse.json({ error: '步骤标题不能为空' }, { status: 400 })
+    }
+
+    // P2: 子步骤只允许一层嵌套
+    if (parentStepId) {
+      const parentStep = await prisma.taskStep.findUnique({
+        where: { id: parentStepId },
+        select: { id: true, parentStepId: true, taskId: true }
+      })
+      if (!parentStep) {
+        return NextResponse.json({ error: '父步骤不存在' }, { status: 404 })
+      }
+      if (parentStep.taskId !== taskId) {
+        return NextResponse.json({ error: '父步骤不属于该任务' }, { status: 400 })
+      }
+      if (parentStep.parentStepId) {
+        return NextResponse.json({ error: '只允许一层嵌套，不能给子步骤再创建子步骤' }, { status: 400 })
+      }
     }
 
     // 解析负责人
@@ -92,11 +114,18 @@ export async function POST(
         agenda: agenda || null,
         participants: participants ? JSON.stringify(participants) : null,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-        requiresApproval: requiresApproval !== false, // 默认 true，false 时自动通过
+        requiresApproval: requiresApproval !== false,
         parallelGroup: parallelGroup || null,
+        // V1.1
+        parentStepId: parentStepId || null,
+        needsHumanInput: needsHumanInput === true,
+        humanInputPrompt: humanInputPrompt || null,
+        humanInputStatus: needsHumanInput ? 'waiting' : 'not_needed',
+        unassigned: !finalAssigneeId,
+        unassignedReason: !finalAssigneeId ? '待分配' : null,
       },
       include: {
-        assignee: { select: { id: true, name: true, avatar: true } },
+        assignee: { select: { id: true, name: true, avatar: true, agent: { select: { id: true, name: true } } } },
         attachments: true
       }
     })

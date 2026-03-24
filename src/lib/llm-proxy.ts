@@ -1,35 +1,42 @@
 /**
  * LLM 代理网关工具库
- * 千问 API key 永远不离开服务器，用户通过 ta_xxx token 认证
+ * 上游 API key 永远不离开服务器，用户通过 ta_xxx token 认证
  */
 import crypto from 'crypto'
 
 // ── 模型白名单 ──
-export const ALLOWED_MODELS = ['qwen-turbo', 'qwen-max-latest'] as const
+export const ALLOWED_MODELS = ['kimi-k2.5', 'qwen3.5-flash', 'qwen3-max'] as const
 export type AllowedModel = (typeof ALLOWED_MODELS)[number]
 
-// ── 积分换算：1 积分 = N token ──
+// ── 模型路由：哪些模型走 Kimi，哪些走千问 ──
+const KIMI_MODELS = new Set(['kimi-k2.5'])
+
+// ── Token 换算：1 Token = N 原始 token ──
 const CREDIT_RATES: Record<string, number> = {
-  'qwen-turbo': 1000,         // 便宜模型：1积分/1000token
-  'qwen-max-latest': 500,     // 强模型：1积分/500token
+  'kimi-k2.5':    2000,   // 强模型：1 Token / 2000 原始token
+  'qwen3.5-flash': 10000, // 快模型：1 Token / 10000 原始token
+  'qwen3-max':    3000,   // 强模型：1 Token / 3000 原始token
 }
 
 const QWEN_API_KEY = process.env.QWEN_API_KEY
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 
+const KIMI_API_KEY = process.env.KIMI_API_KEY
+const KIMI_API_URL = 'https://api.moonshot.cn/v1/chat/completions'
+
 /**
- * 根据模型和 token 数量计算需要扣除的积分
- * 最低 1 积分，防止零消耗
+ * 根据模型和原始 token 数量计算需要扣除的 Token 数
+ * 最低 1 Token，防止零消耗
  */
 export function calculateCredits(model: string, totalTokens: number): number {
-  const rate = CREDIT_RATES[model] || 500  // 未知模型按贵的算
+  const rate = CREDIT_RATES[model] || 2000
   return Math.max(1, Math.ceil(totalTokens / rate))
 }
 
 /**
- * 转发请求到千问 API
+ * 转发请求到上游 LLM（根据模型自动路由 Kimi / 千问）
  */
-export async function forwardToQianwen(body: {
+export async function forwardToLLM(body: {
   model: string
   messages: any[]
   stream?: boolean
@@ -37,15 +44,20 @@ export async function forwardToQianwen(body: {
   max_tokens?: number
   response_format?: any
 }): Promise<Response> {
-  if (!QWEN_API_KEY) {
-    throw new Error('QWEN_API_KEY not configured')
+  const isKimi = KIMI_MODELS.has(body.model)
+
+  const apiKey = isKimi ? KIMI_API_KEY : QWEN_API_KEY
+  const apiUrl = isKimi ? KIMI_API_URL : QWEN_API_URL
+
+  if (!apiKey) {
+    throw new Error(`${isKimi ? 'KIMI_API_KEY' : 'QWEN_API_KEY'} not configured`)
   }
 
-  return fetch(QWEN_API_URL, {
+  return fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${QWEN_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: body.model,
@@ -59,6 +71,9 @@ export async function forwardToQianwen(body: {
   })
 }
 
+/** @deprecated 用 forwardToLLM */
+export const forwardToQianwen = forwardToLLM
+
 /**
  * 生成 8 字符激活码
  * 排除容易混淆的字符：O/0/I/1/L
@@ -70,13 +85,11 @@ export function generateActivationCode(): string {
 }
 
 /**
- * 积分估算：1 积分约等于多少万字
- * qwen-turbo: 1积分=1000token≈750中文字
+ * Token 估算：1 Token ≈ 1 次普通对话
  */
 export function creditsToEstimate(credits: number): string {
-  const chars = credits * 750  // 按 turbo 估算
-  if (chars >= 10000) {
-    return `约 ${(chars / 10000).toFixed(1)} 万字`
+  if (credits >= 10000) {
+    return `约 ${(credits / 10000).toFixed(1)} 万次对话`
   }
-  return `约 ${chars} 字`
+  return `约 ${credits} 次对话`
 }

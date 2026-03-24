@@ -6,6 +6,7 @@ import { authenticateRequest } from '@/lib/api-auth'
 import { parseTaskWithAI, TeamMemberContext } from '@/lib/ai-parse'
 import { sendToUsers, sendToUser } from '@/lib/events'
 import { getStartableSteps } from '@/lib/step-scheduling'
+import { BASE_EXECUTION_RULES } from '@/lib/decompose-prompt'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -54,19 +55,26 @@ export async function POST(
         }
       })
 
-      // 找到所有工作区成员中 isMainAgent=true 的那一个
+      // 找任务创建者（或当前操作者）的主 Agent — 不找工作区任意主Agent
+      const creatorId = (task as any).creatorId || auth.userId
       const allMembers = await prisma.workspaceMember.findMany({
         where: { workspaceId: task.workspaceId },
         include: {
           user: {
             select: {
               id: true,
+              name: true,
               agent: { select: { id: true, name: true, isMainAgent: true } }
             }
           }
         }
       })
-      const mainMember = allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
+      // 优先：任务创建者自己的主 Agent
+      const mainMember = allMembers.find(m => m.userId === creatorId && (m.user.agent as any)?.isMainAgent === true)
+        // 退一步：任务创建者有 Agent（无论 isMainAgent 值）
+        ?? allMembers.find(m => m.userId === creatorId && m.user.agent != null)
+        // 最后兜底：工作区内任意主 Agent（旧行为）
+        ?? allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
 
       if (!mainMember) {
         // 无主 Agent → 提示绑定
@@ -89,12 +97,14 @@ export async function POST(
 任务描述：
 ${task.description}
 
-要求：
+拆解要求：
 1. 分析任务，拆解为可独立执行的子步骤
 2. 根据团队成员能力，为每步指定最合适的 assignee（Agent名字）
 3. 判断哪些步骤可以并行（parallelGroup 相同字符串）
 4. 判断每步是否需要人类审批（requiresApproval）
-5. 返回 JSON 格式步骤数组`,
+5. 返回 JSON 格式步骤数组
+
+${BASE_EXECUTION_RULES}`,
           order,
           taskId,
           stepType: 'decompose',
@@ -107,17 +117,22 @@ ${task.description}
         }
       })
 
-      // 通知主 Agent
+      // 通知主 Agent（用 task:decompose-request，Skill 的 handleDecomposeRequest 处理）
+      const teamCtxForParse = allMembers
+        .filter(m => { const a = m.user.agent as any; return !a || !a.parentAgentId })
+        .map(m => {
+          const a = m.user.agent as any
+          return { name: m.user.name || '未知', isAgent: !!a, agentName: a?.name, capabilities: [], role: (m as any).role }
+        })
       sendToUser(mainAgentUserId, {
-        type: 'step:ready',
+        type: 'task:decompose-request',
         taskId: task.id,
-        stepId: decomposeStep.id,
-        title: decomposeStep.title,
-        stepType: 'decompose',
-        taskDescription: task.description
+        taskTitle: task.title,
+        taskDescription: task.description || '',
+        teamMembers: teamCtxForParse,
       })
 
-      console.log(`[Parse/Solo] 已创建 decompose 步骤 ${decomposeStep.id}，通知主Agent ${mainAgentName}`)
+      console.log(`[Parse/Solo] task:decompose-request 已推送给主Agent ${mainAgentName}`)
 
       return NextResponse.json({
         message: `🤖 已通知主 Agent「${mainAgentName}」开始拆解任务，稍后步骤将自动生成`,

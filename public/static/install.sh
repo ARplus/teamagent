@@ -140,11 +140,14 @@ git config --global url."https://github.com/".insteadOf "git@github.com:" 2>/dev
 step 2 "Install OpenClaw CLI"
 
 CLAW_INSTALLED=false
+TARGET_VER="2026.3.13"
 if command -v openclaw &>/dev/null; then
     CLAW_VER=$(openclaw --version 2>/dev/null)
-    if [ -n "$CLAW_VER" ]; then
+    if echo "$CLAW_VER" | grep -q "$TARGET_VER"; then
         ok "OpenClaw $CLAW_VER already installed"
         CLAW_INSTALLED=true
+    elif [ -n "$CLAW_VER" ]; then
+        info "[UPGRADE] OpenClaw $CLAW_VER -> $TARGET_VER"
     fi
 fi
 
@@ -155,7 +158,7 @@ if [ "$CLAW_INSTALLED" = false ]; then
     # Use China npm mirror if in China (check by trying npmmirror)
     npm config set registry https://registry.npmmirror.com 2>/dev/null
 
-    npm install -g openclaw 2>&1 | while IFS= read -r line; do
+    npm install -g openclaw@2026.3.13 2>&1 | while IFS= read -r line; do
         if [[ "$line" != npm\ warn* ]]; then
             echo -e "  ${GRAY}$line${NC}"
         fi
@@ -175,51 +178,39 @@ confirm "OpenClaw ready. Configure AI Token?"
 # ============================================================
 # Step 3: Configure AI Token
 # ============================================================
-step 3 "Configure AI Token"
+step 3 "Configure Token"
 
 echo ""
-echo -e "  ${WHITE}Choose AI model:${NC}"
-echo -e "  ${GREEN}  [1] Use TeamAgent AI (recommended - enter your Token)${NC}"
-echo -e "  ${GRAY}  [2] Use your own API Key (advanced)${NC}"
+echo -e "  ${WHITE}Please enter your TeamAgent Token.${NC}"
+echo -e "  ${GRAY}Token can be found at: https://agent.avatargaia.top -> Settings${NC}"
+echo -e "  ${GRAY}(Register first if you don't have one)${NC}"
 echo ""
+read -r -p "  Token (ta_xxx): " API_KEY < /dev/tty
 
-read -r -p "  Enter choice (1/2), press Enter for default [1]: " MODEL_CHOICE < /dev/tty
-MODEL_CHOICE=${MODEL_CHOICE:-1}
-
-if [ "$MODEL_CHOICE" = "1" ]; then
-    echo ""
-    echo -e "  ${WHITE}Please enter your TeamAgent Token (ta_xxx...).${NC}"
-    echo -e "  ${GRAY}Token can be found at: https://agent.avatargaia.top -> Settings${NC}"
-    echo -e "  ${GRAY}(Register first if you don't have one)${NC}"
-    echo ""
-    read -r -p "  Token (ta_xxx): " API_KEY < /dev/tty
-
-    if [ -z "$API_KEY" ]; then
-        err "Token is required. Please register at https://agent.avatargaia.top first."
-        exit 1
-    fi
-    case "$API_KEY" in
-        ta_*) ;;
-        *) info "Warning: Token usually starts with 'ta_'. Continuing anyway..." ;;
-    esac
-
-    BASE_URL="https://agent.avatargaia.top/api/llm/v1"
-    MODEL_ID="qwen-turbo"
-    ok "Selected: TeamAgent AI (Qwen-Turbo via Gaia Proxy)"
-    info "Your API key never leaves the server. Safe and secure!"
-else
-    echo ""
-    echo -e "  ${GRAY}Supports OpenAI-compatible APIs (Qwen, Kimi, DeepSeek, etc.)${NC}"
-    echo ""
-    read -r -p "  API Base URL (e.g. https://dashscope.aliyuncs.com/compatible-mode/v1): " BASE_URL < /dev/tty
-    read -r -p "  API Key: " API_KEY < /dev/tty
-    read -r -p "  Model name (e.g. qwen-max, moonshot-v1-128k): " MODEL_ID < /dev/tty
-
-    if [ -z "$BASE_URL" ] || [ -z "$API_KEY" ] || [ -z "$MODEL_ID" ]; then
-        err "Incomplete API info. Please re-run the script."
-        exit 1
-    fi
+if [ -z "$API_KEY" ]; then
+    err "Token is required. Please register at https://agent.avatargaia.top first."
+    exit 1
 fi
+
+case "$API_KEY" in
+    ta_*)
+        # TeamAgent Token -> use Gaia AI proxy
+        BASE_URL="https://agent.avatargaia.top/api/llm/v1"
+        MODEL_ID="qwen3.5-flash"
+        ok "Token configured! (Model: Qwen3.5-Flash)"
+        ;;
+    *)
+        # Custom API key, ask for details
+        info "Detected custom API key. Need additional info:"
+        read -r -p "  API Base URL (e.g. https://dashscope.aliyuncs.com/compatible-mode/v1): " BASE_URL < /dev/tty
+        read -r -p "  Model name (e.g. qwen-max, moonshot-v1-128k): " MODEL_ID < /dev/tty
+        if [ -z "$BASE_URL" ] || [ -z "$MODEL_ID" ]; then
+            err "Incomplete API info. Please re-run the script."
+            exit 1
+        fi
+        ok "Custom API configured!"
+        ;;
+esac
 
 info "Writing configuration..."
 
@@ -239,7 +230,7 @@ cat > "$CONFIG_PATH" << JSONEOF
     "defaults": {
       "workspace": "$WORKSPACE_DIR",
       "model": {
-        "primary": "qwen-dashscope/$MODEL_ID"
+        "primary": "teamagent-ai/$MODEL_ID"
       },
       "compaction": {
         "mode": "safeguard"
@@ -255,7 +246,7 @@ cat > "$CONFIG_PATH" << JSONEOF
 
   "models": {
     "providers": {
-      "qwen-dashscope": {
+      "teamagent-ai": {
         "baseUrl": "$BASE_URL",
         "apiKey": "$API_KEY",
         "api": "openai-completions",
@@ -312,17 +303,37 @@ if curl -fsSL "https://agent.avatargaia.top/static/teamagent-client-skill.zip" -
     if unzip -o "$SKILL_ZIP" -d "$SKILL_DIR" >/dev/null 2>&1; then
         ok "TeamAgent skill installed!"
 
-        # Copy BOOTSTRAP.md to workspace root (triggers first-run onboarding)
+        # Copy BOOTSTRAP.md and HEARTBEAT.md to workspace root
         BOOTSTRAP_SRC="$SKILL_DIR/teamagent-client-skill/BOOTSTRAP.md"
+        HEARTBEAT_SRC="$SKILL_DIR/teamagent-client-skill/HEARTBEAT.md"
         if [ -f "$BOOTSTRAP_SRC" ]; then
             cp "$BOOTSTRAP_SRC" "$WORKSPACE_DIR/BOOTSTRAP.md"
             ok "First-run onboarding configured!"
+        fi
+        if [ -f "$HEARTBEAT_SRC" ]; then
+            cp "$HEARTBEAT_SRC" "$WORKSPACE_DIR/HEARTBEAT.md"
+            ok "Heartbeat configured!"
         fi
     else
         info "TeamAgent skill extraction failed, you can install it later."
     fi
 else
     info "TeamAgent skill download failed, you can install it later."
+fi
+
+# ============================================================
+# Step 3.6: Configure TeamAgent Client Token
+# ============================================================
+SKILL_BUNDLE_DIR="$SKILL_DIR/teamagent-client-skill"
+if [ -f "$SKILL_BUNDLE_DIR/teamagent-client.js" ]; then
+    case "$API_KEY" in
+        ta_*)
+            info "Configuring TeamAgent client with your token..."
+            node "$SKILL_BUNDLE_DIR/teamagent-client.js" set-token "$API_KEY" 2>/dev/null && \
+                ok "TeamAgent client configured!" || \
+                info "TeamAgent client config skipped (will configure during bootstrap)"
+            ;;
+    esac
 fi
 
 confirm "Configuration done. Start OpenClaw?"
@@ -336,6 +347,13 @@ info "Starting Gateway..."
 
 # Run doctor --fix first
 openclaw doctor --fix 2>&1 | while IFS= read -r line; do echo -e "  ${GRAY}$line${NC}"; done || true
+
+# Re-apply HEARTBEAT.md after doctor --fix (doctor may reset it to empty default)
+HEARTBEAT_SRC="$WORKSPACE_DIR/skills/teamagent-client-skill/HEARTBEAT.md"
+if [ -f "$HEARTBEAT_SRC" ]; then
+    cp "$HEARTBEAT_SRC" "$WORKSPACE_DIR/HEARTBEAT.md"
+    ok "Gaia heartbeat re-applied (post-doctor)"
+fi
 
 # Start gateway in background
 nohup openclaw gateway > /tmp/openclaw-gateway.log 2>&1 &
@@ -363,6 +381,62 @@ if [ "$GATEWAY_OK" = true ]; then
 else
     info "Gateway may need manual start. Try: openclaw gateway"
     info "Check logs: /tmp/openclaw-gateway.log"
+fi
+
+# ============================================================
+# Step 4.5: Start TeamAgent Watch Daemon
+# ============================================================
+WATCH_STARTED=false
+if [ -f "$SKILL_BUNDLE_DIR/agent-worker.js" ]; then
+    # Only start watch if token was configured (ta_ token set)
+    TA_CONFIG="$HOME/.teamagent/config.json"
+    if [ -f "$TA_CONFIG" ]; then
+        info "Starting TeamAgent Watch daemon (autonomous task execution)..."
+
+        # Create a restart-safe wrapper script
+        WATCH_SCRIPT="$HOME/.teamagent/start-watch.sh"
+        mkdir -p "$HOME/.teamagent"
+        cat > "$WATCH_SCRIPT" << 'WATCHEOF'
+#!/bin/bash
+# TeamAgent Watch Daemon — auto-restart on crash
+SKILL_DIR="$HOME/.openclaw/workspace/skills/teamagent-client-skill"
+LOG_FILE="/tmp/teamagent-watch.log"
+MAX_RESTARTS=10
+RESTART_COUNT=0
+
+while [ $RESTART_COUNT -lt $MAX_RESTARTS ]; do
+    echo "[$(date)] Starting watch daemon (attempt $((RESTART_COUNT+1))/$MAX_RESTARTS)" >> "$LOG_FILE"
+    node "$SKILL_DIR/agent-worker.js" watch >> "$LOG_FILE" 2>&1
+    EXIT_CODE=$?
+    RESTART_COUNT=$((RESTART_COUNT+1))
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "[$(date)] Watch daemon exited cleanly." >> "$LOG_FILE"
+        break
+    fi
+    echo "[$(date)] Watch daemon crashed (exit=$EXIT_CODE), restarting in 5s..." >> "$LOG_FILE"
+    sleep 5
+done
+WATCHEOF
+        chmod +x "$WATCH_SCRIPT"
+
+        # Start the watch daemon in background
+        nohup bash "$WATCH_SCRIPT" > /dev/null 2>&1 &
+        WATCH_PID=$!
+        disown $WATCH_PID 2>/dev/null
+        sleep 2
+
+        # Verify it's running
+        if kill -0 $WATCH_PID 2>/dev/null; then
+            ok "Watch daemon started! (PID: $WATCH_PID)"
+            ok "Agent will auto-execute tasks assigned to it"
+            WATCH_STARTED=true
+        else
+            info "Watch daemon couldn't start yet (agent may need registration first)"
+            info "It will auto-start after you complete the bootstrap conversation"
+        fi
+    else
+        info "TeamAgent token not configured yet — Watch will start after bootstrap"
+    fi
 fi
 
 confirm "All set! Open chat window?"
@@ -407,6 +481,16 @@ echo -e "  ${WHITE}Useful commands:${NC}"
 echo -e "  ${GRAY}  openclaw dashboard      - Open chat${NC}"
 echo -e "  ${GRAY}  openclaw gateway status  - Check status${NC}"
 echo -e "  ${GRAY}  openclaw configure       - Edit config${NC}"
+echo ""
+if [ "$WATCH_STARTED" = true ]; then
+echo -e "  ${GREEN}🤖 Agent Watch daemon is running!${NC}"
+echo -e "  ${GRAY}  Your Agent will auto-execute tasks from TeamAgent Hub.${NC}"
+echo -e "  ${GRAY}  Logs: /tmp/teamagent-watch.log${NC}"
+echo -e "  ${GRAY}  Restart: bash ~/.teamagent/start-watch.sh${NC}"
+else
+echo -e "  ${YELLOW}📋 Next: Complete the bootstrap chat to activate your Agent.${NC}"
+echo -e "  ${GRAY}  Your Agent will auto-start watching tasks after registration.${NC}"
+fi
 echo ""
 echo -e "  ${MAGENTA}Powered by Gaia x OpenClaw${NC}"
 echo ""

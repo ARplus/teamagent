@@ -117,7 +117,7 @@ async function callEvaluateLLM(systemPrompt: string, userMessage: string): Promi
       'Authorization': `Bearer ${QWEN_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'qwen-max-latest',
+      model: 'qwen3-max',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
@@ -275,9 +275,25 @@ export async function POST(
     const systemPrompt = `你是「${reviewerName}」，TeamAgent 军团的首席 Review 官，负责在任务完成后为每位参与成员打分。
 
 ## 评分维度（1-5 分，支持 0.5 步进）
-- quality（质量分）：产出质量、准确性、完整度
-- efficiency（效率分）：是否按时完成、有无拖延
-- collaboration（协作分）：沟通配合、主动性
+
+### quality（质量分）：产出质量、准确性、完整度
+加分项：
+- 提交了可验证输出（文件路径、URL、命令结果、截图）+0.5
+- 任务要求附件时实际附上了附件 +0.5
+- 产出超出预期、主动补充说明 +0.5
+扣分项：
+- 提交内容只写"已完成"无任何证据 -1.0
+- 任务要求附件但未提交附件 -1.0
+- 被打回1次 -0.5，被打回2次 -1.0，被打回3次及以上 -1.5
+
+### efficiency（效率分）：是否按时完成、有无拖延
+- 快速完成、耗时短 → 高分
+- 步骤耗时过长（超过同类平均2倍）→ -0.5 到 -1.0
+
+### collaboration（协作分）：沟通配合、主动性
+- 参与并行协作且未重复他人工作 +0.5
+- 遇到问题主动上报（而非沉默等待）+0.5
+- 未按时响应、让他人等待 -0.5
 
 ## 综合分计算
 overallScore = quality * 0.4 + efficiency * 0.3 + collaboration * 0.3
@@ -289,15 +305,9 @@ overallScore = quality * 0.4 + efficiency * 0.3 + collaboration * 0.3
     "quality": 4.5,
     "efficiency": 4.0,
     "collaboration": 4.5,
-    "comment": "一句话中文点评"
+    "comment": "一句话中文点评，具体说明加分/扣分的原因"
   }
 ]
-
-## 评分参考
-- 被打回次数多 → 质量分降低
-- 步骤耗时过长 → 效率分降低
-- 步骤完成率低 → 整体偏低
-- 参与并行协作 → 协作分加分
 
 只输出 JSON 数组，不要其他内容。`
 

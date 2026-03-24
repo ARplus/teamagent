@@ -137,35 +137,42 @@ curl http://localhost:3000/api/auth/session  # 测试接口
 
 ## 五、更新部署
 
-本地改完代码后：
-```bash
-# 本地
-git push
+> ⚠️ **国内服务器无法连接 GitHub**，不能用 `git pull`，统一用 **SCP 传文件** 的方式部署。
 
-# 服务器
-cd /var/www/teamagent
-git pull
-npm install            # 如果有新依赖
-npx prisma db push     # 如果有 schema 变化
-npm run build
-pm2 restart teamagent
+### 标准部署流程
+
+```bash
+# ── 1. 传文件（本地执行，逐个传改动的文件）──
+scp src/app/api/xxx/route.ts ubuntu@118.195.138.220:~/teamagent/src/app/api/xxx/route.ts
+scp src/components/xxx.tsx   ubuntu@118.195.138.220:~/teamagent/src/components/xxx.tsx
+# 有 [] 路径时用 stdin 方式：
+cat "src/app/api/templates/[id]/route.ts" | ssh ubuntu@118.195.138.220 "cat > ~/teamagent/src/app/api/templates/\[id\]/route.ts"
+
+# ── 2. 有 schema 变化时（加字段/加表）──
+scp prisma/schema.prisma ubuntu@118.195.138.220:~/teamagent/prisma/schema.prisma
+# 传 migration SQL（若有）
+scp prisma/migrations/xxx/migration.sql ubuntu@118.195.138.220:~/teamagent/prisma/migrations/xxx/migration.sql
+# SSH 进去执行：
+ssh ubuntu@118.195.138.220 "cd ~/teamagent && \
+  npx prisma db execute --schema prisma/schema.prisma --file prisma/migrations/xxx/migration.sql && \
+  npx prisma generate"
+
+# ── 3. Build + 重启 ──
+ssh ubuntu@118.195.138.220 "cd ~/teamagent && npm run build && pm2 restart teamagent"
 ```
 
-一键更新脚本（保存为 `/var/www/teamagent/deploy.sh`）：
-```bash
-#!/bin/bash
-set -e
-echo "=== TeamAgent 更新部署 ==="
-cd /var/www/teamagent
-git pull origin master
-npm install
-npx prisma db push
-npx prisma generate
-npm run build
-pm2 restart teamagent
-echo "=== 部署完成 ==="
-```
-使用：`bash deploy.sh`
+### 完整步骤速查
+
+| 步骤 | 命令 | 何时需要 |
+|------|------|----------|
+| 传业务文件 | `scp 本地文件 ubuntu@服务器:~/teamagent/路径` | 每次都要 |
+| 传 schema | `scp prisma/schema.prisma ubuntu@...:~/teamagent/prisma/schema.prisma` | 有字段/表变动 |
+| 执行 migration SQL | `prisma db execute --schema ... --file ...` | 有字段/表变动 |
+| 重新生成 Prisma Client | `npx prisma generate` | **有 schema 变动时必须！** 否则新字段不生效 |
+| 构建 | `npm run build` | 每次都要 |
+| 重启 | `pm2 restart teamagent` | 每次都要 |
+
+> 💡 **常见坑**：传了 schema、跑了 SQL，但忘了 `prisma generate` → 新字段在 DB 里有，但 Prisma Client 不认识，API 返回异常。**有 schema 变动时一定要 generate → build → restart 顺序执行。**
 
 ---
 
@@ -311,4 +318,4 @@ server {
 
 ---
 
-*最后更新：2026-03-01 | 凯凯 🤖*
+*最后更新：2026-03-16 | 凯凯 🤖*

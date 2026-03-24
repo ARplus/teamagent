@@ -5,6 +5,7 @@ import { authenticateRequest } from '@/lib/api-auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
+import { extractIdempotencyKey, checkIdempotency, saveIdempotency } from '@/lib/idempotency'
 
 // GET /api/steps/[id]/comments — 获取步骤评论列表
 export async function GET(
@@ -92,7 +93,17 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const { content, attachmentIds } = await req.json()
+    const body = await req.json()
+    const { content, attachmentIds } = body
+
+    // A2A: 幂等键检查 — 防止重复评论
+    const idempotencyKey = extractIdempotencyKey(req, body)
+    if (idempotencyKey) {
+      const cached = await checkIdempotency(idempotencyKey)
+      if (cached.hit) {
+        return NextResponse.json(cached.cachedBody, { status: cached.cachedStatus })
+      }
+    }
 
     if (!content?.trim()) {
       return NextResponse.json({ error: '评论内容不能为空' }, { status: 400 })
@@ -276,7 +287,7 @@ export async function POST(
       })
     }
 
-    return NextResponse.json({
+    const responseBody = {
       comment: {
         id: fullComment!.id,
         content: fullComment!.content,
@@ -284,7 +295,11 @@ export async function POST(
         author: fullComment!.author,
         attachments: fullComment!.attachments
       }
-    })
+    }
+    if (idempotencyKey) {
+      await saveIdempotency(idempotencyKey, 'POST', `/api/steps/${id}/comments`, 200, responseBody)
+    }
+    return NextResponse.json(responseBody)
   } catch (error) {
     console.error('发表评论失败:', error)
     return NextResponse.json({ error: '发表评论失败' }, { status: 500 })

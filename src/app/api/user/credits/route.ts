@@ -1,5 +1,5 @@
 /**
- * 用户积分余额 + 近期用量
+ * 用户 Token 余额 + 近期用量
  * GET /api/user/credits
  */
 import { NextResponse } from 'next/server'
@@ -57,6 +57,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[User/Credits] 失败:', error)
-    return NextResponse.json({ error: '获取积分信息失败' }, { status: 500 })
+    return NextResponse.json({ error: '获取 Token 信息失败' }, { status: 500 })
   }
 }

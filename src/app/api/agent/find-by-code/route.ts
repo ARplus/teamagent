@@ -14,16 +14,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '请提供配对码' }, { status: 400 })
   }
 
-  if (!/^\d{6}$/.test(code)) {
-    return NextResponse.json({ error: '配对码必须是6位数字' }, { status: 400 })
-  }
+  const isShortCode = code.length <= 6  // 配对码(4-6位字母数字)
 
   try {
     const agent = await prisma.agent.findFirst({
-      where: {
-        pairingCode: code,
-        userId: null, // 未被认领
-      },
+      where: isShortCode
+        ? { pairingCode: code, userId: null }
+        : { id: code, userId: null },
       select: {
         id: true,
         name: true,

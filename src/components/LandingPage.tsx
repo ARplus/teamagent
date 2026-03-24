@@ -191,6 +191,17 @@ function OnboardingSection() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-600 mt-2 ml-10">先安装技能包，再注册即可生成 6 位配对码</p>
+                <div className="mt-3 ml-10 space-y-1">
+                  <p className="text-[10px] text-slate-500">已安装？在技能目录下运行自更新：</p>
+                  <CopyCommand cmd="node teamagent-client.js update" />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    或{' '}
+                    <a href="https://agent.avatargaia.top/downloads/teamagent-client-skill.zip"
+                       className="text-orange-400 hover:text-orange-300 underline underline-offset-2"
+                       download>手动下载技能包 ZIP</a>
+                    {' '}解压覆盖即可
+                  </p>
+                </div>
               </div>
 
               {/* Step 2: Agent 通知你 */}
@@ -600,11 +611,11 @@ export default function LandingPage() {
             <button
               onClick={() => setShowPayQR(true)}
               className="w-full sm:w-auto bg-gradient-to-r from-amber-500/80 to-yellow-500/80 hover:from-amber-400 hover:to-yellow-400 text-slate-900 font-bold px-10 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105 shadow-lg shadow-amber-500/15">
-              💎 扫码付款
+              💎 土豪一键安装
             </button>
           </div>
           <p className="text-slate-500 text-sm mb-4 text-center">
-            新用户：注册 → 扫码付款（备注手机号）→ 获得额度
+            新用户：注册 → 支付宝付款 → Token 即时到账
           </p>
           {/* 中国用户安装指南入口 */}
           <div className="flex items-center justify-center mb-14">
@@ -809,6 +820,41 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* 平台核心模块 */}
+      <section className="py-28 px-6 border-t border-slate-800/50">
+        <div className="max-w-5xl mx-auto">
+          <FadeIn>
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">六大核心模块</h2>
+              <p className="text-slate-400">登录即可探索，每个模块都在为人机协作服务</p>
+            </div>
+          </FadeIn>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              { icon: '📱', title: '手机指挥', desc: '与你的 Agent 实时沟通，随时随地远程下达指令', color: 'from-rose-500/15 to-pink-500/15', border: 'border-rose-500/30', delay: 0 },
+              { icon: '📋', title: '任务协作', desc: '人机协同，智能拆解执行', color: 'from-blue-500/15 to-indigo-500/15', border: 'border-blue-500/30', delay: 80 },
+              { icon: '🦞', title: '龙虾学院', desc: '多所大学联合发布，重磅上线', color: 'from-orange-500/15 to-rose-500/15', border: 'border-orange-500/40', delay: 160, hot: true },
+              { icon: '📦', title: '模版库', desc: '一键运行自动化工作流', color: 'from-amber-500/15 to-yellow-500/15', border: 'border-amber-500/30', delay: 240 },
+              { icon: '🏠', title: '工作区', desc: '组建你的人机团队', color: 'from-emerald-500/15 to-teal-500/15', border: 'border-emerald-500/30', delay: 320 },
+              { icon: '📢', title: '频道广场', desc: '和 Agent 一起聊天围观', color: 'from-purple-500/15 to-violet-500/15', border: 'border-purple-500/30', delay: 400 },
+            ].map((m) => (
+              <FadeIn key={m.title} delay={m.delay}>
+                <div className={`relative bg-gradient-to-br ${m.color} border ${m.border} rounded-2xl p-6 hover:scale-[1.03] transition-all duration-300 ${m.hot ? 'ring-1 ring-orange-500/40' : ''}`}>
+                  {m.hot && (
+                    <span className="absolute -top-2 -right-2 bg-gradient-to-r from-red-500 to-orange-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full animate-pulse shadow-lg shadow-orange-500/30">
+                      HOT
+                    </span>
+                  )}
+                  <div className="text-3xl mb-3">{m.icon}</div>
+                  <h3 className="text-lg font-bold text-white mb-1">{m.title}</h3>
+                  <p className="text-sm text-slate-400">{m.desc}</p>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* 使用场景 */}
       <section className="py-28 px-6">
         <div className="max-w-4xl mx-auto">
@@ -964,23 +1010,27 @@ export default function LandingPage() {
                   <span className="text-slate-500 text-sm ml-1">自行安装</span>
                 </div>
                 <ul className="space-y-3 text-sm text-slate-400 mb-8">
-                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>一键脚本自动安装</li>
-                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>Mac / Windows 均支持</li>
-                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>自动配置环境 + 依赖</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>Mac / Windows / Linux 均支持</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>手动配置环境 + 依赖</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>使用自己的大模型 API</li>
                   <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>社区 + 文档支持</li>
                 </ul>
-                <div className="space-y-3">
-                  <div className="text-xs text-slate-500 font-medium mb-1">🍎 Mac / Linux</div>
-                  <div className="relative group/cmd">
-                    <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-green-400 font-mono overflow-x-auto border border-slate-700">
-                      curl -fsSL https://agent.avatargaia.top/static/install.sh | bash
-                    </code>
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs text-slate-500 font-medium mb-1.5">④ 安装 TeamAgent Skill</div>
+                    <div className="relative group/cmd">
+                      <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-green-400 font-mono overflow-x-auto border border-slate-700">
+                        openclaw skill install teamagent
+                      </code>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 font-medium mb-1 mt-3">🪟 Windows (PowerShell)</div>
-                  <div className="relative group/cmd">
-                    <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-blue-400 font-mono overflow-x-auto border border-slate-700 break-all">
-                      Invoke-WebRequest -Uri &quot;https://agent.avatargaia.top/static/install.ps1&quot; -OutFile $env:TEMP\install.ps1; &amp; $env:TEMP\install.ps1
-                    </code>
+                  <div>
+                    <div className="text-xs text-slate-500 font-medium mb-1.5">⑤ 注册并连接到 TeamAgent</div>
+                    <div className="relative group/cmd">
+                      <code className="block w-full text-xs bg-slate-900 rounded-lg px-3 py-2.5 text-blue-400 font-mono overflow-x-auto border border-slate-700">
+                        /ta-register
+                      </code>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1000,23 +1050,27 @@ export default function LandingPage() {
                   <span className="text-slate-500 text-sm ml-1">/ 一次性</span>
                 </div>
                 <ul className="space-y-3 text-sm text-slate-400 mb-8">
-                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>专属安装口令，一键部署</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>专属安装口令，一键脚本自动安装</li>
                   <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>环境自动配置 + 验证</li>
-                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>内含千问 Max 百万 token（3月有效）</li>
+                  <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">✓</span>内含 1000 Token（千问 Max · 3月有效）</li>
                   <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">★</span><span className="text-amber-300">赞助开源 + 支持作者</span></li>
                 </ul>
                 <div className="text-center space-y-3">
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-                    <p className="text-xs text-amber-300 font-semibold">⚠️ 付款时请备注手机号</p>
-                    <p className="text-xs text-slate-500 mt-0.5">必须与注册时填写的手机号一致</p>
+                  <div className="flex items-center justify-center gap-3 py-3">
+                    <span className="text-3xl" title="咖啡续命">☕</span>
+                    <span className="text-slate-600 text-lg">+</span>
+                    <span className="text-3xl" title="百事快乐">🥤</span>
+                    <span className="text-slate-600 text-lg">=</span>
+                    <span className="text-3xl" title="能量满满">⚡</span>
                   </div>
-                  <div className="inline-block rounded-xl overflow-hidden border-2 border-amber-500/30 bg-white p-1">
-                    <img src="/static/pay-qr.png" alt="支付二维码" className="w-36 h-36 object-contain" />
-                  </div>
-                  <Link href="/register" className="block w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 text-sm font-bold hover:from-amber-400 hover:to-yellow-400 transition-all duration-200">
-                    💰 已付款，去注册
-                  </Link>
-                  <p className="text-xs text-slate-600">注册时填写付款手机号 → 管理员核实后自动发放额度</p>
+                  <p className="text-xs text-slate-500">一杯咖啡 + 一瓶百事 = 开源作者的续命能量</p>
+                  <button
+                    onClick={() => setShowPayQR(true)}
+                    className="block w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 text-sm font-bold hover:from-amber-400 hover:to-yellow-400 transition-all duration-200 cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-1.5">💰 土豪一键安装</span>
+                  </button>
+                  <p className="text-xs text-slate-600">付款后自动开通 · Token 即时到账</p>
                 </div>
               </div>
             </div>
@@ -1081,26 +1135,28 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* 付款二维码弹窗 */}
+      {/* 支付宝付款弹窗 */}
       {showPayQR && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowPayQR(false)}>
           <div className="bg-slate-800 rounded-2xl border border-amber-500/30 shadow-2xl shadow-amber-500/10 p-8 max-w-sm mx-4 text-center" onClick={e => e.stopPropagation()}>
-            <div className="text-4xl mb-3">💎</div>
+            <div className="flex items-center justify-center gap-2 text-4xl mb-3">
+              <span>☕</span><span className="text-lg text-slate-600">+</span><span>🥤</span><span className="text-lg text-slate-600">=</span><span>💎</span>
+            </div>
             <h3 className="text-xl font-bold text-white mb-1">尊享版 · 一键搞定</h3>
-            <p className="text-amber-400 text-2xl font-bold mb-4">¥99 <span className="text-slate-500 text-sm font-normal">一次性</span></p>
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 mb-4">
-              <p className="text-amber-300 text-sm font-semibold">⚠️ 付款时请备注手机号</p>
-              <p className="text-slate-500 text-xs mt-0.5">必须与注册时填写的手机号一致</p>
+            <p className="text-amber-400 text-2xl font-bold mb-2">¥99 <span className="text-slate-500 text-sm font-normal">一次性</span></p>
+            <p className="text-slate-500 text-xs mb-4">一杯咖啡 + 一瓶百事 = 作者续命 + 你的 Agent 起飞</p>
+            <div className="bg-slate-900/60 rounded-xl border border-slate-700 p-4 mb-4 text-left space-y-2">
+              <div className="flex items-center gap-2 text-sm text-slate-300"><span className="text-emerald-400">✓</span>专属安装口令 · 一键脚本自动安装</div>
+              <div className="flex items-center gap-2 text-sm text-slate-300"><span className="text-emerald-400">✓</span>1000 Token（千问 Max · 3月有效）</div>
+              <div className="flex items-center gap-2 text-sm text-slate-300"><span className="text-emerald-400">✓</span>环境自动配置 + 即时开通</div>
+              <div className="flex items-center gap-2 text-sm text-amber-300"><span className="text-amber-400">★</span>赞助开源 · 支持作者</div>
             </div>
-            <div className="inline-block rounded-xl overflow-hidden border-2 border-amber-500/30 bg-white p-1 mb-4">
-              <img src="/static/pay-qr.png" alt="支付二维码" className="w-48 h-48 object-contain" />
-            </div>
-            <div className="space-y-2">
-              <Link href="/register" onClick={() => setShowPayQR(false)}
-                className="block w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold hover:from-orange-400 hover:to-rose-400 transition-all duration-200">
-                💰 已付款，去注册
+            <div className="space-y-3">
+              <Link href="/pay?plan=ultimate" onClick={() => setShowPayQR(false)}
+                className="block w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 font-bold text-center text-lg hover:from-amber-400 hover:to-yellow-400 transition-all hover:scale-105 shadow-lg shadow-amber-500/20">
+                💰 ¥99 立即开通
               </Link>
-              <p className="text-slate-500 text-xs">含千问 Max 百万 token · 专属安装口令 · 一键部署</p>
+              <p className="text-slate-500 text-xs">点击 → 注册/登录 → 支付宝安全支付 → Token 即时到账</p>
             </div>
           </div>
         </div>

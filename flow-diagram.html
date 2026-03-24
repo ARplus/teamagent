@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TeamAgent 执行流程图</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; padding: 32px; min-height: 100vh; }
+  h1 { text-align: center; font-size: 22px; font-weight: 700; color: #f97316; margin-bottom: 8px; letter-spacing: 1px; }
+  .subtitle { text-align: center; font-size: 13px; color: #94a3b8; margin-bottom: 36px; }
+
+  .canvas { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  /* ===== NODES ===== */
+  .node {
+    border-radius: 14px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    position: relative;
+    white-space: nowrap;
+  }
+  .node-create  { background: linear-gradient(135deg,#1e293b,#334155); border: 1.5px solid #475569; color: #cbd5e1; }
+  .node-lobster { background: linear-gradient(135deg,#7c3aed22,#6d28d944); border: 1.5px solid #7c3aed; color: #c4b5fd; }
+  .node-sched   { background: linear-gradient(135deg,#0e7490,#0891b2); border: 1.5px solid #22d3ee; color: #fff; }
+  .node-agent   { background: linear-gradient(135deg,#f97316,#ef4444); border: 1.5px solid #fb923c; color: #fff; }
+  .node-human   { background: linear-gradient(135deg,#7c3aed,#a855f7); border: 1.5px solid #a855f7; color: #fff; }
+  .node-done    { background: linear-gradient(135deg,#059669,#10b981); border: 1.5px solid #34d399; color: #fff; }
+  .node-approve { background: linear-gradient(135deg,#d97706,#f59e0b); border: 1.5px solid #fbbf24; color: #fff; }
+  .node-db      { background: #1e293b; border: 1.5px dashed #475569; color: #94a3b8; font-size: 11px; border-radius: 8px; padding: 6px 12px; }
+  .node-diamond { background: #1e293b; border: 1.5px solid #64748b; color: #94a3b8; border-radius: 8px; font-size: 12px; padding: 8px 16px; }
+  .node-api     { background: linear-gradient(135deg,#164e6322,#0e749022); border: 1.5px solid #0e7490; color: #67e8f9; border-radius: 10px; font-size: 11px; padding: 5px 12px; }
+
+  /* ===== ARROWS ===== */
+  .arrow { display: flex; flex-direction: column; align-items: center; }
+  .arrow-line { width: 2px; background: #334155; flex: 1; min-height: 20px; }
+  .arrow-label { font-size: 10px; color: #64748b; margin: 2px 0; background: #0f172a; padding: 0 4px; }
+  .arrow-head { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #334155; }
+  .arrow-orange .arrow-line { background: #f97316; } .arrow-orange .arrow-head { border-top-color: #f97316; }
+  .arrow-purple .arrow-line { background: #a855f7; } .arrow-purple .arrow-head { border-top-color: #a855f7; }
+  .arrow-cyan   .arrow-line { background: #22d3ee; } .arrow-cyan .arrow-head { border-top-color: #22d3ee; }
+  .arrow-green  .arrow-line { background: #10b981; } .arrow-green .arrow-head { border-top-color: #10b981; }
+  .arrow-yellow .arrow-line { background: #f59e0b; } .arrow-yellow .arrow-head { border-top-color: #f59e0b; }
+  .arrow-slate  .arrow-line { background: #475569; } .arrow-slate .arrow-head { border-top-color: #475569; }
+
+  /* ===== LAYOUT HELPERS ===== */
+  .row { display: flex; align-items: flex-start; gap: 0; justify-content: center; width: 100%; }
+  .col { display: flex; flex-direction: column; align-items: center; }
+  .spacer { width: 80px; }
+
+  /* ===== PHASE HEADERS ===== */
+  .phase {
+    font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    color: #475569; background: #1e293b; border: 1px solid #334155;
+    border-radius: 6px; padding: 3px 10px; margin-bottom: 12px;
+  }
+
+  /* ===== BRANCH ===== */
+  .branch-container { display: flex; align-items: flex-start; gap: 40px; width: 100%; justify-content: center; }
+  .branch-line-h { height: 2px; background: #334155; flex: 1; max-width: 80px; margin-top: 14px; }
+  .branch-label { font-size: 10px; color: #64748b; text-align: center; margin-bottom: 4px; }
+
+  /* ===== DB FIELD CHIP ===== */
+  .chip { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 999px; margin: 2px; font-weight: 600; }
+  .chip-orange { background: #7c280022; border: 1px solid #f97316; color: #fb923c; }
+  .chip-purple { background: #4c1d9522; border: 1px solid #a855f7; color: #c4b5fd; }
+  .chip-cyan   { background: #0e406022; border: 1px solid #22d3ee; color: #67e8f9; }
+  .chip-green  { background: #05251422; border: 1px solid #10b981; color: #34d399; }
+  .chip-yellow { background: #45280022; border: 1px solid #f59e0b; color: #fbbf24; }
+  .chip-slate  { background: #1e293b; border: 1px solid #475569; color: #94a3b8; }
+
+  /* ===== FILE REFS ===== */
+  .file-ref { font-size: 10px; color: #475569; margin-top: 4px; font-family: monospace; }
+
+  /* ===== SECTION DIVIDER ===== */
+  .divider { width: 100%; max-width: 900px; height: 1px; background: linear-gradient(90deg, transparent, #334155, transparent); margin: 20px 0; }
+
+  /* ===== CARDS ===== */
+  .legend-card {
+    background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+    padding: 16px 24px; margin-top: 32px; max-width: 900px; width: 100%;
+  }
+  .legend-title { font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+  .legend-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .legend-item { font-size: 11px; }
+  .legend-item .label { font-weight: 600; color: #94a3b8; margin-bottom: 4px; }
+  .legend-item .values { color: #64748b; }
+
+  /* scroll hint */
+  .scroll-note { font-size: 11px; color: #475569; text-align: center; margin-top: 16px; }
+</style>
+</head>
+<body>
+<h1>🦞 TeamAgent 执行流程图</h1>
+<p class="subtitle">Task Creation → Decompose → Step Activation → Execution → Approval</p>
+
+<div class="canvas">
+
+  <!-- ═══════════════ PHASE 1: 任务创建 ═══════════════ -->
+  <div class="phase">Phase 1 · 任务创建</div>
+
+  <div class="row" style="gap: 24px; margin-bottom: 8px;">
+    <div class="col">
+      <div class="node node-create">💬 Aurora 对话创建</div>
+      <div class="file-ref">create-from-chat/route.ts</div>
+    </div>
+    <div class="col" style="align-self: center; color: #475569; font-size: 20px; padding: 0 8px;">|</div>
+    <div class="col">
+      <div class="node node-create">📋 直接创建任务</div>
+      <div class="file-ref">tasks/route.ts</div>
+    </div>
+    <div class="col" style="align-self: center; color: #475569; font-size: 20px; padding: 0 8px;">|</div>
+    <div class="col">
+      <div class="node node-create">🔄 重新拆解</div>
+      <div class="file-ref">tasks/[id]/parse/route.ts</div>
+    </div>
+  </div>
+
+  <div class="arrow arrow-slate" style="height: 28px; width: 2px; background: #334155; position: relative; margin: 0 auto;">
+    <div style="width: 2px; height: 20px; background: #334155; margin: 0 auto;"></div>
+    <div style="display: flex; justify-content: center;"><div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #334155;"></div></div>
+  </div>
+
+  <!-- 任务入库 -->
+  <div class="col" style="align-items: center; gap: 4px; margin: 6px 0;">
+    <div class="node node-create" style="min-width: 340px;">
+      🗄️ 创建 Task + Decompose Step
+    </div>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 6px;">
+      <span class="chip chip-orange">task.decomposeStatus = 'pending'</span>
+      <span class="chip chip-slate">step.stepType = 'decompose'</span>
+      <span class="chip chip-slate">step.status = 'pending'</span>
+    </div>
+  </div>
+
+  <!-- SSE arrow -->
+  <div style="width: 2px; height: 20px; background: #f97316; margin: 0 auto;"></div>
+  <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin: 2px 0;">
+    <div style="height: 1.5px; width: 60px; background: #f97316;"></div>
+    <span style="font-size: 11px; color: #f97316; font-weight: 600;">📡 SSE: task:decompose-request</span>
+    <div style="height: 1.5px; width: 60px; background: #f97316;"></div>
+  </div>
+  <div style="width: 2px; height: 16px; background: #f97316; margin: 0 auto;"></div>
+  <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #f97316; margin: 0 auto;"></div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════ PHASE 2: Lobster 拆解 ═══════════════ -->
+  <div class="phase">Phase 2 · Lobster 拆解</div>
+
+  <div class="col" style="align-items: center; gap: 4px; margin: 4px 0;">
+    <div class="node node-lobster" style="min-width: 280px;">🦞 Lobster · handleDecomposeRequest</div>
+    <div class="file-ref">OpenClaw (本地 BYOA Agent)</div>
+    <div style="font-size: 11px; color: #7c3aed; margin-top: 4px;">📡 subscribe 重连补发 → task:decompose-request</div>
+  </div>
+
+  <div style="width: 2px; height: 16px; background: #7c3aed; margin: 0 auto;"></div>
+
+  <div class="col" style="align-items: center; gap: 4px; margin: 4px 0;">
+    <div class="node node-lobster" style="min-width: 280px;">🧠 LLM 规划步骤列表</div>
+    <div style="font-size: 11px; color: #a855f7; margin-top: 4px;">基于 taskTitle + description + teamMembers</div>
+  </div>
+
+  <div style="width: 2px; height: 12px; background: #7c3aed; margin: 0 auto;"></div>
+  <div style="display: flex; justify-content: center; align-items: center; gap: 6px; margin: 2px 0;">
+    <span style="font-size: 10px; color: #7c3aed;">POST</span>
+    <span style="font-size: 11px; color: #a855f7; font-weight: 600;">/api/tasks/[id]/steps/submit-decompose</span>
+  </div>
+  <div style="width: 2px; height: 12px; background: #7c3aed; margin: 0 auto;"></div>
+  <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #7c3aed; margin: 0 auto;"></div>
+
+  <!-- 步骤写库 -->
+  <div class="col" style="align-items: center; gap: 6px; margin: 8px 0; background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 14px 24px;">
+    <div style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px;">服务端处理</div>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+      <div class="col" style="gap: 4px; align-items: center;">
+        <div class="node-api">① 创建 TaskStep[]</div>
+        <div style="font-size: 10px; color: #475569;">按 order 写库</div>
+      </div>
+      <div style="align-self: center; color: #334155; font-size: 18px;">→</div>
+      <div class="col" style="gap: 4px; align-items: center;">
+        <div class="node-api">② 创建 StepAssignee</div>
+        <div style="font-size: 10px; color: #475569;">人类步骤写 assigneeType:'human'</div>
+      </div>
+      <div style="align-self: center; color: #334155; font-size: 18px;">→</div>
+      <div class="col" style="gap: 4px; align-items: center;">
+        <div class="node-api">③ getStartableSteps()</div>
+        <div style="font-size: 10px; color: #475569;">取第一批可启动步骤</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 2px; height: 16px; background: #22d3ee; margin: 0 auto;"></div>
+  <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #22d3ee; margin: 0 auto;"></div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════ PHASE 3: 步骤激活分叉 ═══════════════ -->
+  <div class="phase">Phase 3 · 步骤激活 · activateAndNotifySteps()</div>
+  <div class="file-ref" style="margin-bottom: 14px;">src/lib/step-scheduling.ts</div>
+
+  <div class="col" style="align-items: center; gap: 4px; margin-bottom: 12px;">
+    <div class="node node-sched" style="min-width: 320px;">🔍 查 StepAssignee → 判断 assigneeType</div>
+    <div style="font-size: 11px; color: #22d3ee; margin-top: 4px;">allHuman = [...userTypeMap.values()].every(t === 'human')</div>
+  </div>
+
+  <!-- 分叉 -->
+  <div class="branch-container">
+
+    <!-- 左: Agent 步骤 -->
+    <div class="col" style="align-items: center; flex: 1; max-width: 380px;">
+      <div class="branch-label" style="color: #f97316;">allHuman = false</div>
+      <div class="node node-agent" style="min-width: 220px;">⚙️ Agent 步骤</div>
+      <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 6px;">
+        <span class="chip chip-orange">status → 'in_progress'</span>
+      </div>
+      <div class="file-ref">agentStatus → 'working'</div>
+
+      <!-- SSE to agent -->
+      <div style="width: 2px; height: 14px; background: #f97316; margin: 8px auto 0;"></div>
+      <div style="display: flex; align-items: center; gap: 4px; margin: 2px 0;">
+        <span style="font-size: 10px; color: #f97316; font-weight: 600;">📡 SSE: step:ready</span>
+      </div>
+      <div style="width: 2px; height: 10px; background: #f97316; margin: 0 auto;"></div>
+      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #f97316; margin: 0 auto;"></div>
+
+      <!-- BYOA vs Server -->
+      <div class="branch-container" style="gap: 16px; margin-top: 10px;">
+        <div class="col" style="align-items: center;">
+          <div class="branch-label" style="color: #f97316; font-size: 9px;">BYOA Agent<br>(Lobster本地)</div>
+          <div class="node node-agent" style="font-size: 11px; padding: 7px 12px; min-width: 120px;">🦞 执行步骤<br><span style="font-size: 10px; opacity: 0.8;">OpenClaw</span></div>
+        </div>
+        <div class="col" style="align-items: center;">
+          <div class="branch-label" style="font-size: 9px; color: #64748b;">服务端AutoExec<br>(兜底)</div>
+          <div class="node node-create" style="font-size: 11px; padding: 7px 12px; min-width: 120px;">🤖 tryAutoExec<br><span style="font-size: 10px; opacity: 0.8;">agent-auto-execute.ts</span></div>
+        </div>
+      </div>
+
+      <div style="width: 2px; height: 14px; background: #f97316; margin: 8px auto 0;"></div>
+      <div style="display: flex; align-items: center; gap: 4px; margin: 2px 0;">
+        <span style="font-size: 10px; color: #f97316; font-weight: 600;">POST /steps/[id]/submit</span>
+      </div>
+      <div style="width: 2px; height: 10px; background: #f97316; margin: 0 auto;"></div>
+      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #f97316; margin: 0 auto;"></div>
+
+      <!-- requiresApproval 判断 -->
+      <div class="node node-diamond" style="margin-top: 8px; font-size: 11px;">requiresApproval?</div>
+      <div class="branch-container" style="gap: 16px; margin-top: 10px;">
+        <div class="col" style="align-items: center;">
+          <div class="branch-label" style="color: #10b981; font-size: 9px;">false (自动通过)</div>
+          <div class="node node-done" style="font-size: 11px; padding: 6px 12px;">✅ status → 'done'</div>
+        </div>
+        <div class="col" style="align-items: center;">
+          <div class="branch-label" style="color: #f59e0b; font-size: 9px;">true (需审批)</div>
+          <div class="node node-approve" style="font-size: 11px; padding: 6px 12px;">⏳ waiting_approval</div>
+          <div style="width: 2px; height: 10px; background: #f59e0b; margin: 4px auto;"></div>
+          <div style="font-size: 10px; color: #f59e0b; text-align: center;">Aurora<br>审批按钮出现</div>
+          <div style="width: 2px; height: 6px; background: #f59e0b; margin: 4px auto;"></div>
+          <div class="node node-done" style="font-size: 10px; padding: 4px 10px;">✅ 批准 → done</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 竖分隔线 -->
+    <div style="width: 1px; background: #1e293b; border-left: 1px dashed #334155; min-height: 300px; margin: 0 8px;"></div>
+
+    <!-- 右: 人类步骤 -->
+    <div class="col" style="align-items: center; flex: 1; max-width: 340px;">
+      <div class="branch-label" style="color: #a855f7;">allHuman = true</div>
+      <div class="node node-human" style="min-width: 220px;">👤 人类步骤</div>
+      <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 6px;">
+        <span class="chip chip-purple">status → 'waiting_human'</span>
+      </div>
+
+      <div style="width: 2px; height: 14px; background: #a855f7; margin: 8px auto 0;"></div>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <span style="font-size: 10px; color: #a855f7; font-weight: 600;">📡 SSE → Aurora UI</span>
+      </div>
+      <div style="width: 2px; height: 10px; background: #a855f7; margin: 0 auto;"></div>
+      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #a855f7; margin: 0 auto;"></div>
+
+      <div class="col" style="align-items: center; gap: 6px; margin-top: 10px; background: #1a0f2e; border: 1px solid #7c3aed; border-radius: 12px; padding: 12px 16px;">
+        <div style="font-size: 11px; color: #c4b5fd; font-weight: 600;">UI 显示条件</div>
+        <div style="font-size: 10px; color: #7c3aed; text-align: center;">step.status === 'waiting_human'</div>
+        <div style="font-size: 10px; color: #94a3b8;">→ 紫色 "等待人类" 状态角标</div>
+        <div style="height: 1px; width: 80%; background: #334155; margin: 4px 0;"></div>
+        <div style="font-size: 10px; color: #7c3aed; text-align: center;">StepAssignee.assigneeType = 'human'<br>+ session.user 在 assignees 里</div>
+        <div style="font-size: 10px; color: #94a3b8;">→ canSubmitInBrowser = true<br>→ 展开提交表单</div>
+      </div>
+
+      <div style="width: 2px; height: 12px; background: #a855f7; margin: 8px auto;"></div>
+      <div style="font-size: 10px; color: #a855f7; font-weight: 600;">Aurora 填写并提交</div>
+      <div style="font-size: 9px; color: #475569;">POST /steps/[id]/submit</div>
+      <div style="width: 2px; height: 8px; background: #a855f7; margin: 4px auto;"></div>
+      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #a855f7; margin: 0 auto;"></div>
+
+      <div class="node node-done" style="font-size: 11px; padding: 6px 12px; margin-top: 8px;">✅ status → 'done'</div>
+      <div style="font-size: 9px; color: #94a3b8; margin-top: 4px; text-align: center;">humanInputStatus → 'provided'</div>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════ PHASE 4: 步骤完成 → 激活下一批 ═══════════════ -->
+  <div class="phase">Phase 4 · 步骤完成 → 激活下一批</div>
+
+  <div class="col" style="align-items: center; gap: 6px; background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 14px 28px; margin: 4px 0;">
+    <div style="font-size: 12px; font-weight: 700; color: #22d3ee;">任何步骤 status → 'done'</div>
+    <div style="font-size: 11px; color: #64748b;">→ onStepComplete() 触发</div>
+    <div style="height: 1px; width: 80%; background: #334155; margin: 6px 0;"></div>
+    <div style="display: flex; gap: 16px; align-items: center; font-size: 11px;">
+      <span style="color: #94a3b8;">① getStartableSteps()</span>
+      <span style="color: #475569;">→</span>
+      <span style="color: #94a3b8;">② activateAndNotifySteps()</span>
+      <span style="color: #475569;">→</span>
+      <span style="color: #22d3ee;">③ 回到 Phase 3</span>
+    </div>
+    <div style="font-size: 10px; color: #475569; margin-top: 4px;">直到所有步骤完成 → task.status → 'done'</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════ 数据字段说明 ═══════════════ -->
+  <div class="legend-card">
+    <div class="legend-title">关键 DB 字段</div>
+    <div class="legend-grid">
+      <div class="legend-item">
+        <div class="label">Task.decomposeStatus</div>
+        <div class="values">
+          <span class="chip chip-slate">'pending'</span> 等待 Lobster<br>
+          <span class="chip chip-orange">'fallback'</span> 服务端兜底中<br>
+          <span class="chip chip-green">'done'</span> 拆解完成
+        </div>
+      </div>
+      <div class="legend-item">
+        <div class="label">TaskStep.status</div>
+        <div class="values">
+          <span class="chip chip-slate">'pending'</span> 未激活<br>
+          <span class="chip chip-orange">'in_progress'</span> Agent执行中<br>
+          <span class="chip chip-purple">'waiting_human'</span> 等人类<br>
+          <span class="chip chip-yellow">'waiting_approval'</span> 待审批<br>
+          <span class="chip chip-green">'done'</span> 完成
+        </div>
+      </div>
+      <div class="legend-item">
+        <div class="label">StepAssignee.assigneeType</div>
+        <div class="values">
+          <span class="chip chip-orange">'auto'</span> Agent执行<br>
+          <span class="chip chip-purple">'human'</span> 人类执行<br>
+          <br>
+          <div class="label" style="margin-top: 8px;">TaskStep.humanInputStatus</div>
+          <span class="chip chip-purple">'waiting'</span> 等待输入<br>
+          <span class="chip chip-green">'provided'</span> 已提交<br>
+          <span class="chip chip-slate">'not_needed'</span> 无需输入
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ 当前已知问题 ═══════════════ -->
+  <div class="legend-card" style="border-color: #f97316; margin-top: 12px;">
+    <div class="legend-title" style="color: #f97316;">⚠️ 当前待修复</div>
+    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
+      <div style="display: flex; gap: 8px; align-items: flex-start;">
+        <span style="color: #ef4444; font-weight: 700; min-width: 20px;">1.</span>
+        <span style="color: #94a3b8;"><span style="color: #fbbf24; font-weight: 600;">waiting_human 紫色角标未出现</span> — 步骤3在步骤1完成前是 'pending' 状态，只有步骤1→2完成后才会激活变成 'waiting_human'。步骤1可能卡在 Lobster 离线状态。</span>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: flex-start;">
+        <span style="color: #ef4444; font-weight: 700; min-width: 20px;">2.</span>
+        <span style="color: #94a3b8;"><span style="color: #fbbf24; font-weight: 600;">待办步骤提前展开</span> — 'pending' 步骤 canSubmitInBrowser=true 时会自动展开表单，但提交会被 "前序步骤未完成" 阻断。需限制只在 'waiting_human' 时展开。</span>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: flex-start;">
+        <span style="color: #ef4444; font-weight: 700; min-width: 20px;">3.</span>
+        <span style="color: #94a3b8;"><span style="color: #fbbf24; font-weight: 600;">AI 兜底中… 按钮</span> — decomposeFallback=true 时显示但无实际兜底逻辑（已移除服务端 LLM 拆解），需改文案或删除。位于 tasks/page.tsx line 2120。</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="scroll-note" style="margin-top: 16px;">Generated 2026-03-15 · TeamAgent v1.3</p>
+
+</div>
+</body>
+</html>

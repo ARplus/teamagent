@@ -7,6 +7,8 @@ import { sendToUser, sendToUsers } from '@/lib/events'
 import { getStartableSteps, activateAndNotifySteps } from '@/lib/step-scheduling'
 import { parseTaskWithAI } from '@/lib/ai-parse'
 import { orchestrateDecompose } from '@/lib/decompose-orchestrator'
+import { buildDecomposePrompt, BASE_EXECUTION_RULES } from '@/lib/decompose-prompt'
+import { createNotification, notificationTemplates } from '@/lib/notifications'
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -41,36 +43,64 @@ export async function GET(req: NextRequest) {
     const workspaceId = searchParams.get('workspaceId')
 
     // 只返回与当前用户相关的任务：
-    // 1. 我创建的任务
+    // 1. 我创建的任务（任何 mode）
     // 2. 我是步骤执行人的任务
-    // 3. 我是工作区 owner/admin（看整个工作区所有任务）
+    // 3. 我是工作区 owner/admin — 仅限 team 任务（Solo 任务对他人完全私密，admin 也看不到）
     // 4. 我通过邀请链接被明确分享的任务（即使没有步骤也能看到）
     //    → 接受邀请时会在 InviteToken 记录 inviteeId，永久保留可见性
+    // ⚠️ Solo 任务隐私规则：Solo 任务只有创建者、被分配的步骤执行人、被邀请的人可见
+    //   即使是同工作区的 owner/admin 也不能透视他人的 Solo 任务
     const visibilityFilter = {
       OR: [
-        { creatorId: auth.userId },
-        { steps: { some: { assigneeId: auth.userId } } },
-        // B08: 多人指派 — 通过 StepAssignee 被分配的任务也可见
-        { steps: { some: { assignees: { some: { userId: auth.userId } } } } },
+        // ① 已通过审批门控（或不需要审批）的任务：正常可见性规则
         {
-          workspace: {
-            members: { some: { userId: auth.userId, role: { in: ['owner', 'admin'] } } }
-          }
+          isApproved: true,
+          OR: [
+            { creatorId: auth.userId },
+            { steps: { some: { assigneeId: auth.userId } } },
+            // B08: 多人指派 — 通过 StepAssignee 被分配的任务也可见
+            { steps: { some: { assignees: { some: { userId: auth.userId } } } } },
+            {
+              // admin 透视权：仅限 team 任务，Solo 任务保持创建者私密
+              mode: { not: 'solo' },
+              workspace: {
+                members: { some: { userId: auth.userId, role: { in: ['owner', 'admin'] } } }
+              }
+            },
+            {
+              // 通过邀请链接被分享的任务（跨工作区可见性核心）
+              invites: { some: { inviteeId: auth.userId, taskId: { not: null } } }
+            }
+          ]
         },
+        // ② 审批门控中（isApproved=false）：仅任务创建者、pre_check 执行人、workspace admin 可见
         {
-          // 通过邀请链接被分享的任务（跨工作区可见性核心）
-          invites: { some: { inviteeId: auth.userId, taskId: { not: null } } }
+          isApproved: false,
+          OR: [
+            { creatorId: auth.userId },
+            { steps: { some: { stepType: 'pre_check', assigneeId: auth.userId } } },
+            {
+              workspace: {
+                members: { some: { userId: auth.userId, role: { in: ['owner', 'admin'] } } }
+              }
+            }
+          ]
         }
       ]
     }
 
+    // 排除课程学习任务：① 旧格式 [学习] 前缀 ② 新格式：template.courseType 不为空
+    const excludeCourseFilter = {
+      NOT: { template: { courseType: { not: null } } },
+      title: { not: { startsWith: '[学习]' } },
+    }
     const tasks = await prisma.task.findMany({
       where: workspaceId
-        ? { workspaceId, ...visibilityFilter }
-        : visibilityFilter,
+        ? { workspaceId, ...excludeCourseFilter, ...visibilityFilter }
+        : { ...excludeCourseFilter, ...visibilityFilter },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
-        assignee: { select: { id: true, name: true, avatar: true } },
+        assignee: { select: { id: true, name: true, avatar: true, agent: { select: { id: true, name: true } } } },
         workspace: { select: { id: true, name: true } },
         steps: {
           select: {
@@ -79,7 +109,7 @@ export async function GET(req: NextRequest) {
             status: true,
             stepType: true,
             assigneeId: true,
-            assignee: { select: { id: true, name: true, avatar: true } },
+            assignee: { select: { id: true, name: true, avatar: true, agent: { select: { id: true, name: true } } } },
             // B08: 多人指派信息 + B11: 任务类型 Icon 需要 assigneeType
             assignees: {
               select: {
@@ -88,7 +118,9 @@ export async function GET(req: NextRequest) {
                 status: true,
                 user: { select: { id: true, name: true, avatar: true } }
               }
-            }
+            },
+            // V1.1: 未分配步骤高亮
+            unassigned: true,
           },
           orderBy: { order: 'asc' }
         }
@@ -96,7 +128,13 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' }
     })
 
-    return NextResponse.json(tasks)
+    // V1.1: 附加 unassignedCount
+    const tasksWithCounts = tasks.map(t => ({
+      ...t,
+      unassignedCount: t.steps.filter(s => s.unassigned).length,
+    }))
+
+    return NextResponse.json(tasksWithCounts)
 
   } catch (error) {
     console.error('获取任务失败:', error)
@@ -187,7 +225,7 @@ export async function POST(req: NextRequest) {
       },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
-        assignee: { select: { id: true, name: true, avatar: true } },
+        assignee: { select: { id: true, name: true, avatar: true, agent: { select: { id: true, name: true } } } },
         workspace: { select: { id: true, name: true } }
       }
     })
@@ -195,9 +233,59 @@ export async function POST(req: NextRequest) {
     // 🆕 Agent 直接传入步骤：立即创建，跳过 decompose
     const prebuiltSteps: any[] = []
     if (Array.isArray(steps) && steps.length > 0) {
+      // B6-fix: 预加载工作区成员，用于 assigneeHint → assigneeId 解析
+      const wsMembers = await prisma.workspaceMember.findMany({
+        where: { workspaceId: finalWorkspaceId },
+        include: { user: { select: { id: true, name: true, nickname: true, agent: { select: { name: true } } } } },
+      })
+
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i]
         if (!s.title) continue
+
+        // B6-fix: 如果没有 assigneeId 但有 assigneeHint，解析名字 → userId
+        let resolvedAssigneeId = s.assigneeId || null
+        let stepUnassigned = false
+        let stepUnassignedReason: string | null = null
+        // Solo 模式兜底：步骤无 assignee 且无 assigneeHint → 自动分配给创建者（主 Agent）
+        if (!resolvedAssigneeId && !s.assigneeHint && (mode === 'solo' || !mode)) {
+          resolvedAssigneeId = auth.userId
+        }
+        if (!resolvedAssigneeId && s.assigneeHint) {
+          const hint = s.assigneeHint.trim()
+          if (hint) {
+            const role = s.assigneeRole // 'human' | 'agent' | 'auto' | undefined
+            const matched = wsMembers.find(m => {
+              const agentName = (m.user.agent as any)?.name
+              const userName = m.user.name
+              const userNick = m.user.nickname
+              if (role === 'human') {
+                if (userName === hint || userNick === hint) return true
+                if (userName && (userName.includes(hint) || hint.includes(userName))) return true
+                if (userNick && (userNick.includes(hint) || hint.includes(userNick))) return true
+                return false
+              }
+              if (role === 'agent') {
+                if (agentName && agentName === hint) return true
+                if (agentName && (agentName.includes(hint) || hint.includes(agentName))) return true
+                return false
+              }
+              // auto / 未指定：Agent名 > 用户名/昵称
+              if (agentName && agentName === hint) return true
+              if (userName === hint || userNick === hint) return true
+              if (agentName && (agentName.includes(hint) || hint.includes(agentName))) return true
+              if (userName && (userName.includes(hint) || hint.includes(userName))) return true
+              return false
+            })
+            if (matched) {
+              resolvedAssigneeId = matched.user.id
+            } else {
+              stepUnassigned = true
+              stepUnassignedReason = `指定「${hint}」但未匹配到工作区成员`
+            }
+          }
+        }
+
         const createdStep = await prisma.taskStep.create({
           data: {
             title: s.title,
@@ -205,27 +293,35 @@ export async function POST(req: NextRequest) {
             order: s.order ?? (i + 1),
             taskId: task.id,
             stepType: s.stepType || 'task',
-            assigneeId: s.assigneeId || null,
+            assigneeId: resolvedAssigneeId,
             requiresApproval: s.requiresApproval !== false,  // 默认 true
             parallelGroup: s.parallelGroup || null,
             inputs: s.inputs ? JSON.stringify(s.inputs) : null,
             outputs: s.outputs ? JSON.stringify(s.outputs) : null,
             skills: s.skills ? JSON.stringify(s.skills) : null,
             status: 'pending',
-            agentStatus: s.assigneeId ? 'pending' : null,
+            agentStatus: resolvedAssigneeId ? 'pending' : null,
+            // B6-fix: 未匹配时标记 unassigned
+            unassigned: stepUnassigned || !resolvedAssigneeId,
+            unassignedReason: stepUnassignedReason || (!resolvedAssigneeId ? '待分配' : null),
           }
         })
-        // B08: 同步创建 StepAssignee 记录（自动检测 human/agent）
-        if (s.assigneeId) {
+        // B08: 同步创建 StepAssignee 记录
+        // P0-1 fix: assigneeRole/assigneeType 明确指定优先，仅 auto 时 auto-detect
+        if (resolvedAssigneeId) {
           let detectedType: 'agent' | 'human' = 'agent'
           if (s.assigneeType) {
             detectedType = s.assigneeType  // 明确指定的优先
+          } else if (s.assigneeRole === 'human') {
+            detectedType = 'human'
+          } else if (s.assigneeRole === 'agent') {
+            detectedType = 'agent'
           } else {
-            const assigneeAgent = await prisma.agent.findUnique({ where: { userId: s.assigneeId }, select: { id: true } })
+            const assigneeAgent = await prisma.agent.findUnique({ where: { userId: resolvedAssigneeId }, select: { id: true } })
             if (!assigneeAgent) detectedType = 'human'  // 无 Agent → 纯人类
           }
           await prisma.stepAssignee.create({
-            data: { stepId: createdStep.id, userId: s.assigneeId, isPrimary: true, assigneeType: detectedType }
+            data: { stepId: createdStep.id, userId: resolvedAssigneeId, isPrimary: true, assigneeType: detectedType }
           }).catch(() => {})
         }
         prebuiltSteps.push(createdStep)
@@ -265,50 +361,156 @@ export async function POST(req: NextRequest) {
           include: {
             user: {
               select: {
-                id: true,
-                agent: { select: { id: true, name: true, isMainAgent: true } }
+                id: true, name: true, nickname: true,
+                agent: { select: { id: true, name: true, capabilities: true, isMainAgent: true, parentAgentId: true, soul: true, growthLevel: true, status: true } }
               }
             }
           }
         })
-        // Solo: 优先找创建者自己的主 Agent，兜底任意主 Agent
-        const mainMember = allMembers.find(m => m.user.id === auth.userId && (m.user.agent as any)?.isMainAgent)
-          || allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
+        // Solo: 只用创建者自己的主 Agent，私密任务不能让别人的 Agent 看到内容
+        // 优先找 isMainAgent=true 的；若无（数据未标记），fallback 找创建者名下任意 Agent
+        const mainMember =
+          allMembers.find(m => m.user.id === auth.userId && (m.user.agent as any)?.isMainAgent && !(m.user.agent as any)?.parentAgentId) ??
+          allMembers.find(m => m.user.id === auth.userId && !!(m.user.agent as any) && !(m.user.agent as any)?.parentAgentId)
 
         if (mainMember) {
           const mainAgentUserId = mainMember.user.id
           const mainAgentName = (mainMember.user.agent as any)?.name || '主Agent'
+          const mainAgentId = (mainMember.user.agent as any)?.id
+          const creatorName = mainMember.user.name || mainMember.user.nickname || '任务创建者'
 
           const decomposeStep = await prisma.taskStep.create({
             data: {
               title: `📋 拆解任务：${task.title}`,
-              description: `请分析任务描述和团队能力，将任务拆解为具体步骤并分配给对应 Agent。\n\n任务描述：\n${task.description}\n\n要求：\n1. 拆解为可独立执行的子步骤\n2. 为每步指定最合适的 assignee（Agent名字）\n3. 判断哪些步骤可以并行（parallelGroup 相同字符串）\n4. 判断每步是否需要人类审批（requiresApproval）\n5. 返回 JSON 格式步骤数组`,
+              description: `请分析任务描述和团队成员性格/能力，将任务拆解为可执行步骤并按【性格匹配】分配给最合适的 Agent。\n\n任务描述：\n${task.description}\n\n👤 任务创建者：${creatorName}。若需要 API Key / 授权 / 人类审批，请分配给人类。\n\n拆解要求：\n1. 拆解为可独立执行的子步骤\n2. 按成员性格/soul 匹配 assignee（填 Agent名字），不强求职责对口\n3. 简单任务无需人类最终审批步骤\n4. 返回 JSON 格式\n\n${BASE_EXECUTION_RULES}`,
               order: 1,
               taskId: task.id,
               stepType: 'decompose',
               assigneeId: mainAgentUserId,
+              assigneeNames: mainAgentName,
               requiresApproval: false,
               outputs: JSON.stringify(['steps-json']),
               skills: JSON.stringify(['task-decompose', 'team-management']),
-              status: 'in_progress',
-              agentStatus: 'working',
+              status: 'pending',
+              agentStatus: 'pending',
             }
           })
-          // B08: 同步 StepAssignee
           await prisma.stepAssignee.create({
             data: { stepId: decomposeStep.id, userId: mainAgentUserId, isPrimary: true, assigneeType: 'agent' }
           }).catch(() => {})
+          // 标记任务为等待 Agent 接单（UI 显示"正在赶来"而非"已接单"）
+          await prisma.task.update({ where: { id: task.id }, data: { decomposeStatus: 'pending' } })
 
+          // V1.1: 构建填充好的拆解 prompt（含子 Agent 性格信息）
+          let decomposePrompt: string | undefined
+          try {
+            // Solo 模式：包含创建者自己 + 其名下子 Agent（含 soul/personality，Watch 按此分配）
+            const teamCtx = allMembers
+              .filter(m => {
+                const a = m.user.agent as any
+                if (m.user.id === auth.userId) return true // 创建者（人类 + 主 Agent）
+                // 包含创建者主 Agent 名下的所有子 Agent（按 personality 分配步骤）
+                if (a?.parentAgentId && a.parentAgentId === mainAgentId) return true
+                return false
+              })
+              .map(m => {
+                const a = m.user.agent as any
+                let caps: string[] = []
+                try { caps = JSON.parse(a?.capabilities || '[]') } catch {}
+                return {
+                  name: m.user.name || m.user.nickname || '未知',
+                  humanName: m.user.name || m.user.nickname || '未知',
+                  isAgent: !!a, agentName: a?.name,
+                  capabilities: caps, role: (m as any).role,
+                  soulSummary: a?.soul?.substring(0, 200),
+                  level: a?.growthLevel || undefined,
+                  isSubAgent: !!(a?.parentAgentId),
+                  isSubAgentLead: false,
+                }
+              })
+            decomposePrompt = await buildDecomposePrompt(finalWorkspaceId, {
+              taskTitle: task.title,
+              taskDescription: task.description || '',
+              supplement: task.supplement || undefined,
+              teamMembers: teamCtx,
+            })
+          } catch (e) {
+            console.warn('[Task/Create] 构建 decomposePrompt 失败，Agent 将使用本地 fallback:', e)
+          }
+
+          // 发送 task:decompose-request → 主 Agent（isolated session 拆解，子 Agent 按 personality 分配）
+          const agentStatus = (mainMember.user.agent as any)?.status
+          const agentOnline = agentStatus === 'online' || agentStatus === 'working'
+          // SSE teamMembers 含子 Agent 性格，Watch 按 personality 分配步骤
+          const teamCtxForEvent = allMembers
+            .filter(m => {
+              const a = m.user.agent as any
+              if (m.user.id === auth.userId) return true
+              if (a?.parentAgentId && a.parentAgentId === mainAgentId) return true
+              return false
+            })
+            .map(m => {
+              const a = m.user.agent as any
+              let caps: string[] = []
+              try { caps = JSON.parse(a?.capabilities || '[]') } catch {}
+              return {
+                name: m.user.name || m.user.nickname || '未知',
+                isAgent: !!a, agentName: a?.name,
+                capabilities: caps, role: (m as any).role,
+                soulSummary: (a?.soul || '').substring(0, 150),
+                isSubAgent: !!(a?.parentAgentId),
+              }
+            })
           sendToUser(mainAgentUserId, {
-            type: 'step:ready',
+            type: 'task:decompose-request',
+            taskId: task.id,
+            taskTitle: task.title,
+            taskDescription: task.description || '',
+            mode: 'solo',
+            supplement: task.supplement || undefined,
+            teamMembers: teamCtxForEvent,
+            ...(decomposePrompt ? { decomposePrompt } : {}),
+          })
+          createNotification({
+            userId: mainAgentUserId,
+            ...notificationTemplates.stepAssigned(decomposeStep.title, task.title),
             taskId: task.id,
             stepId: decomposeStep.id,
-            title: decomposeStep.title,
-            stepType: 'decompose',
-            taskDescription: task.description
-          })
+          }).catch(() => {})
+          console.log(`[Task/Create] Solo 任务 decompose → 主Agent ${mainAgentName} (${agentStatus})`)
 
-          console.log(`[Task/Create] Solo 任务已自动触发 decompose → 主Agent ${mainAgentName}`)
+          if (!agentOnline) {
+            // Agent 离线时额外通知创建者等待
+            sendToUser(auth.userId, {
+              type: 'task:waiting-agent',
+              taskId: task.id, taskTitle: task.title, agentName: mainAgentName, mode: 'solo' as const,
+            })
+            createNotification({
+              userId: auth.userId,
+              ...notificationTemplates.taskWaitingAgent(task.title, mainAgentName),
+              taskId: task.id,
+            }).catch(() => {})
+          }
+
+          // BYOA Solo：3min 后若步骤仍未完成（pending 或 in_progress），再次提醒
+          // 注意：decompose步骤创建时就是 in_progress，所以不能只判断 pending
+          setTimeout(async () => {
+            const st = await prisma.taskStep.findUnique({
+              where: { id: decomposeStep.id }, select: { status: true }
+            })
+            if (st && st.status !== 'done' && st.status !== 'skipped') {
+              sendToUser(auth.userId, {
+                type: 'task:waiting-agent',
+                taskId: task.id, taskTitle: task.title, agentName: mainAgentName, mode: 'solo' as const,
+              })
+              createNotification({
+                userId: auth.userId,
+                ...notificationTemplates.taskWaitingAgent(task.title, mainAgentName),
+                taskId: task.id,
+              }).catch(() => {})
+              console.warn(`[Task/Create] Solo 3min 后仍未处理，再次提醒创建者唤醒 Agent`)
+            }
+          }, 3 * 60 * 1000)
         }
       } catch (e) {
         // 非致命，任务创建不受影响
@@ -316,7 +518,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 🆕 Team 模式：可插拔拆解（main-agent 优先，hub-llm 降级）
+    // 🆕 Team 模式：BYOA 拆解（主 Agent 优先，3min 广播，5min 超时通知）
     // fire-and-forget，不阻塞任务创建响应
     if (task.mode === 'team' && task.description && prebuiltSteps.length === 0) {
       orchestrateDecompose({
@@ -326,6 +528,7 @@ export async function POST(req: NextRequest) {
         supplement: task.supplement,
         workspaceId: finalWorkspaceId,
         creatorId: auth.userId,
+        mode: 'team',
       }).catch(e => console.warn('[Task/Create] orchestrateDecompose:', e?.message))
     }
 

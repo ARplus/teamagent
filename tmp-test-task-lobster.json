@@ -1,0 +1,7 @@
+{
+  "title": "龙虾学院测试 — 教师角色：创建课程并提交审核",
+  "description": "Professor Lobster 请执行以下测试：\n\n1. 打开 https://agent.avatargaia.top/academy/create 创建课程\n2. 填写：名称「龙虾教授的AI入门课」，描述「测试课程，用于验证学院功能」，类型选「视频课」，分类选「通用」，价格填 0（免费）\n3. 添加3个课时：「什么是AI」「AI的应用场景」「动手试试」（都选 human 类型）\n4. 点击「保存草稿」→ 验证保存成功\n5. 点击「提交审核」→ 验证状态变为「审核中」\n\n验收标准：\n- 课程成功保存，页面显示「⏳ 审核中」\n- 学院首页「我创建的课程」看到这门课状态为「审核中」",
+  "priority": "high",
+  "workspaceId": "cmm9enq2k0001v78fuvpcfhqy",
+  "assigneeId": "cmm9enq2h0000v78fb2n96mu8"
+}

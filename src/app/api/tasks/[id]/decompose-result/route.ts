@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: {
-        id: true, title: true, description: true,
+        id: true, title: true, description: true, mode: true,
         decomposeStatus: true, creatorId: true, workspaceId: true,
       }
     })
@@ -38,8 +38,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: '任务不存在' }, { status: 404 })
     }
 
-    // 4. 幂等检查：只接受 "pending" 状态
-    if (task.decomposeStatus !== 'pending') {
+    // 4. 幂等检查：接受 "pending"（未 ACK）和 "processing"（已 ACK、正在拆解）
+    //    done / fallback / 其他终态才拒绝，防止重复写入
+    if (task.decomposeStatus !== 'pending' && task.decomposeStatus !== 'processing') {
       console.log(`[DecomposeResult] taskId=${taskId} 状态为 ${task.decomposeStatus}，拒绝重复写入`)
       return NextResponse.json({
         error: '任务拆解已完成或正在降级处理中',
@@ -72,10 +73,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: updateData,
     })
 
+    // 7.5 标记原始 decompose 步骤为 done（防止 3min/5min 超时通知误触发）
+    await prisma.taskStep.updateMany({
+      where: { taskId, stepType: 'decompose', status: { not: 'done' } },
+      data: { status: 'done', completedAt: new Date() },
+    })
+
     // 8. 创建步骤 + 通知
     const members = await fetchWorkspaceTeam(task.workspaceId)
+    const taskMode = (task as any).mode === 'team' ? 'team' : 'solo'
     const createdSteps = await createStepsFromParseResult(
-      taskId, steps, members, task.creatorId, 'main-agent'
+      taskId, steps, members, task.creatorId, 'main-agent', true, taskMode
     )
 
     if (reasoning) {

@@ -7,16 +7,25 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 
-// 统一认证
+// 统一认证（返回 authMethod 用于判断 uploaderType）
 async function authenticate(req: NextRequest) {
   const tokenAuth = await authenticateRequest(req)
-  if (tokenAuth) return { userId: tokenAuth.user.id }
+  if (tokenAuth) return { userId: tokenAuth.user.id, authMethod: 'token' as const }
   const session = await getServerSession(authOptions)
   if (session?.user?.email) {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-    if (user) return { userId: user.id }
+    if (user) return { userId: user.id, authMethod: 'session' as const }
   }
   return null
+}
+
+// V1.1: 检测上传者类型
+async function detectUploaderType(userId: string, authMethod: 'token' | 'session'): Promise<'agent' | 'human'> {
+  if (authMethod === 'token') {
+    const agent = await prisma.agent.findUnique({ where: { userId }, select: { id: true } })
+    if (agent) return 'agent'
+  }
+  return 'human'
 }
 
 function useOSS() {
@@ -82,7 +91,9 @@ export async function GET(
           isAgent,
           agentName: isAgent ? att.uploader.agent!.name : undefined,
         },
-        canDelete: att.uploaderId === auth.userId || step.task.creatorId === auth.userId,
+        // V1.1: 步骤文件只允许上传者本人删除（Agent 不能删人类文件，反之亦然）
+        canDelete: att.uploaderId === auth.userId,
+        uploaderType: att.uploaderType || (isAgent ? 'agent' : 'human'),
       }
     })
 
@@ -169,6 +180,9 @@ export async function POST(
       fileUrl = `/api/uploads/steps/${stepId}/${filename}`
     }
 
+    // V1.1: 检测上传者类型
+    const uploaderType = await detectUploaderType(auth.userId, auth.authMethod)
+
     const attachment = await prisma.attachment.create({
       data: {
         name: file.name,
@@ -177,6 +191,7 @@ export async function POST(
         size: file.size,
         stepId,
         uploaderId: auth.userId,
+        uploaderType,
       },
       include: {
         uploader: {
@@ -211,5 +226,61 @@ export async function POST(
   } catch (error) {
     console.error('上传步骤文件失败:', error)
     return NextResponse.json({ error: '上传失败，请重试' }, { status: 500 })
+  }
+}
+
+// DELETE /api/steps/[id]/files?fileId=xxx — V1.1: 步骤级文件删除（只允许上传者本人）
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await authenticate(req)
+    if (!auth) return NextResponse.json({ error: '请先登录' }, { status: 401 })
+
+    const { id: stepId } = await params
+    const fileId = req.nextUrl.searchParams.get('fileId')
+    if (!fileId) return NextResponse.json({ error: '缺少 fileId' }, { status: 400 })
+
+    const att = await prisma.attachment.findUnique({
+      where: { id: fileId },
+      select: {
+        id: true, uploaderId: true, uploaderType: true, url: true,
+        stepId: true,
+        submission: { select: { step: { select: { id: true } } } },
+        comment: { select: { step: { select: { id: true } } } },
+      }
+    })
+    if (!att) return NextResponse.json({ error: '文件不存在' }, { status: 404 })
+
+    // 验证文件属于此步骤
+    const belongsToStep =
+      att.stepId === stepId ||
+      att.submission?.step?.id === stepId ||
+      att.comment?.step?.id === stepId
+    if (!belongsToStep) {
+      return NextResponse.json({ error: '文件不属于此步骤' }, { status: 404 })
+    }
+
+    // V1.1 权限：只允许上传者本人删除（Agent不能删人类文件，人类不能删Agent文件）
+    if (att.uploaderId !== auth.userId) {
+      return NextResponse.json({ error: '只能删除自己上传的文件' }, { status: 403 })
+    }
+
+    // 删除 OSS 文件
+    if (useOSS() && att.url) {
+      try {
+        const { ossDelete, ossKeyFromUrl } = await import('@/lib/oss')
+        await ossDelete(ossKeyFromUrl(att.url))
+      } catch (e) {
+        console.warn('[OSS] 删除文件失败（DB 记录仍会删除）:', e)
+      }
+    }
+
+    await prisma.attachment.delete({ where: { id: fileId } })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('删除步骤文件失败:', error)
+    return NextResponse.json({ error: '删除文件失败' }, { status: 500 })
   }
 }

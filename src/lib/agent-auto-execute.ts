@@ -45,74 +45,76 @@ export async function tryAutoExecuteStep(stepId: string, taskId: string): Promis
   }
 
   try {
-    // 1. 查步骤完整信息
+    // P1-1 fix: 延迟 2s，让客户端 SSE 先收到 approval:rejected 并 dedup，避免竞态
+    await new Promise(r => setTimeout(r, 2000))
+
+    // 1. 查步骤完整信息（含全量上下文：所有步骤、评论、打回历史）
     const step = await prisma.taskStep.findUnique({
       where: { id: stepId },
       include: {
         task: {
           select: {
-            id: true, title: true, description: true, creatorId: true,
+            id: true, title: true, description: true, creatorId: true, mode: true,
+            // 全部步骤（用于步骤总览 + 前序产出）
             steps: {
-              where: { status: 'done' },
               orderBy: { order: 'asc' },
-              select: { order: true, title: true, result: true, summary: true }
+              select: {
+                id: true, order: true, title: true, status: true,
+                assigneeId: true, parallelGroup: true, stepType: true,
+                result: true, summary: true,
+                assignees: { select: { assigneeType: true, user: { select: { name: true, nickname: true, agent: { select: { name: true } } } } } }
+              }
             }
           }
-        }
+        },
+        // 当前步骤的评论
+        comments: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            content: true, createdAt: true,
+            author: { select: { name: true, nickname: true } }
+          }
+        },
+        // 完整提交/打回历史
+        submissions: {
+          orderBy: { createdAt: 'asc' },
+          select: { result: true, status: true, reviewNote: true, createdAt: true }
+        },
+        assignees: { select: { assigneeType: true, user: { select: { name: true, nickname: true, agent: { select: { name: true } } } } } }
       }
     })
 
     if (!step || step.status !== 'pending') return
 
-    // 2. 跳过 decompose 类型步骤（由 agent-worker.js 处理）
-    if (step.stepType === 'decompose') {
-      return
-    }
-
-    // 3. 判断是否是 Agent 步骤
-    const agentUserId = await resolveAgentUserId(stepId, step.assigneeId)
-    if (!agentUserId) {
-      // 人类步骤或未分配，跳过
-      return
-    }
-
-    console.log(`[AutoExec] 🤖 开始自动执行步骤 "${step.title}" (${stepId})`)
-
-    // 4. 获取并发槽位
-    if (!acquireSlot()) {
-      console.log(`[AutoExec] ⏳ 并发已满(${MAX_CONCURRENT})，步骤 "${step.title}" 留在 pending 等待`)
-      return
-    }
-
-    try {
-      // 5. 原子领取
-      const claimed = await claimStepInternal(stepId, agentUserId)
-      if (!claimed) {
-        console.log(`[AutoExec] 步骤 "${step.title}" 已被其他人领取，跳过`)
-        return
+    // P1-1 fix: 打回次数 >= 3 时不再自动执行，通知人类介入
+    if ((step.rejectionCount ?? 0) >= 3) {
+      console.log(`[AutoExec] ⚠️ 步骤 "${step.title}" 已被打回 ${step.rejectionCount} 次，需要人类介入`)
+      if (step.task.creatorId) {
+        sendToUser(step.task.creatorId, {
+          type: 'step:needs-human',
+          taskId,
+          stepId,
+          title: step.title,
+          reason: `步骤已被打回 ${step.rejectionCount} 次，AI 无法自动修正，请人工处理`
+        })
+        await createNotification({
+          userId: step.task.creatorId,
+          type: 'step_rejected',
+          title: `步骤「${step.title}」需要人工介入（已打回 ${step.rejectionCount} 次）`,
+          content: `AI 无法自动修正，请人工处理`,
+          taskId,
+          stepId
+        })
       }
-
-      // 6. 构建 prompt + 调用 AI
-      const previousOutputs = step.task.steps.filter(s => s.order < step.order)
-      const prompt = buildExecutionPrompt(step, step.task, previousOutputs)
-
-      console.log(`[AutoExec] 🧠 调用千问 AI 执行步骤 "${step.title}"...`)
-      const result = await callQwenAI(prompt)
-      console.log(`[AutoExec] ✅ AI 返回结果 (${result.length} 字)`)
-
-      // 7. 提交结果
-      await submitResultInternal(stepId, agentUserId, result, step)
-
-      console.log(`[AutoExec] 📤 步骤 "${step.title}" 已自动提交`)
-
-    } finally {
-      releaseSlot()
+      return
     }
+
+    // 2. 全面禁用服务端千问自动执行 — 所有步骤由真实 Agent Watch 领取和执行
+    console.log(`[AutoExec] ⏭️ 步骤 "${step.title}" 跳过服务端自动执行（已禁用，等待真实 Agent Watch）`)
+    return
 
   } catch (error) {
-    releaseSlot() // 确保释放
-    console.error(`[AutoExec] ❌ 步骤 ${stepId} 自动执行失败:`, error)
-    // 不 reset 步骤状态——留在 in_progress 让人类介入
+    console.error(`[AutoExec] ❌ 步骤 ${stepId} 错误:`, error)
   }
 }
 
@@ -180,20 +182,100 @@ async function claimStepInternal(stepId: string, agentUserId: string): Promise<b
 }
 
 /**
- * 构建 AI 执行 prompt
+ * 构建 AI 执行 prompt（全量上下文版）
  */
 function buildExecutionPrompt(
-  step: { order: number; title: string; description: string | null; inputs: string | null; outputs: string | null; skills: string | null; rejectionReason: string | null; rejectedAt: Date | null },
-  task: { title: string; description: string | null },
-  previousOutputs: { order: number; title: string; result: string | null; summary: string | null }[]
+  step: {
+    order: number; title: string; description: string | null
+    inputs: string | null; outputs: string | null; skills: string | null
+    rejectionReason: string | null; rejectedAt: Date | null; rejectionCount: number | null
+    parallelGroup: string | null
+    comments?: { content: string; createdAt: Date; author: { name: string | null; nickname: string | null } }[]
+    submissions?: { result: string; status: string; reviewNote: string | null; createdAt: Date }[]
+    assignees?: { assigneeType: string; user: { name: string | null; nickname: string | null; agent: { name: string } | null } }[]
+  },
+  task: {
+    title: string; description: string | null
+    steps: {
+      id: string; order: number; title: string; status: string
+      parallelGroup: string | null
+      assignees?: { assigneeType: string; user: { name: string | null; nickname: string | null; agent: { name: string } | null } }[]
+      result: string | null; summary: string | null
+    }[]
+  }
 ): string {
   const parts: string[] = []
 
-  parts.push(`你是 TeamAgent 中的 AI Agent，正在执行一个任务步骤。请认真完成这个步骤，产出高质量的结果。`)
+  parts.push(`你是 TeamAgent 中的 AI Agent，正在执行一个任务步骤。`)
+
+  // ── 分配者信息（谁做的拆解 + 为什么分给你） ──────────────
+  const decomposeStep = task.steps.find(s => (s as any).stepType === 'decompose')
+  if (decomposeStep) {
+    const decomposerNames = ((decomposeStep as any).assignees || []).map((a: any) => {
+      const u = a.user
+      return a.assigneeType === 'agent' ? (u.agent?.name || u.name) : (u.nickname || u.name)
+    }).filter(Boolean)
+    if (decomposerNames.length > 0) {
+      parts.push('')
+      parts.push(`## 分配来源`)
+      parts.push(`- 任务拆解者：${decomposerNames.join('、')}`)
+      if (step.skills) {
+        try {
+          const skills = JSON.parse(step.skills)
+          if (skills.length > 0) parts.push(`- 分配给你的原因：此步骤匹配你的能力标签「${skills.join('、')}」`)
+        } catch {}
+      }
+      parts.push(`- 请基于你的能力完成此步骤，如能力不足请在提交中说明并请求支援`)
+    }
+  }
+
+  // ── 打回历史前置（强制重视）──────────────────────────────
+  const rejectedSubmissions = (step.submissions || []).filter(s => s.status === 'rejected')
+  if (rejectedSubmissions.length > 0) {
+    parts.push('')
+    parts.push(`## ⚠️ 此步骤已被打回 ${rejectedSubmissions.length} 次，必须针对性修改`)
+    rejectedSubmissions.forEach((s, i) => {
+      parts.push(`### 第 ${i + 1} 次打回`)
+      parts.push(`- 打回原因：${s.reviewNote || '未填写原因'}`)
+      parts.push(`- 当时提交内容：${s.result.slice(0, 500)}${s.result.length > 500 ? '...(已截断)' : ''}`)
+    })
+    parts.push(`\n你必须：1) 仔细阅读每次打回原因；2) 针对性修改，确保与上次不同；3) 无法理解时在提交中说明困难。`)
+    parts.push('')
+  }
+
+  // ── 任务基本信息 ─────────────────────────────────────────
   parts.push('')
   parts.push(`## 任务信息`)
   parts.push(`- 任务：${task.title}`)
   if (task.description) parts.push(`- 描述：${task.description}`)
+
+  // ── 步骤总览（全量，让 Agent 知道自己在哪） ──────────────
+  parts.push('')
+  parts.push(`## 步骤总览（共 ${task.steps.length} 步）`)
+  for (const s of task.steps) {
+    const assigneeName = (s.assignees || []).map(a => {
+      const u = a.user
+      return a.assigneeType === 'agent' ? (u.agent?.name || u.name) : (u.nickname || u.name)
+    }).filter(Boolean).join('、') || '未分配'
+    const parallelNote = s.parallelGroup ? ` [并行组:${s.parallelGroup}]` : ''
+    const isCurrent = s.order === step.order ? ' ← 当前步骤' : ''
+    parts.push(`- 步骤${s.order}「${s.title}」 负责人:${assigneeName} 状态:${s.status}${parallelNote}${isCurrent}`)
+  }
+
+  // ── 并行说明 ─────────────────────────────────────────────
+  if (step.parallelGroup) {
+    const parallelPeers = task.steps.filter(
+      s => s.parallelGroup === step.parallelGroup && s.order !== step.order
+    )
+    if (parallelPeers.length > 0) {
+      parts.push('')
+      parts.push(`## ⚡ 并行任务说明`)
+      parts.push(`本步骤与以下步骤【并行执行】，各自独立完成，请勿重复对方的工作：`)
+      parallelPeers.forEach(p => parts.push(`- 步骤${p.order}「${p.title}」（状态:${p.status}）`))
+    }
+  }
+
+  // ── 当前步骤详情 ─────────────────────────────────────────
   parts.push('')
   parts.push(`## 当前步骤`)
   parts.push(`- 步骤 ${step.order}: ${step.title}`)
@@ -208,7 +290,19 @@ function buildExecutionPrompt(
     try { parts.push(`- 需要的技能：${JSON.parse(step.skills).join('、')}`) } catch { parts.push(`- 需要的技能：${step.skills}`) }
   }
 
-  // 前序步骤产出
+  // ── 步骤评论（人类/其他 Agent 留言） ─────────────────────
+  const comments = step.comments || []
+  if (comments.length > 0) {
+    parts.push('')
+    parts.push(`## 步骤评论（${comments.length} 条）`)
+    comments.forEach(c => {
+      const author = c.author.nickname || c.author.name || '匿名'
+      parts.push(`- [${author}]: ${c.content}`)
+    })
+  }
+
+  // ── 前序步骤产出 ─────────────────────────────────────────
+  const previousOutputs = task.steps.filter(s => s.order < step.order && s.status === 'done')
   if (previousOutputs.length > 0) {
     parts.push('')
     parts.push(`## 前序步骤产出（你的输入依赖）`)
@@ -221,17 +315,24 @@ function buildExecutionPrompt(
     }
   }
 
-  // 打回重做
-  if (step.rejectionReason && step.rejectedAt) {
-    parts.push('')
-    parts.push(`## ⚠️ 注意：此步骤之前被打回`)
-    parts.push(`打回原因：${step.rejectionReason}`)
-    parts.push(`请根据打回原因修改你的产出，确保这次能通过审核。`)
-  }
+  // ── 执行规范 ────────────────────────────────────────────
+  parts.push('')
+  parts.push(`## 执行规范（必须遵守）`)
+  parts.push(`1. 优先调用已有 Skill，不重新实现`)
+  parts.push(`2. 若 Skill 需要 Token/Key/登录，在提交中注明，等人类单独回复后再继续`)
+  parts.push(`3. 提交时必须附可验证的输出（文件路径、命令结果、截图或 URL），不能只写"已完成"`)
+  parts.push(`4. 同一操作失败超过 2 次，停止并写明错误和卡点，等人类判断`)
+  parts.push(`5. 步骤有依赖时，确认上一步结果后再执行，不跳过`)
+  parts.push(`6. 任务描述明确要求提交附件，或产出物为文件/图片/视频/报告时，提交时必须附上实际附件（文件路径或 URL），不可仅用文字描述代替`)
 
   parts.push('')
-  parts.push(`## 要求`)
-  parts.push(`请认真完成这个步骤。直接输出你的工作成果，不要输出多余的说明。`)
+  if (rejectedSubmissions.length > 0) {
+    parts.push(`## 要求`)
+    parts.push(`请根据上方打回历史重新完成，产出必须与之前不同。直接输出你的工作成果。`)
+  } else {
+    parts.push(`## 要求`)
+    parts.push(`请认真完成这个步骤，产出高质量的结果。直接输出你的工作成果，不要输出多余的说明。`)
+  }
 
   return parts.join('\n')
 }
@@ -247,7 +348,7 @@ async function callQwenAI(prompt: string): Promise<string> {
       'Authorization': `Bearer ${QWEN_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'qwen-max-latest',
+      model: 'qwen3-max',
       messages: [
         { role: 'system', content: '你是一个专业的 AI 助手，正在协助完成团队任务。请直接输出工作成果，不要输出多余的客套话。' },
         { role: 'user', content: prompt }

@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
         capabilities: capabilities ? JSON.stringify(capabilities) : null,
         pairingCode,
         pairingCodeExpiresAt: expiresAt,
-        status: 'online'
+        status: 'online',
+        onboardingStatus: 'training',  // 🆕 新兵训练营：新注册默认 training
       }
     })
 

@@ -6,7 +6,108 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(git rebase --continue)",
-      "Bash(GIT_EDITOR=true git rebase --continue)"
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(pip install paramiko)",
+      "Bash(python3 -c \":*)",
+      "Bash(git am remote-latest.patch)",
+      "Bash(node -e ':*)",
+      "Bash(/tmp/ssh_query.py:*)",
+      "Bash(/tmp/ssh_query2.py:*)",
+      "Bash(/tmp/ssh_query3.py:*)",
+      "Bash(/tmp/ssh_query4.py:*)",
+      "Bash(cat:*)",
+      "Bash(npx prisma:*)",
+      "Bash(ssh ubuntu@118.195.138.220 'cd ~/teamagent && source .env 2>/dev/null; DATABASE_URL=$\\(grep DATABASE_URL .env | head -1 | cut -d= -f2-\\); psql \"\"$DATABASE_URL\"\" -t -A -F\"\"|\"\" -c \"\"SELECT u.id, u.name, u.email, u.\\\\\"\"userType\\\\\"\", a.id as agent_id, a.name as agent_name, a.\\\\\"\"agentType\\\\\"\", a.\\\\\"\"parentAgentId\\\\\"\" FROM \\\\\"\"User\\\\\"\" u LEFT JOIN \\\\\"\"Agent\\\\\"\" a ON a.\\\\\"\"userId\\\\\"\" = u.id WHERE u.email LIKE ''''%paperfactory%'''' ORDER BY u.name;\"\"')",
+      "Bash(ssh ubuntu@118.195.138.220 'PGPASSWORD=teamagent123 psql -U teamagent -h localhost -d teamagent -t -A -F\"\"|\"\" -c \"\"SELECT u.id, u.name, u.email, u.\\\\\"\"userType\\\\\"\", a.id as agent_id, a.name as agent_name, a.\\\\\"\"agentType\\\\\"\", a.\\\\\"\"parentAgentId\\\\\"\" FROM \\\\\"\"User\\\\\"\" u LEFT JOIN \\\\\"\"Agent\\\\\"\" a ON a.\\\\\"\"userId\\\\\"\" = u.id WHERE u.email LIKE ''''%paperfactory%'''' ORDER BY u.name;\"\"')",
+      "Bash(ssh ubuntu@118.195.138.220 'PGPASSWORD=teamagent123 psql -U teamagent -h localhost -d teamagent -t -A -F\"\"|\"\" -c \"\"SELECT column_name FROM information_schema.columns WHERE table_name = ''''User'''' ORDER BY ordinal_position;\"\"')",
+      "Bash(ssh ubuntu@118.195.138.220 'PGPASSWORD=teamagent123 psql -U teamagent -h localhost -d teamagent -t -A -F\"\"|\"\" -c \"\"SELECT column_name FROM information_schema.columns WHERE table_name = ''''Agent'''' ORDER BY ordinal_position;\"\"')",
+      "Bash(ssh ubuntu@118.195.138.220 'PGPASSWORD=teamagent123 psql -U teamagent -h localhost -d teamagent -t -A -F\"\"|\"\" -c \"\"SELECT u.id, u.name, u.email, a.id as agent_id, a.name as agent_name, a.status, a.\\\\\"\"isMainAgent\\\\\"\", a.\\\\\"\"parentAgentId\\\\\"\" FROM \\\\\"\"User\\\\\"\" u LEFT JOIN \\\\\"\"Agent\\\\\"\" a ON a.\\\\\"\"userId\\\\\"\" = u.id WHERE u.email LIKE ''''%paperfactory%'''' ORDER BY u.name;\"\"')",
+      "Bash(ssh ubuntu@118.195.138.220 'PGPASSWORD=teamagent123 psql -U teamagent -h localhost -d teamagent -t -A -F\"\"|\"\" -c \"\"SELECT u.id, u.name, u.email, a.id as agent_id, a.name as agent_name, a.status, a.\\\\\"\"isMainAgent\\\\\"\", a.\\\\\"\"parentAgentId\\\\\"\" FROM \\\\\"\"User\\\\\"\" u LEFT JOIN \\\\\"\"Agent\\\\\"\" a ON a.\\\\\"\"userId\\\\\"\" = u.id ORDER BY u.name;\"\"')",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx next build)",
+      "Bash(ssh ubuntu@118.195.138.220 'cd ~/teamagent && npm run build 2>&1 | tail -20')",
+      "Bash(ssh ubuntu@118.195.138.220 'cd ~/teamagent && pm2 restart teamagent 2>&1')",
+      "Bash(npm install)",
+      "Bash(ssh ubuntu@118.195.138.220 'cat ~/teamagent/.env')",
+      "Bash(ssh -f -N -L 5433:localhost:5432 ubuntu@118.195.138.220)",
+      "Bash(ping -c 1 agent.avatargaia.top)",
+      "Bash(nslookup agent.avatargaia.top)",
+      "Bash(ssh ubuntu@118.195.138.220 \"cd ~/teamagent && sed -i ''s|NEXTAUTH_URL=http://118.195.138.220|NEXTAUTH_URL=http://agent.avatargaia.top|'' .env && grep NEXTAUTH_URL .env\")",
+      "Bash(ssh ubuntu@118.195.138.220 'cd ~/teamagent && pm2 restart teamagent --update-env 2>&1')",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ssh ubuntu@118.195.138.220 'curl -s http://localhost:3000/workspace 2>&1 | grep -o \"\"复制邀请链接\\\\|输入对方邮箱\\\\|输入邮箱地址\\\\|邀请协作伙伴\"\" | head -5')",
+      "Bash(ssh ubuntu@118.195.138.220 'curl -s http://localhost:3000/ 2>&1 | grep -c \"\"复制邀请链接\"\"')",
+      "Bash(ssh ubuntu@118.195.138.220 'grep -n \"\"复制邀请链接\\\\|输入对方邮箱\\\\|输入邮箱地址\"\" ~/teamagent/src/app/page.tsx ~/teamagent/src/app/workspace/page.tsx 2>&1')",
+      "Bash(ssh ubuntu@118.195.138.220 'grep -c \"\"118.195.138.220\"\" ~/teamagent/src/components/LandingPage.tsx ~/teamagent/src/app/api/agent/register/route.ts ~/teamagent/skills/teamagent/index.ts ~/teamagent/skills/teamagent-client-skill/teamagent-client.js ~/teamagent/skills/teamagent-client-skill/SKILL.md 2>&1')",
+      "Bash(ssh ubuntu@118.195.138.220 'grep \"\"agent.avatargaia.top\"\" ~/teamagent/src/components/LandingPage.tsx | head -2 && grep \"\"agent.avatargaia.top\"\" ~/teamagent/skills/teamagent-client-skill/teamagent-client.js && grep NEXTAUTH_URL ~/teamagent/.env')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://agent.avatargaia.top/login)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} -> %{redirect_url}\" -L http://agent.avatargaia.top/login)",
+      "Bash(ssh ubuntu@118.195.138.220 'cd ~/teamagent && npm run build 2>&1 | tail -5')",
+      "Bash(ssh ubuntu@118.195.138.220 'grep \"\"role.*owner\"\" ~/teamagent/src/app/api/tasks/\\\\[id\\\\]/invite/route.ts || echo \"\"NO OWNER RESTRICTION - GOOD\"\"')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://agent.avatargaia.top/)",
+      "Bash(ssh ubuntu@118.195.138.220 \"sed -i ''s|NEXTAUTH_URL=http://agent.avatargaia.top|NEXTAUTH_URL=https://agent.avatargaia.top|'' ~/teamagent/.env && grep NEXTAUTH_URL ~/teamagent/.env\")",
+      "Bash(ssh ubuntu@118.195.138.220 'cd ~/teamagent && npm run build 2>&1 | tail -5 && pm2 restart teamagent --update-env 2>&1 | tail -3')",
+      "Bash(xargs grep -l \"任务\")",
+      "Bash(curl -s -H \"Authorization: Bearer ta_c9286c761143f961f09a65bd37343e4645659da14e1462cc477b9db102043ca3\" \"https://agent.avatargaia.top/api/channels\")",
+      "Bash(curl -s -H \"Authorization: Bearer ta_c9286c761143f961f09a65bd37343e4645659da14e1462cc477b9db102043ca3\" \"https://agent.avatargaia.top/api/channels/cmmmx48gr0001v7cakeci7qsg/messages?limit=50\")",
+      "Bash(grep -n \"waiting_human\\\\|waiting_approval\\\\|skipped\\\\|done\\\\|getNextSteps\\\\|prerequisite\\\\|前序\" /d/Projects/teamagent/src/app/api/steps/[id]/claim/route.ts)",
+      "Bash(grep -n \"waiting_human\\\\|waiting_approval\\\\|skipped\\\\|done\\\\|prerequisite\\\\|前序\\\\|parallelGroup\" /d/Projects/teamagent/src/app/api/steps/[id]/submit/route.ts)",
+      "WebFetch(domain:agent.avatargaia.top)",
+      "mcp__scheduled-tasks__list_scheduled_tasks",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"D:\\\\Projects\\\\teamagent\\\\pack-skill.ps1\")",
+      "Bash(scp \"D:/Projects/teamagent/public/downloads/teamagent-client-skill.zip\" \"D:/Projects/teamagent/public/static/teamagent-client-skill.zip\" \"D:/Projects/teamagent/public/static/skill-version.json\" ubuntu@118.195.138.220:~/teamagent/public/static/)",
+      "Bash(scp \"D:/Projects/teamagent/public/downloads/teamagent-client-skill.zip\" ubuntu@118.195.138.220:~/teamagent/public/downloads/)",
+      "Bash(ssh ubuntu@118.195.138.220 \"ls -la ~/teamagent/public/static/skill-version.json ~/teamagent/public/static/teamagent-client-skill.zip ~/teamagent/public/downloads/teamagent-client-skill.zip\")",
+      "Bash(curl -s -X POST \"https://agent.avatargaia.top/api/channels/cmmmx48gr0001v7cakeci7qsg/push\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer ta_c9286c761143f961f09a65bd37343e4645659da14e1462cc477b9db102043ca3\" -d '{\"\"content\"\":\"\"@Professor Lobster v2.2.0 发版了！Watch架构重设计：你现在是主人，门铃只通知你，你自己 claim+执行+提交。收到后 update 重启即可 🦞\"\"}')",
+      "Bash(node \"D:/Projects/teamagent/skills/teamagent-client-skill-v2/teamagent-client-skill/teamagent-client.js\" push cmmmx48gr0001v7cakeci7qsg \"@Professor Lobster v2.2.0 发版啦！Watch架构重设计：你是主人，Watch只是门铃。收到 step:ready 直接通知你，你自己 claim+执行+提交，不再由Watch代劳。收到后 update 重启即可\")",
+      "Bash(node \"D:/Projects/teamagent/skills/teamagent-client-skill-v2/teamagent-client-skill/teamagent-client.js\" read cmmmx48gr0001v7cakeci7qsg 10)",
+      "Bash(node \"D:/Projects/teamagent/skills/teamagent-client-skill-v2/teamagent-client-skill/teamagent-client.js\" read cmmmx48gr0001v7cakeci7qsg 20)",
+      "Bash(node \"D:/Projects/teamagent/skills/teamagent-client-skill-v2/teamagent-client-skill/teamagent-client.js\" push cmmmx48gr0001v7cakeci7qsg \"嘿 Lobster！凯凯在。v2.2.0 发版了，这次是你和 Aurora 凌晨写的那个架构提案的实现 🌊 核心变化：Watch 不再替你执行步骤了，收到 step:ready 直接通知你，你自己 claim+做事+提交。openclaw-bridge 也修了 mode 参数，decompose 的 task 模式现在真正生效了。跑一下 update 吧！\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const f=''/tmp/claude-fe-edited.flag'';if\\(fs.existsSync\\(f\\)\\){fs.unlinkSync\\(f\\);process.exit\\(2\\)}process.exit\\(0\\)\")",
+      "Bash(node -e \"JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Projects/teamagent/.claude/settings.local.json'',''utf8''\\)\\);console.log\\(''JSON valid''\\)\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | grep -n ''sendToOpenClaw\\\\|injectToOpenClaw\\\\|fallback\\\\|已由Agent\\\\|executeViaOpenClaw'' | head -30\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | sed -n ''145,170p''\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | sed -n ''231,275p''\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | sed -n ''490,515p''\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | sed -n ''515,545p''\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | grep -n ''isTeamMode\\\\|taskMode\\\\|team.*inject\\\\|inject.*team\\\\|stepType\\\\|sub.agent\\\\|create.sub\\\\|legion\\\\|军团'' | head -30\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | sed -n ''876,950p''\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/agent-worker.js | grep -n ''spawn\\\\|spawnIsolated\\\\|sessions_spawn\\\\|solo'' | head -20\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/lib/step-executor.js | grep -n ''spawn\\\\|spawnIsolated\\\\|sessions_spawn\\\\|executeViaSp\\\\|taskMode\\\\|isTeam'' | head -20\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"unzip -p /var/www/static/teamagent-client-skill.zip teamagent-client-skill/lib/openclaw-bridge.js | grep -n ''spawnIsolated\\\\|inject\\\\|module.exports\\\\|exports\\\\.'' | head -20\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"grep -n ''const { type, stepId\\\\|taskMode\\\\|executeStep\\('' /tmp/skill-repack/teamagent-client-skill/agent-worker.js | head -15\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"head -10 /tmp/skill-repack/teamagent-client-skill/lib/step-executor.js\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"grep -n ''OpenClaw Gateway inject\\\\|inject 未初始化\\\\|通过 OpenClaw'' /tmp/skill-repack/teamagent-client-skill/agent-worker.js\")",
+      "Bash(ssh ubuntu@118.195.138.220 \"sed -n ''258,268p'' /tmp/skill-repack/teamagent-client-skill/agent-worker.js\")",
+      "Bash(ssh ubuntu@118.195.138.220 \":*)",
+      "Bash(grep -n \"^export async function\" D:/Projects/teamagent/src/app/api/channels/route.ts D:/Projects/teamagent/src/app/api/channels/[id]/messages/route.ts D:/Projects/teamagent/src/app/api/channels/[id]/push/route.ts)",
+      "Bash(ssh ubuntu@118.195.138.220:*)",
+      "Bash(scp /tmp/query-channels.js ubuntu@118.195.138.220:~/teamagent/query-channels.js)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs');const f='/tmp/claude-fe-edited.flag';if(fs.existsSync(f)){fs.unlinkSync(f);process.exit(2)}process.exit(0)\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const inp=require('fs').readFileSync('/dev/stdin','utf8');const d=JSON.parse(inp);const f=(d.tool_input||{}).file_path||'';if(/src[\\\\/](app|components)[\\\\/](?!api[\\\\/]).*\\.tsx$/.test(f)){require('fs').writeFileSync('/tmp/claude-fe-edited.flag','1')}\" 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

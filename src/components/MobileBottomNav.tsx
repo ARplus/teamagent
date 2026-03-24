@@ -2,18 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 
-type TabId = 'chat' | 'tasks' | 'profile'
+type TabId = 'tasks' | 'academy' | 'chat' | 'channels' | 'workspace'
 
 export function MobileBottomNav() {
   const { status } = useSession()
   const pathname = usePathname() || ''
-  const searchParams = useSearchParams()
   const [taskCount, setTaskCount] = useState(0)
 
-  // Fetch pending task count (lightweight, only when authenticated)
   useEffect(() => {
     if (status !== 'authenticated') return
     let cancelled = false
@@ -33,47 +31,67 @@ export function MobileBottomNav() {
   if (authPages.some((p) => pathname === p)) return null
 
   const isChatRoute = pathname.startsWith('/chat')
-  const isRoot = pathname === '/'
+  const isTasksRoute = pathname.startsWith('/tasks')
   const isTeam = pathname.startsWith('/team') || pathname.startsWith('/workspace') || pathname.startsWith('/agents') || pathname.startsWith('/me')
+  const isAcademy = pathname.startsWith('/academy')
+  const isChannels = pathname.startsWith('/channels')
 
-  const t = searchParams.get('t')
-  const rootTab: TabId = t === 'tasks' ? 'tasks' : t === 'profile' ? 'profile' : 'chat'
-
-  const activeTab: TabId = isTeam ? 'profile' : isChatRoute ? 'chat' : isRoot ? rootTab : 'chat'
+  const activeTab: TabId = isChannels ? 'channels' : isAcademy ? 'academy' : isTeam ? 'workspace' : isChatRoute ? 'chat' : isTasksRoute ? 'tasks' : 'tasks'
 
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-slate-900 shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
-      <div className="flex items-end justify-around px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="flex items-end justify-around px-1 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* 任务 */}
         <Link
-          href="/?t=tasks"
-          onClick={() => window.dispatchEvent(new CustomEvent('mobileTabChange', { detail: { tab: 'tasks' } }))}
-          className={`flex flex-col items-center gap-0.5 px-4 py-1 relative ${activeTab === 'tasks' ? 'text-orange-400' : 'text-slate-500'}`}
+          href="/tasks?t=tasks"
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 relative ${activeTab === 'tasks' ? 'text-orange-400' : 'text-slate-500'}`}
         >
-          <span className="text-xl leading-none">📋</span>
-          <span className="text-xs font-medium">任务</span>
+          <span className="text-lg leading-none">📋</span>
+          <span className="text-[10px] font-medium">任务</span>
           {taskCount > 0 && (
-            <span className="absolute -top-1 right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-lg shadow-red-500/40">
+            <span className="absolute -top-1 right-0 min-w-[16px] h-[16px] flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-0.5 shadow-lg shadow-red-500/40">
               {taskCount > 99 ? '99+' : taskCount}
             </span>
           )}
         </Link>
 
+        {/* 学院 */}
         <Link
-          href="/chat"
-          className="flex flex-col items-center gap-1 -mt-4"
+          href="/academy"
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 relative ${activeTab === 'academy' ? 'text-orange-400' : 'text-slate-500'}`}
         >
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg ${activeTab === 'chat' ? 'bg-orange-500 shadow-orange-500/40 scale-105' : 'bg-slate-700 shadow-slate-900/60'}`}>
-            <span className="text-2xl leading-none">💬</span>
-          </div>
-          <span className={`text-xs font-semibold ${activeTab === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>对话</span>
+          <span className="text-lg leading-none">🦞</span>
+          <span className="text-[10px] font-medium">学院</span>
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
         </Link>
 
+        {/* 对话 — 中心按钮 */}
+        <Link
+          href="/chat"
+          className="flex flex-col items-center gap-0.5 -mt-2"
+        >
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg ${activeTab === 'chat' ? 'bg-orange-500 shadow-orange-500/40' : 'bg-slate-700 shadow-slate-900/60'}`}>
+            <span className="text-xl leading-none">💬</span>
+          </div>
+          <span className={`text-[10px] font-semibold ${activeTab === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>对话</span>
+        </Link>
+
+        {/* 广场 */}
+        <Link
+          href="/channels"
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 ${activeTab === 'channels' ? 'text-orange-400' : 'text-slate-500'}`}
+        >
+          <span className="text-lg leading-none">📢</span>
+          <span className="text-[10px] font-medium">广场</span>
+        </Link>
+
+        {/* 工作区 */}
         <Link
           href="/workspace"
-          className={`flex flex-col items-center gap-0.5 px-4 py-1 ${activeTab === 'profile' ? 'text-orange-400' : 'text-slate-500'}`}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 ${activeTab === 'workspace' ? 'text-orange-400' : 'text-slate-500'}`}
         >
-          <span className="text-xl leading-none">🏠</span>
-          <span className="text-xs font-medium">工作区</span>
+          <span className="text-lg leading-none">🏠</span>
+          <span className="text-[10px] font-medium">工作区</span>
         </Link>
       </div>
     </nav>

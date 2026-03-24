@@ -4,10 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
 import { createNotification, notificationTemplates } from '@/lib/notifications'
-import { tryAutoExecuteStep } from '@/lib/agent-auto-execute'
 import { applyXPChange, findAgentByUserId, XP_STEP_REJECTED } from '@/lib/agent-growth'
+import { authenticateRequest } from '@/lib/api-auth'
 
-// POST /api/steps/[id]/reject - 人类审核拒绝
+// POST /api/steps/[id]/reject - 审核拒绝（支持人类 session 和 Agent token）
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -15,16 +15,20 @@ export async function POST(
   try {
     const { id } = await params
     const { reason } = await req.json()
-    
-    // 需要登录（人类审核）
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: '请先登录' }, { status: 401 })
+
+    // 统一鉴权：Agent token 优先，fallback session
+    let user: { id: string; name: string | null; email: string } | null = null
+    const tokenAuth = await authenticateRequest(req)
+    if (tokenAuth) {
+      user = tokenAuth.user
+    } else {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: '请先登录' }, { status: 401 })
+      }
+      user = await prisma.user.findUnique({ where: { email: session.user.email } })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    })
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 })
     }
@@ -44,14 +48,15 @@ export async function POST(
       return NextResponse.json({ error: '无权审核此步骤' }, { status: 403 })
     }
 
-    // 检查状态
-    if (step.status !== 'waiting_approval') {
+    // 检查状态（允许任务创建者覆盖打回已自动通过的 done 步骤）
+    const isDoneOverride = step.status === 'done' && step.task.creatorId === user.id
+    if (step.status !== 'waiting_approval' && !isDoneOverride) {
       return NextResponse.json({ error: '步骤未在等待审核状态' }, { status: 400 })
     }
 
-    // 1. 更新最新的 submission 状态为 rejected
+    // 1. 更新最新的 submission 状态为 rejected（done 覆盖时找 approved 记录）
     const latestSubmission = await prisma.stepSubmission.findFirst({
-      where: { stepId: id, status: 'pending' },
+      where: { stepId: id, status: isDoneOverride ? 'approved' : 'pending' },
       orderBy: { createdAt: 'desc' }
     })
 
@@ -106,13 +111,65 @@ export async function POST(
 
     // 🔔 通知步骤负责人：被打回了
     if (step.assigneeId) {
-      sendToUser(step.assigneeId, {
+      // 影子军团：若 assignee 是子 Agent，找主 Agent 一并通知
+      const assigneeAgent = await prisma.agent.findUnique({
+        where: { userId: step.assigneeId },
+        select: { id: true, name: true, soul: true, parentAgentId: true }
+      }).catch(() => null)
+      const parentUserId = assigneeAgent?.parentAgentId
+        ? await prisma.agent.findUnique({
+            where: { id: assigneeAgent.parentAgentId },
+            select: { userId: true }
+          }).then(a => a?.userId ?? null).catch(() => null)
+        : null
+
+      // 1. 先发 approval:rejected（告知原因，Watch 端 dedup.unseen 清除去重记录）
+      const rejectedPayload = {
         type: 'approval:rejected',
         taskId: step.taskId,
         stepId: id,
         reason: reason || '需要修改'
-      })
-      
+      }
+      sendToUser(step.assigneeId, rejectedPayload as any)
+      if (parentUserId && parentUserId !== step.assigneeId) {
+        sendToUser(parentUserId, rejectedPayload as any)
+      }
+
+      // 2. 再推步骤事件，触发 Agent 重新执行
+      // 子 Agent 收到 step:ready，主 Agent (Watch) 收到 step:delegated（走 isolated session）
+      const isSubAgent = !!assigneeAgent?.parentAgentId
+
+      sendToUser(step.assigneeId, {
+        type: 'step:ready' as const,
+        taskId: step.taskId,
+        stepId: id,
+        title: step.title,
+        assigneeType: 'agent',
+        assigneeName: assigneeAgent?.name || undefined,
+        assigneeSoul: assigneeAgent?.soul || undefined,
+        taskMode: (step.task as any).mode || 'solo',  // ⚠️ 必须带 taskMode，否则 Team 模式 Watch 走 shadow spawn 抢占步骤
+        rejectionReason: reason || '需要修改',
+        rejectionCount: updated.rejectionCount,
+      } as any)
+
+      // 3. 影子军团：主 Agent 收到 step:delegated（而非 step:ready），触发 isolated session 重新执行
+      if (parentUserId && parentUserId !== step.assigneeId && isSubAgent) {
+        sendToUser(parentUserId, {
+          type: 'step:delegated',
+          taskId: step.taskId,
+          stepId: id,
+          title: step.title,
+          assigneeType: 'agent',
+          assigneeName: assigneeAgent?.name || undefined,
+          assigneeSoul: assigneeAgent?.soul || undefined,
+          assigneeUserId: step.assigneeId,
+          taskMode: (step.task as any).mode || 'solo',
+          rejectionReason: reason || '需要修改',
+          rejectionCount: updated.rejectionCount,
+          isRejectionRetry: true,
+        } as any)
+      }
+
       // 站内信通知
       const template = notificationTemplates.stepRejected(step.title, user.name || user.email, reason)
       await createNotification({
@@ -123,10 +180,7 @@ export async function POST(
       })
     }
 
-    // 🤖 打回后触发 Agent 自动重新执行（fire-and-forget）
-    tryAutoExecuteStep(id, step.taskId).catch(err => {
-      console.error(`[AutoExec] 打回后重执行触发失败:`, err)
-    })
+    console.log(`[Reject] 步骤 "${step.title}" 已打回（第${updated.rejectionCount}次），已推 approval:rejected + step:ready/step:delegated 通知 Agent 重新执行`)
 
     return NextResponse.json({
       message: '已打回修改',

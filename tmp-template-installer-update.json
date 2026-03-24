@@ -1,0 +1,68 @@
+{
+  "name": "一键安装包更新发布",
+  "description": "install.ps1/install.sh 更新标准流程：修改 → 双平台一致性校验 → 打包 → SCP 部署。仅管理员可见。",
+  "icon": "📦",
+  "category": "ops",
+  "tags": ["运维", "安装", "部署", "admin"],
+  "isPublic": false,
+  "defaultMode": "solo",
+  "executionProtocol": "# 执行规范\n- install.ps1 和 install.sh 必须保持功能对等\n- 修改一个必须同步另一个\n- 安装脚本位于 public/static/ 目录\n- Skill ZIP 位于 public/downloads/\n- 部署目标：ubuntu@118.195.138.220:~/teamagent/\n- 部署方式：SCP → npm run build → pm2 restart teamagent",
+  "variables": [
+    {
+      "name": "changeDesc",
+      "label": "修改内容",
+      "type": "text",
+      "required": true,
+      "description": "本次安装包更新了什么"
+    },
+    {
+      "name": "skillVersion",
+      "label": "Skill 版本号",
+      "type": "text",
+      "required": false,
+      "description": "如果同时更新了 Skill Bundle，填版本号"
+    }
+  ],
+  "stepsTemplate": [
+    {
+      "order": 1,
+      "title": "修改安装脚本",
+      "promptTemplate": "根据需求修改安装脚本：\n\n修改内容：{{changeDesc}}\nSkill 版本：{{skillVersion}}\n\n修改规则：\n1. install.ps1 和 install.sh 必须功能对等\n2. 对照两个文件的步骤编号，确认一一对应\n3. 列出修改了哪些步骤\n\n必检清单：\n- [ ] Step 1: Node.js 安装（PS1有UAC检测+ZIP兜底）\n- [ ] Step 2: npm registry 设置（npmmirror）\n- [ ] Step 3: OpenClaw 安装\n- [ ] Step 3.5: Skill 下载解压\n- [ ] Step 3.6: set-token 配置\n- [ ] Step 4: OpenClaw 启动\n- [ ] Step 4.5: Watch 守护进程\n- [ ] BOOTSTRAP.md 复制到 workspace\n- [ ] HEARTBEAT.md 复制到 workspace\n- [ ] npm registry 还原",
+      "assigneeHint": "agent",
+      "requiresApproval": false,
+      "parallelGroup": null
+    },
+    {
+      "order": 2,
+      "title": "双平台一致性校验",
+      "promptTemplate": "对比 install.ps1 和 install.sh 的功能一致性：\n\n1. 逐步骤对比，确认两个脚本步骤编号和功能一一对应\n2. 对每个步骤输出对比结果：✅ 一致 / ❌ 缺失或不同\n3. 特别关注：\n   - Node.js 版本号是否一致\n   - Skill ZIP 下载 URL 是否一致\n   - set-token 步骤是否都有\n   - Watch 启动方式是否都有\n   - HEARTBEAT.md 是否都复制\n4. 有 ❌ 则修复后再报告",
+      "assigneeHint": "agent",
+      "requiresApproval": true,
+      "parallelGroup": null
+    },
+    {
+      "order": 3,
+      "title": "文件打包 & 替换",
+      "promptTemplate": "替换发布文件：\n\n1. 确认 public/static/install.ps1 已更新\n2. 确认 public/static/install.sh 已更新\n3. 如果有新 Skill ZIP（版本 {{skillVersion}}），确认 public/downloads/teamagent-client-skill.zip 已替换\n4. 列出所有需要 SCP 到服务器的文件清单和大小",
+      "assigneeHint": "agent",
+      "requiresApproval": false,
+      "parallelGroup": null
+    },
+    {
+      "order": 4,
+      "title": "SCP 部署到服务器",
+      "promptTemplate": "部署到生产服务器：\n\n```bash\n# 上传安装脚本\nscp public/static/install.ps1 ubuntu@118.195.138.220:~/teamagent/public/static/\nscp public/static/install.sh ubuntu@118.195.138.220:~/teamagent/public/static/\n\n# 上传 Skill ZIP（如有更新）\nscp public/downloads/teamagent-client-skill.zip ubuntu@118.195.138.220:~/teamagent/public/downloads/\n\n# 重启服务\nssh ubuntu@118.195.138.220 'cd ~/teamagent && npm run build && pm2 restart teamagent'\n```\n\n等待 build 完成，确认 pm2 status 正常",
+      "assigneeHint": "human",
+      "requiresApproval": false,
+      "parallelGroup": null
+    },
+    {
+      "order": 5,
+      "title": "线上验证",
+      "promptTemplate": "验证线上安装包可用：\n\n1. 访问 https://agent.avatargaia.top/static/install.ps1 确认可下载\n2. 访问 https://agent.avatargaia.top/static/install.sh 确认可下载\n3. 检查文件大小是否与本地一致\n4. 记录发布信息：\n   - 修改内容：{{changeDesc}}\n   - Skill版本：{{skillVersion}}\n   - install.ps1 大小\n   - install.sh 大小\n   - ZIP 大小",
+      "assigneeHint": "agent",
+      "requiresApproval": true,
+      "parallelGroup": null
+    }
+  ]
+}

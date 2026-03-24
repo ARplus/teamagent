@@ -1,0 +1,50 @@
+{
+  "name": "打包部署 TeamAgent",
+  "description": "一键完成 Skill 打包、静态文件同步、应用构建和部署验证的标准流程",
+  "icon": "🚀",
+  "category": "ops",
+  "tags": ["部署", "运维", "打包"],
+  "mode": "team",
+  "priority": "high",
+  "isDraft": true,
+  "isPublic": false,
+  "variables": [
+    {"name": "version", "label": "版本号", "type": "string", "required": true, "default": "v1.3.x", "description": "本次发布的版本号"},
+    {"name": "changeDesc", "label": "更新内容", "type": "string", "required": true, "description": "本次更新的主要内容描述"}
+  ],
+  "stepsTemplate": [
+    {
+      "order": 1,
+      "title": "打包 Skill ZIP ({{version}})",
+      "description": "1. 进入项目根目录\n2. 运行: bash deploy.sh --skill\n3. 确认输出 ZIP 大小 > 10KB\n4. 确认 public/downloads/ 和 public/static/ 都有最新 ZIP",
+      "assigneeRole": "agent",
+      "assigneeHint": "凯凯",
+      "stepType": "task"
+    },
+    {
+      "order": 2,
+      "title": "同步静态文件到服务器",
+      "description": "1. 运行: bash deploy.sh --static\n2. 确认 SCP 成功\n3. 关键：确认 sudo cp 到 /var/www/static/ (nginx 实际目录)\n4. 验证 install.ps1 和 skill ZIP 返回 HTTP 200",
+      "assigneeRole": "agent",
+      "assigneeHint": "凯凯",
+      "stepType": "task"
+    },
+    {
+      "order": 3,
+      "title": "构建并重启应用",
+      "description": "1. 运行: bash deploy.sh --app\n2. 确认 prisma generate + npm run build 成功\n3. 确认 pm2 restart 后 status = online\n4. 确认网站可访问",
+      "assigneeRole": "agent",
+      "assigneeHint": "凯凯",
+      "stepType": "task"
+    },
+    {
+      "order": 4,
+      "title": "验证部署 ({{version}})",
+      "description": "更新内容: {{changeDesc}}\n\n验证清单:\n- 网站首页可正常访问\n- 安装脚本可下载\n- Skill ZIP 可下载\n- 聊天功能正常\n- 新功能验证: {{changeDesc}}",
+      "assigneeRole": "human",
+      "assigneeHint": "Aurora",
+      "stepType": "task",
+      "requiresApproval": true
+    }
+  ]
+}

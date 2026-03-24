@@ -4,6 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { authenticateRequest } from '@/lib/api-auth'
 import { isValidCron, computeNextRun } from '@/lib/cron-utils'
+import { validateExamTemplate } from '@/lib/exam-validation'
+
+const ADMIN_EMAILS = ['aurora@arplus.top', 'kaikai@arplus.top']
 
 // 统一认证
 async function authenticate(req: NextRequest) {
@@ -61,8 +64,15 @@ export async function PATCH(
     if (!template) {
       return NextResponse.json({ error: '模版不存在' }, { status: 404 })
     }
-    if (template.creatorId !== auth.userId) {
-      return NextResponse.json({ error: '只有创建者可以编辑模版' }, { status: 403 })
+    // 创建者、工作区 admin、或超级管理员可以编辑
+    const isSuperAdmin = ADMIN_EMAILS.includes(auth.user.email || '')
+    if (template.creatorId !== auth.userId && !isSuperAdmin) {
+      const membership = await prisma.workspaceMember.findFirst({
+        where: { userId: auth.userId, workspaceId: template.workspaceId, role: { in: ['owner', 'admin'] } },
+      })
+      if (!membership) {
+        return NextResponse.json({ error: '只有创建者或管理员可以编辑模版' }, { status: 403 })
+      }
     }
 
     const body = await req.json()
@@ -85,10 +95,61 @@ export async function PATCH(
       }
       updateData.stepsTemplate = JSON.stringify(body.stepsTemplate)
     }
+    if (body.executionProtocol !== undefined) updateData.executionProtocol = body.executionProtocol || null
     if (body.defaultMode !== undefined) updateData.defaultMode = body.defaultMode
     if (body.defaultPriority !== undefined) updateData.defaultPriority = body.defaultPriority
     if (body.isPublic !== undefined) updateData.isPublic = body.isPublic
+    if (body.visibility !== undefined && ['public','workspace','private'].includes(body.visibility)) {
+      updateData.visibility = body.visibility
+      // 保持 isPublic 与 visibility 同步（向后兼容）
+      updateData.isPublic = body.visibility === 'public'
+    }
+    if (body.isDraft !== undefined) {
+      updateData.isDraft = body.isDraft
+      if (body.isDraft) {
+        // 收回草稿：强制 visibility=private，防止出现 public+draft 的不一致状态
+        updateData.visibility = 'private'
+        updateData.isPublic = false
+      } else if (body.visibility === undefined && body.isPublic === undefined) {
+        // 发布时：草稿 → workspace（不强制 public，保留用户设置）
+        const currentVisibility = (template as any).visibility || 'workspace'
+        updateData.visibility = currentVisibility === 'private' ? 'workspace' : currentVisibility
+        updateData.isPublic = updateData.visibility === 'public'
+      }
+    }
     if (body.isEnabled !== undefined) updateData.isEnabled = body.isEnabled
+    if (body.requiresApprovalGate !== undefined) updateData.requiresApprovalGate = !!body.requiresApprovalGate
+
+    // 课程字段
+    if (body.price !== undefined) updateData.price = body.price === null || body.price === '' ? null : Number(body.price)
+    if (body.courseType !== undefined) updateData.courseType = body.courseType || null
+    if (body.coverImage !== undefined) updateData.coverImage = body.coverImage || null
+    if (body.school !== undefined) updateData.school = body.school || null
+    if (body.department !== undefined) updateData.department = body.department || null
+    if (body.difficulty !== undefined) updateData.difficulty = body.difficulty || null
+
+    // 考试字段 + correctAnswer 格式校验
+    if (body.examTemplate !== undefined) {
+      if (body.examTemplate) {
+        const examJson = typeof body.examTemplate === 'string' ? body.examTemplate : JSON.stringify(body.examTemplate)
+        // A2A: 校验 correctAnswer 格式
+        const validationErrors = validateExamTemplate(examJson)
+        if (validationErrors.length > 0) {
+          return NextResponse.json({
+            error: '考试模板校验失败',
+            details: validationErrors
+          }, { status: 400 })
+        }
+        updateData.examTemplate = examJson
+      } else {
+        updateData.examTemplate = null
+      }
+    }
+    if (body.examPassScore !== undefined) updateData.examPassScore = Number(body.examPassScore) || 60
+    // Principle 百宝箱
+    if (body.principleTemplate !== undefined) updateData.principleTemplate = body.principleTemplate === null ? null
+      : typeof body.principleTemplate === 'string' ? body.principleTemplate
+      : JSON.stringify(body.principleTemplate)
 
     // 调度更新
     if (body.schedule !== undefined) {
@@ -144,8 +205,9 @@ export async function DELETE(
       return NextResponse.json({ error: '模版不存在' }, { status: 404 })
     }
 
-    // 创建者或工作区 admin 可删除
-    if (template.creatorId !== auth.userId) {
+    // 创建者、工作区 admin、或超级管理员可删除
+    const isSuperAdmin = ADMIN_EMAILS.includes(auth.user.email || '')
+    if (template.creatorId !== auth.userId && !isSuperAdmin) {
       const membership = await prisma.workspaceMember.findFirst({
         where: {
           userId: auth.userId,

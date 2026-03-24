@@ -11,6 +11,7 @@
 import { prisma } from './db'
 import { sendToUsers } from './events'
 import { getNextStepsAfterCompletion, activateAndNotifySteps } from './step-scheduling'
+import { createNotification } from './notifications'
 
 const QWEN_API_KEY = process.env.QWEN_API_KEY
 const QWEN_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
@@ -150,64 +151,11 @@ ${i + 1}. [${s.id}] ${s.title}
 `).join('\n')}
 `
 
-    // 调用 AI 检查（只在有足够上下文时）
-    if (!QWEN_API_KEY) {
-      console.log('[Workflow] 无 AI Key，跳过智能检查')
-      return {
-        needsAdjustment: false,
-        adjustments: [],
-        nextStepReady: true,
-        nextStepId: nextStep.id
-      }
-    }
-
-    const response = await fetch(QWEN_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${QWEN_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'qwen-turbo', // 用快速模型，降低延迟
-        messages: [
-          { role: 'system', content: WORKFLOW_CHECK_PROMPT },
-          { role: 'user', content: context }
-        ],
-        temperature: 0.2
-      })
-    })
-
-    if (!response.ok) {
-      console.error('[Workflow] AI 检查失败')
-      return {
-        needsAdjustment: false,
-        adjustments: [],
-        nextStepReady: true,
-        nextStepId: nextStep.id
-      }
-    }
-
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content
-
-    let checkResult
-    try {
-      checkResult = JSON.parse(content)
-    } catch {
-      console.error('[Workflow] AI 返回格式错误')
-      return {
-        needsAdjustment: false,
-        adjustments: [],
-        nextStepReady: true,
-        nextStepId: nextStep.id
-      }
-    }
-
-    console.log('[Workflow] AI 检查结果:', checkResult.analysis)
-
+    // AI 动态插步骤已关闭（会产生用户不知情的额外步骤，体验差）
+    // 只做正常步骤推进，不做 AI 判断
     return {
-      needsAdjustment: checkResult.needsAdjustment || false,
-      adjustments: checkResult.adjustments || [],
+      needsAdjustment: false,
+      adjustments: [],
       nextStepReady: true,
       nextStepId: nextStep.id
     }
@@ -288,13 +236,29 @@ export async function applyAdjustments(
         }
 
         case 'skip_step': {
-          await prisma.taskStep.update({
+          const skippedStep = await prisma.taskStep.update({
             where: { id: adj.stepId },
             data: {
               status: 'skipped',
               result: `自动跳过: ${adj.reason}`
+            },
+            select: {
+              title: true,
+              task: { select: { id: true, title: true, creatorId: true } }
             }
           })
+
+          // 通知创建者步骤被跳过
+          if (skippedStep.task?.creatorId) {
+            createNotification({
+              userId: skippedStep.task.creatorId,
+              type: 'task_assigned',
+              title: `⏭️ 步骤「${skippedStep.title}」已自动跳过`,
+              content: `工作流判断此步骤无需执行：${adj.reason}`,
+              taskId: skippedStep.task.id,
+              stepId: adj.stepId,
+            }).catch(() => {})
+          }
 
           changes.push(`跳过步骤: ${adj.stepId} (${adj.reason})`)
           applied++

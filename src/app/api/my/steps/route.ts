@@ -33,11 +33,13 @@ export async function GET(req: NextRequest) {
     const taskId = searchParams.get('taskId')
 
     // 构建查询条件 — B08: 同时查 assigneeId 和 StepAssignee
+    // Team 任务步骤只走 SSE inject 路径，不走轮询（防止 Watch fallback 自动提交）
     const where: any = {
       OR: [
         { assigneeId: userId },
         { assignees: { some: { userId } } }
-      ]
+      ],
+      task: { mode: { not: 'team' } }
     }
     if (status) {
       const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
             title: true,
             description: true,
             status: true,
+            mode: true,
             workspace: { select: { id: true, name: true } }
           }
         },

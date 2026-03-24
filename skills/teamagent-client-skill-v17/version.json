@@ -1,0 +1,12 @@
+{
+  "version": "1.8.2",
+  "releaseDate": "2026-03-15",
+  "previousVersion": "1.8.1",
+  "minOpenClawVersion": "2026.3.8",
+  "changelog": [
+    "新增 pause/resume 命令：紧急暂停失控的 Watch 循环",
+    "agent:paused SSE 事件处理：Watch 收到即自动退出",
+    "重连补发步骤数量从 10 条降为 3 条（防止重连洪泛）",
+    "paused 状态重连不补发步骤、不恢复 online 状态"
+  ]
+}

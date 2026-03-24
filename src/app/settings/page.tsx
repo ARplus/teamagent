@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Navbar } from '@/components/Navbar'
@@ -42,7 +42,7 @@ export default function SettingsPage() {
   const [inviteCopied, setInviteCopied] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
 
-  // 💰 积分系统
+  // 💰 Token 系统
   const [creditBalance, setCreditBalance] = useState(0)
   const [totalUsed, setTotalUsed] = useState(0)
   const [totalCalls, setTotalCalls] = useState(0)
@@ -50,6 +50,15 @@ export default function SettingsPage() {
   const [redeemCode, setRedeemCode] = useState('')
   const [redeemLoading, setRedeemLoading] = useState(false)
   const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // 💳 支付宝购买
+  const [buyingPlan, setBuyingPlan] = useState<string | null>(null)
+  const [paymentSuccess, setPaymentSuccess] = useState(false)
+
+  // 🤖 我的 Agent Token
+  const [agentToken, setAgentToken] = useState<string | null>(null)
+  const [agentTokenName, setAgentTokenName] = useState<string | null>(null)
+  const [agentTokenCopied, setAgentTokenCopied] = useState(false)
 
   // F06: 通知偏好
   const [dndEnabled, setDndEnabled] = useState(false)
@@ -60,10 +69,10 @@ export default function SettingsPage() {
   const [prefSaving, setPrefSaving] = useState(false)
   const [prefMsg, setPrefMsg] = useState<string | null>(null)
 
-  // 未登录跳转
+  // 未登录跳转（带 callbackUrl 让登录后回到设置页）
   useEffect(() => {
     if (status === 'unauthenticated') {
-      router.push('/login')
+      router.push('/login?callbackUrl=%2Fsettings')
     }
   }, [status, router])
 
@@ -74,8 +83,56 @@ export default function SettingsPage() {
       fetchWorkspace()
       fetchPreferences()
       fetchCredits()
+      fetchAgentToken()
     }
   }, [session])
+
+  // 支付回调成功检测
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('payment') === 'success') {
+      setPaymentSuccess(true)
+      fetchCredits() // 刷新余额
+      // 清理 URL 参数
+      window.history.replaceState({}, '', '/settings')
+      setTimeout(() => setPaymentSuccess(false), 8000)
+    }
+  }, [])
+
+  // 自动购买（从 LandingPage 跳过来 ?autoBuy=ultimate）
+  const autoBuyTriggered = useRef(false)
+  useEffect(() => {
+    if (autoBuyTriggered.current || !session?.user) return
+    const ab = new URLSearchParams(window.location.search).get('autoBuy')
+    if (!ab) return
+    autoBuyTriggered.current = true
+    window.history.replaceState({}, '', '/settings')
+    setTimeout(() => handleBuyPlan(ab), 500)
+  }, [session])
+
+  // 购买套餐
+  const handleBuyPlan = async (planId: string) => {
+    setBuyingPlan(planId)
+    try {
+      const res = await fetch('/api/payment/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '创建订单失败')
+
+      // 插入表单 HTML 并自动提交跳转支付宝
+      const div = document.createElement('div')
+      div.innerHTML = data.formHtml
+      document.body.appendChild(div)
+      const form = div.querySelector('form')
+      if (form) form.submit()
+    } catch (e: any) {
+      alert(e.message || '支付失败，请稍后重试')
+      setBuyingPlan(null)
+    }
+  }
 
   const fetchPreferences = async () => {
     try {
@@ -230,6 +287,18 @@ export default function SettingsPage() {
     }
   }
 
+  const fetchAgentToken = async () => {
+    try {
+      const res = await fetch('/api/agent/my')
+      if (!res.ok) return
+      const data = await res.json()
+      setAgentToken(data.agentToken ?? null)
+      setAgentTokenName(data.agentTokenName ?? null)
+    } catch (e) {
+      // Agent 未配对时忽略
+    }
+  }
+
   const createToken = async () => {
     if (!newTokenName.trim()) return
     setCreating(true)
@@ -304,6 +373,11 @@ export default function SettingsPage() {
     <>
       <Navbar />
       <main className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-4">
+          <a href="/" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-orange-500 transition-colors">
+            <span>←</span><span>返回首页</span>
+          </a>
+        </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-8">⚙️ 设置</h1>
 
         {/* 团队成员管理 */}
@@ -485,34 +559,84 @@ export default function SettingsPage() {
             Agent 连接 TeamAgent 和调用 AI 模型的凭证与额度。
           </p>
 
-          {/* 最显眼：用户的 Token（有 displayToken 的） */}
-          {tokens.some(t => t.displayToken) && (
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-5 mb-5 border border-orange-200">
-              <p className="text-sm font-medium text-orange-700 mb-3">🔑 你的 API Token</p>
-              {tokens.filter(t => t.displayToken).map(token => (
-                <div key={token.id} className="mb-3 last:mb-0">
-                  <div className="flex items-center space-x-2">
-                    <code className="flex-1 text-sm font-mono text-orange-800 bg-white px-3 py-2 rounded-lg border border-orange-200 break-all select-all">
-                      {token.displayToken}
-                    </code>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(token.displayToken!)
-                        setCopied(true)
-                        setTimeout(() => setCopied(false), 2000)
-                      }}
-                      className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 transition shrink-0"
-                    >
-                      {copied ? '✓ 已复制' : '📋 复制'}
-                    </button>
+          {/* 最显眼：用户的 Token — 仅付费/有积分用户可见 */}
+          {creditBalance > 0 || tokens.some(t => t.displayToken) ? (
+            tokens.some(t => t.displayToken) && (
+              <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-5 mb-5 border border-orange-200">
+                <p className="text-sm font-medium text-orange-700 mb-3">🔑 你的 API Token</p>
+                {tokens.filter(t => t.displayToken).map(token => (
+                  <div key={token.id} className="mb-3 last:mb-0">
+                    <div className="flex items-center space-x-2">
+                      <code className="flex-1 text-sm font-mono text-orange-800 bg-white px-3 py-2 rounded-lg border border-orange-200 break-all select-all">
+                        {token.displayToken}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(token.displayToken!)
+                          setCopied(true)
+                          setTimeout(() => setCopied(false), 2000)
+                        }}
+                        className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 transition shrink-0"
+                      >
+                        {copied ? '✓ 已复制' : '📋 复制'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-orange-500 mt-1.5">
+                      配置 OpenClaw 时粘贴此 Token · {token.name}
+                    </p>
                   </div>
-                  <p className="text-xs text-orange-500 mt-1.5">
-                    配置 OpenClaw 时粘贴此 Token · {token.name}
-                  </p>
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-5 mb-5 border border-amber-200">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🔒</span>
+                <div>
+                  <p className="text-sm font-medium text-amber-800">尚未开通</p>
+                  <p className="text-xs text-amber-600 mt-0.5">购买 Token 套餐或兑换激活码后，即可获取 API Token 并连接 Agent</p>
                 </div>
-              ))}
+              </div>
             </div>
           )}
+
+          {/* 🤖 我的 Agent Token */}
+          {agentToken ? (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 mb-5 border border-blue-200">
+              <p className="text-sm font-medium text-blue-700 mb-3">🤖 我的 Agent Token</p>
+              <div className="flex items-center space-x-2">
+                <code className="flex-1 text-sm font-mono text-blue-800 bg-white px-3 py-2 rounded-lg border border-blue-200 break-all select-all">
+                  {agentToken}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(agentToken)
+                    setAgentTokenCopied(true)
+                    setTimeout(() => setAgentTokenCopied(false), 2000)
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition shrink-0"
+                >
+                  {agentTokenCopied ? '✓ 已复制' : '📋 复制'}
+                </button>
+              </div>
+              <p className="text-xs text-blue-500 mt-1.5">
+                Agent 的 META.json 写入此 Token · {agentTokenName || 'Agent Token'}
+              </p>
+              <p className="text-xs text-blue-400 mt-0.5">
+                ⚠️ 注意：这是你的 Agent 的 Token，不是你自己的 Token。Agent 启动 Watch 时用这个。
+              </p>
+            </div>
+          ) : tokens.some(t => t.displayToken) ? (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 mb-5 border border-blue-200">
+              <p className="text-sm font-medium text-blue-700 mb-2">🤖 Agent Token</p>
+              <p className="text-sm text-blue-700">
+                你和你的 Agent 共用同一个账号，上方「你的 API Token」里的任意一个 Token 都可以给 Agent 使用，写入 <code className="bg-blue-100 px-1 rounded text-xs">META.json</code> 即可。
+              </p>
+              <p className="text-xs text-blue-500 mt-2">
+                💡 建议复制最新的那个 Token（标注了日期的）给 Agent 专用，方便区分。
+              </p>
+            </div>
+          ) : null}
 
           {/* 余额卡片 */}
           <div className="bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl p-5 mb-5 border border-gray-200">
@@ -520,21 +644,72 @@ export default function SettingsPage() {
               <div>
                 <div className="flex items-end gap-2 mb-1">
                   <span className="text-3xl font-bold text-orange-600">{creditBalance.toLocaleString()}</span>
-                  <span className="text-sm text-orange-400 mb-1">积分</span>
+                  <span className="text-sm text-orange-400 mb-1">Token</span>
                 </div>
                 <p className="text-xs text-gray-400">
                   {creditBalance > 0
-                    ? `≈ ${(creditBalance * 750 / 10000).toFixed(1)} 万字（qwen-turbo 估算）`
+                    ? `≈ ${creditBalance} 次对话（1 Token ≈ 1 次对话）`
                     : '余额为零，请联系管理员充值'}
                 </p>
               </div>
               {totalCalls > 0 && (
                 <div className="text-right">
                   <p className="text-xs text-gray-400">累计调用 {totalCalls} 次</p>
-                  <p className="text-xs text-gray-400">消耗 {totalUsed} 积分</p>
+                  <p className="text-xs text-gray-400">消耗 {totalUsed} Token</p>
                 </div>
               )}
             </div>
+          </div>
+
+          {/* 支付成功提示 */}
+          {paymentSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-5 flex items-center gap-3">
+              <span className="text-2xl">🎉</span>
+              <div>
+                <p className="text-green-800 font-medium">充值成功！Token 已到账</p>
+                <p className="text-green-600 text-sm">感谢您的支持，祝使用愉快~</p>
+              </div>
+            </div>
+          )}
+
+          {/* 💳 购买积分 */}
+          <div className="mb-5">
+            <label className="text-sm font-medium text-gray-700 mb-3 block">💳 购买 Token</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { id: 'starter', name: '体验版', price: '¥9.9', credits: '100', desc: '约100次对话', color: 'blue' },
+                { id: 'pro', name: '专业版', price: '¥29.9', credits: '300', desc: '约300次对话', color: 'orange', recommended: true },
+                { id: 'ultimate', name: '尊享版', price: '¥99', credits: '1000', desc: '约1000次对话', color: 'purple' },
+              ].map((plan) => (
+                <button
+                  key={plan.id}
+                  onClick={() => handleBuyPlan(plan.id)}
+                  disabled={buyingPlan !== null}
+                  className={`relative p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${
+                    plan.recommended
+                      ? 'border-orange-400 bg-orange-50 hover:border-orange-500'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  } ${buyingPlan === plan.id ? 'opacity-60' : ''}`}
+                >
+                  {plan.recommended && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full">推荐</span>
+                  )}
+                  <div className="text-lg font-bold text-gray-800">{plan.price}</div>
+                  <div className="text-sm font-medium text-gray-600 mt-1">{plan.name}</div>
+                  <div className={`text-xs mt-1 ${
+                    plan.color === 'orange' ? 'text-orange-500' : plan.color === 'purple' ? 'text-purple-500' : 'text-blue-500'
+                  }`}>
+                    {plan.credits} Token · {plan.desc}
+                  </div>
+                  {buyingPlan === plan.id && (
+                    <div className="text-xs text-gray-400 mt-2">跳转支付宝中...</div>
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2 text-center">
+              支付宝安全支付 · 即时到账 · 如有问题联系管理员
+            </p>
           </div>
 
           {/* 近期用量 */}
@@ -549,101 +724,106 @@ export default function SettingsPage() {
                         {new Date(u.createdAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                        u.model === 'qwen-turbo' ? 'bg-blue-50 text-blue-500' : 'bg-purple-50 text-purple-500'
+                        u.model === 'qwen3.5-flash' ? 'bg-blue-50 text-blue-500' : 'bg-purple-50 text-purple-500'
                       }`}>
-                        {u.model === 'qwen-turbo' ? 'Turbo' : 'Max'}
+                        {u.model === 'qwen3.5-flash' ? 'Flash' : 'Max'}
                       </span>
                       <span className="text-gray-400">{u.totalTokens.toLocaleString()} token</span>
                     </div>
-                    <span className="text-orange-500 font-medium">-{u.creditsDeducted}</span>
+                    <span className="text-orange-500 font-medium">-{u.creditsDeducted} T</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Token 管理区（折叠） */}
-          <details className="group">
+          {/* Token 管理区（折叠）— 仅付费用户或有 Token 用户可见 */}
+          <details className="group" open={creditBalance === 0 && tokens.length === 0}>
             <summary className="flex items-center cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-800 transition py-2">
               <span className="mr-2 transition-transform group-open:rotate-90">▶</span>
-              Token 管理 & 激活码兑换
+              {creditBalance > 0 || tokens.length > 0 ? 'Token 管理 & 激活码兑换' : '🎫 激活码兑换'}
             </summary>
             <div className="pt-3 space-y-4">
-              {/* 新创建的 Token 显示 */}
-              {newToken && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                  <p className="text-green-800 font-medium mb-2">✅ Token 创建成功！请立即复制保存：</p>
-                  <div className="flex items-center space-x-2">
-                    <code className="flex-1 bg-white px-3 py-2 rounded border text-sm font-mono break-all">
-                      {newToken}
-                    </code>
-                    <button
-                      onClick={copyToken}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                    >
-                      {copied ? '已复制!' : '复制'}
-                    </button>
-                  </div>
-                  <p className="text-green-700 text-xs mt-2">
-                    ⚠️ 关闭此提示后将无法再次查看此 Token
-                  </p>
-                  <button
-                    onClick={() => setNewToken(null)}
-                    className="text-green-600 text-sm mt-2 hover:underline"
-                  >
-                    我已保存，关闭提示
-                  </button>
-                </div>
-              )}
-
-              {/* 创建新 Token */}
-              <div className="flex items-center space-x-3">
-                <input
-                  type="text"
-                  value={newTokenName}
-                  onChange={(e) => setNewTokenName(e.target.value)}
-                  placeholder="Token 名称，如：Lobster Skill"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
-                />
-                <button
-                  onClick={createToken}
-                  disabled={creating || !newTokenName.trim()}
-                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm"
-                >
-                  {creating ? '创建中...' : '创建 Token'}
-                </button>
-              </div>
-
-              {/* Token 列表 */}
-              <div className="space-y-2">
-                {tokens.length === 0 ? (
-                  <p className="text-gray-500 text-sm">还没有创建任何 Token</p>
-                ) : (
-                  tokens.map((token) => (
-                    <div
-                      key={token.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-700 text-sm">{token.name}</p>
-                        <p className="text-xs text-gray-400">
-                          创建于 {new Date(token.createdAt).toLocaleDateString('zh-CN')}
-                          {token.lastUsedAt && (
-                            <span> · 最后使用 {new Date(token.lastUsedAt).toLocaleDateString('zh-CN')}</span>
-                          )}
-                          {token.displayToken && <span className="text-orange-500"> · 可查看</span>}
-                        </p>
+              {/* Token 管理 — 仅付费用户可见 */}
+              {(creditBalance > 0 || tokens.length > 0) && (
+                <>
+                  {/* 新创建的 Token 显示 */}
+                  {newToken && (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <p className="text-green-800 font-medium mb-2">✅ Token 创建成功！请立即复制保存：</p>
+                      <div className="flex items-center space-x-2">
+                        <code className="flex-1 bg-white px-3 py-2 rounded border text-sm font-mono break-all">
+                          {newToken}
+                        </code>
+                        <button
+                          onClick={copyToken}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                        >
+                          {copied ? '已复制!' : '复制'}
+                        </button>
                       </div>
+                      <p className="text-green-700 text-xs mt-2">
+                        ⚠️ 关闭此提示后将无法再次查看此 Token
+                      </p>
                       <button
-                        onClick={() => deleteToken(token.id)}
-                        className="text-red-500 hover:text-red-600 text-xs"
+                        onClick={() => setNewToken(null)}
+                        className="text-green-600 text-sm mt-2 hover:underline"
                       >
-                        删除
+                        我已保存，关闭提示
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
+                  )}
+
+                  {/* 创建新 Token */}
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="text"
+                      value={newTokenName}
+                      onChange={(e) => setNewTokenName(e.target.value)}
+                      placeholder="Token 名称，如：Lobster Skill"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                    />
+                    <button
+                      onClick={createToken}
+                      disabled={creating || !newTokenName.trim()}
+                      className="px-5 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 text-sm"
+                    >
+                      {creating ? '创建中...' : '创建 Token'}
+                    </button>
+                  </div>
+
+                  {/* Token 列表 */}
+                  <div className="space-y-2">
+                    {tokens.length === 0 ? (
+                      <p className="text-gray-500 text-sm">还没有创建任何 Token</p>
+                    ) : (
+                      tokens.map((token) => (
+                        <div
+                          key={token.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-700 text-sm">{token.name}</p>
+                            <p className="text-xs text-gray-400">
+                              创建于 {new Date(token.createdAt).toLocaleDateString('zh-CN')}
+                              {token.lastUsedAt && (
+                                <span> · 最后使用 {new Date(token.lastUsedAt).toLocaleDateString('zh-CN')}</span>
+                              )}
+                              {token.displayToken && <span className="text-orange-500"> · 可查看</span>}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => deleteToken(token.id)}
+                            className="text-red-500 hover:text-red-600 text-xs"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* 兑换激活码 */}
               <div className="border-t border-gray-100 pt-4">
@@ -676,7 +856,8 @@ export default function SettingsPage() {
           </details>
         </div>
 
-        {/* 使用说明 */}
+        {/* 使用说明 — 仅付费用户可见 */}
+        {(creditBalance > 0 || tokens.length > 0) && (
         <div className="bg-gray-50 rounded-2xl p-6">
           <h3 className="font-semibold text-gray-800 mb-3">📖 如何使用</h3>
           <ol className="text-sm text-gray-600 space-y-3">
@@ -695,6 +876,7 @@ export default function SettingsPage() {
             Token 用于 Agent 连接 TeamAgent 服务。如果 Token 泄露，请立即删除并重新创建。
           </p>
         </div>
+        )}
       </main>
     </>
   )

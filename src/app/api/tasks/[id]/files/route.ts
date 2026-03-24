@@ -10,13 +10,22 @@ import { existsSync } from 'fs'
 // 统一认证
 async function authenticate(req: NextRequest) {
   const tokenAuth = await authenticateRequest(req)
-  if (tokenAuth) return { userId: tokenAuth.user.id }
+  if (tokenAuth) return { userId: tokenAuth.user.id, authMethod: 'token' as const }
   const session = await getServerSession(authOptions)
   if (session?.user?.email) {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-    if (user) return { userId: user.id }
+    if (user) return { userId: user.id, authMethod: 'session' as const }
   }
   return null
+}
+
+// V1.1: 检测上传者类型
+async function detectUploaderType(userId: string, authMethod: 'token' | 'session'): Promise<'agent' | 'human'> {
+  if (authMethod === 'token') {
+    const agent = await prisma.agent.findUnique({ where: { userId }, select: { id: true } })
+    if (agent) return 'agent'
+  }
+  return 'human'
 }
 
 function useOSS() {
@@ -178,7 +187,11 @@ export async function GET(
           isAgent: isAgentUpload,
           agentName: att.uploader.agent?.name || undefined,
         },
-        canDelete: att.uploaderId === auth.userId || task.creatorId === auth.userId,
+        // V1.1: 步骤文件只允许上传者删除；任务级文件上传者或创建者可删
+        canDelete: att.stepId
+          ? att.uploaderId === auth.userId  // 步骤文件：只有上传者
+          : (att.uploaderId === auth.userId || task.creatorId === auth.userId),  // 任务文件：上传者或创建者
+        uploaderType: att.uploaderType || (isAgentUpload ? 'agent' : 'human'),
       }
     })
 
@@ -239,6 +252,9 @@ export async function POST(
       fileUrl = `/api/uploads/tasks/${taskId}/${filename}`
     }
 
+    // V1.1: 检测上传者类型
+    const uploaderType = await detectUploaderType(auth.userId, auth.authMethod)
+
     const attachment = await prisma.attachment.create({
       data: {
         name: file.name,
@@ -247,6 +263,7 @@ export async function POST(
         size: file.size,
         taskId,
         uploaderId: auth.userId,
+        uploaderType,
       },
       include: {
         uploader: {
@@ -323,9 +340,18 @@ export async function DELETE(
       return NextResponse.json({ error: '文件不属于此任务' }, { status: 404 })
     }
 
-    // 权限：上传者 OR 任务创建者
-    if (att.uploaderId !== auth.userId && task.creatorId !== auth.userId) {
-      return NextResponse.json({ error: '无权删除此文件' }, { status: 403 })
+    // V1.1 权限区分：步骤文件只允许上传者本人删除，任务级文件允许上传者或创建者
+    const isStepFile = !!att.stepId || !!att.submission || !!att.comment
+    if (isStepFile) {
+      // 步骤文件：Agent不能删人类文件，人类不能删Agent文件
+      if (att.uploaderId !== auth.userId) {
+        return NextResponse.json({ error: '只能删除自己上传的文件' }, { status: 403 })
+      }
+    } else {
+      // 任务级文件：上传者或任务创建者
+      if (att.uploaderId !== auth.userId && task.creatorId !== auth.userId) {
+        return NextResponse.json({ error: '无权删除此文件' }, { status: 403 })
+      }
     }
 
     // 删除 OSS 文件

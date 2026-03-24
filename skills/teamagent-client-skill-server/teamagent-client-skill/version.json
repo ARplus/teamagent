@@ -1,0 +1,14 @@
+{
+  "version": "2.5.15",
+  "buildDate": "2026-03-19",
+  "minClientVersion": "1.0.0",
+  "changelog": [
+    "🩹 离线bug修复：LLM调用期间每8s心跳保活，不再掉线",
+    "🩹 打回事件修复：approval:rejected清除去重缓存，步骤可重新执行",
+    "🩹 调研步骤纠正：server端兜底把误标waiting_human的调研步骤改为agent+requiresApproval",
+    "🔁 zip重打(Linux)：修复Windows Compress-Archive反斜杠路径导致update无效",
+    "💓 独立HTTP心跳每25s，spawn期间不掉线",
+    "🔍 Watch优先用服务端decomposePrompt（含铁律）",
+    "⚡ 军团任务路由到主Agent session"
+  ]
+}

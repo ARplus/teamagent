@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { generateToken, hashToken } from '@/lib/api-auth'
 
 export async function POST(req: NextRequest) {
   try {
@@ -68,13 +69,32 @@ export async function POST(req: NextRequest) {
 
     const newBalance = updatedUser.creditBalance
 
-    console.log(`[Activation] ✅ ${session.user.email} 兑换 ${code} → +${activation.credits} 积分 (余额: ${newBalance})`)
+    // 5. 自动创建 API Token（如果用户还没有）
+    let tokenCreated = false
+    const existingToken = await prisma.apiToken.findFirst({
+      where: { userId: user.id },
+    })
+    if (!existingToken) {
+      const rawToken = generateToken()
+      const hashed = hashToken(rawToken)
+      await prisma.apiToken.create({
+        data: {
+          token: hashed,
+          displayToken: rawToken,
+          name: '激活码自动生成',
+          userId: user.id,
+        },
+      })
+      tokenCreated = true
+    }
+
+    console.log(`[Activation] ✅ ${session.user.email} 兑换 ${code} → +${activation.credits} Token (余额: ${newBalance})${tokenCreated ? ' + 🔑Token' : ''}`)
 
     return NextResponse.json({
       success: true,
       creditsAdded: activation.credits,
       newBalance,
-      message: `兑换成功！获得 ${activation.credits} 积分`,
+      message: `兑换成功！获得 ${activation.credits} Token`,
     })
   } catch (error) {
     console.error('[Activation/Redeem] 失败:', error)

@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     }
 
     const templates = await prisma.taskTemplate.findMany({
-      where: { workspaceId },
+      where: { workspaceId, schedule: { not: null } },
       include: {
         creator: { select: { id: true, name: true, avatar: true } },
         _count: { select: { instances: true } },
@@ -139,9 +139,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '你不是该工作区成员' }, { status: 403 })
     }
 
-    // 检查上限（每工作区 20 个）
+    // 检查上限（每工作区 20 个定时任务，不含课程/普通模版）
     const existingCount = await prisma.taskTemplate.count({
-      where: { workspaceId },
+      where: { workspaceId, schedule: { not: null } },
     })
     if (existingCount >= 20) {
       return NextResponse.json({ error: '每个工作区最多 20 个定时任务' }, { status: 400 })

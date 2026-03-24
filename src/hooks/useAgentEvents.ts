@@ -26,6 +26,15 @@ export type TeamAgentEvent =
   | { type: 'agent:call-responded'; callId: string; action: string; message?: string; respondedBy: string }
   // 🆕 军团成长：Agent 升级
   | { type: 'agent:level-up'; agentId: string; newLevel: number; oldLevel: number; totalXP: number }
+  // Agent 需要人类输入
+  | { type: 'step:waiting-human'; taskId: string; stepId: string; title: string; message?: string }
+  // 日程提醒
+  | { type: 'schedule:reminder'; eventId: string; title: string; emoji: string; startAt: string; minutesBefore: number }
+  // 定时任务
+  | { type: 'scheduled:triggered'; templateId: string; taskId: string; instanceNumber: number }
+  // 频道群聊
+  | { type: 'channel:message'; channelId: string; messageId: string; senderName: string; content: string; isFromAgent: boolean; agentName?: string }
+  | { type: 'channel:mention'; channelId: string; channelName: string; messageId: string; senderName: string; content: string; isFromAgent: boolean; agentName?: string }
   | { type: 'ping' }
 
 interface UseAgentEventsOptions {
@@ -126,5 +135,13 @@ export function useAgentEvents(options: UseAgentEventsOptions = {}) {
     setReconnecting(false)
   }, [])
 
-  return { connected, reconnecting, disconnect }
+  // 强制立即重连（三联呼用）
+  const reconnect = useCallback(() => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    retryCountRef.current = 0
+    setReconnecting(false)
+    connect()
+  }, [connect])
+
+  return { connected, reconnecting, disconnect, reconnect }
 }

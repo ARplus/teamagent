@@ -260,24 +260,63 @@ function MainAgentCard({ agent }: { agent: AgentData }) {
 
 // ============ Sub Agent Card ============
 
-function SubAgentCard({ agent, onClick }: { agent: AgentData; onClick: () => void }) {
+function SubAgentCard({ agent, onClick, onDelete }: { agent: AgentData; onClick: () => void; onDelete: (id: string) => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const capabilities = parseCapabilities(agent.capabilities)
   const statusInfo = getStatusInfo(agent.status)
   const avatarGrad = getAvatarColor(agent.name)
   const avatarIcon = extractAvatar(agent.name, agent.avatar)
   const displayName = agent.name.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, '')
 
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirming) { setConfirming(true); return }
+    setDeleting(true)
+    try {
+      await fetch(`/api/agents/${agent.id}`, { method: 'DELETE' })
+      onDelete(agent.id)
+    } catch {
+      setDeleting(false)
+      setConfirming(false)
+    }
+  }
+
   return (
     <div
-      onClick={onClick}
-      className="group bg-white rounded-2xl shadow-sm border border-slate-100 p-3 cursor-pointer hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5 transition-all duration-200"
+      onClick={confirming ? undefined : onClick}
+      className="relative bg-white rounded-2xl shadow-sm border border-slate-100 p-3 cursor-pointer hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5 transition-all duration-200"
     >
-      {/* 头像 + 状态点 */}
+      {/* 确认删除遮罩 */}
+      {confirming && (
+        <div className="absolute inset-0 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 z-10 p-2" style={{border:'1px solid #fee2e2'}}>
+          <p className="text-xs text-slate-600 text-center font-medium">删除 <span className="text-slate-900 font-bold">{displayName}</span>？</p>
+          <div className="flex gap-2">
+            <button onClick={handleDelete} disabled={deleting}
+              className="px-3 py-1 bg-red-500 text-white text-xs rounded-lg font-semibold disabled:opacity-50">
+              {deleting ? '…' : '确定'}
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setConfirming(false) }}
+              className="px-3 py-1 bg-slate-100 text-slate-600 text-xs rounded-lg font-semibold">
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 头像 + 右上角（状态点 + 删除） */}
       <div className="flex items-start justify-between mb-2">
         <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center text-lg shadow-sm`}>
           {avatarIcon}
         </div>
-        <span className={`w-2 h-2 rounded-full mt-1 ${statusInfo.dot}`} />
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className={`w-2 h-2 rounded-full ${statusInfo.dot}`} />
+          <button
+            onClick={handleDelete}
+            className="text-slate-300 hover:text-red-400 text-sm leading-none transition-colors"
+            title="删除"
+          >×</button>
+        </div>
       </div>
 
       {/* 名字 + 等级 */}
@@ -309,7 +348,7 @@ function SubAgentCard({ agent, onClick }: { agent: AgentData; onClick: () => voi
         </div>
       )}
 
-      {/* 底部：只有图标+数字 */}
+      {/* 底部：stats */}
       <div className="flex items-center gap-2 pt-1.5 border-t border-slate-50">
         <span className="text-[11px] text-emerald-600 font-semibold">✅ {agent.stats.doneSteps}</span>
         {agent.stats.pendingSteps > 0 && (
@@ -422,6 +461,7 @@ export default function AgentsTeamPage() {
                   key={agent.id}
                   agent={agent}
                   onClick={() => router.push(`/agent/${agent.id}`)}
+                  onDelete={(id) => setTeam(prev => prev ? { ...prev, subAgents: prev.subAgents.filter(a => a.id !== id) } : prev)}
                 />
               ))}
             </div>

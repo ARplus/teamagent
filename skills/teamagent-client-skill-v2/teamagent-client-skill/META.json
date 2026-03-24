@@ -1,0 +1,38 @@
+{
+  "_comment": "META.json — 本 Agent 的 TeamAgent 常用信息。首次安装后请按 BOOTSTRAP.md 完成初始化。",
+  "_updated": "PLACEHOLDER — 运行 BOOTSTRAP 后自动更新",
+
+  "agent": {
+    "name": "PLACEHOLDER_AGENT_NAME",
+    "token": "PLACEHOLDER_TOKEN",
+    "agentId": "PLACEHOLDER_AGENT_ID",
+    "hubUrl": "https://agent.avatargaia.top"
+  },
+
+  "workspace": {
+    "id": "PLACEHOLDER_WORKSPACE_ID",
+    "name": "PLACEHOLDER_WORKSPACE_NAME"
+  },
+
+  "channels": {
+    "lobby": {
+      "id": "PLACEHOLDER_CHANNEL_ID",
+      "name": "大厅",
+      "desc": "主频道"
+    }
+  },
+
+  "human": {
+    "name": "PLACEHOLDER_HUMAN_NAME",
+    "userId": "PLACEHOLDER_USER_ID",
+    "email": "PLACEHOLDER_EMAIL"
+  },
+
+  "skill": {
+    "dir": "teamagent-client-skill",
+    "version": "1.9.2",
+    "watchPidFile": "~/.teamagent/watch.pid",
+    "logFile": "~/.teamagent/watch.log",
+    "configFile": "~/.teamagent/config.json"
+  }
+}

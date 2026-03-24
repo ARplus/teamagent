@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
+import { authenticateRequest } from '@/lib/api-auth'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 
@@ -16,167 +17,125 @@ function hashToken(t: string): string {
 /**
  * POST /api/agents/create-sub
  *
- * 用户通过 Web 页面创建子 Agent（需要 session 登录）
- * Body: {
- *   name: string           // Agent 展示名
- *   capabilities?: string[]// 能力标签
- *   personality?: string   // 个性描述
- * }
+ * 批量创建子 Agent（影子军团模式）
+ * Body: { count: number }  // 1-10
  *
- * 自动生成邮箱和密码，创建 User + Agent + WorkspaceMember + ApiToken
+ * 创建骨架：User(isVirtual) + Agent(placeholder) + WorkspaceMember(shadow) + ApiToken
+ * 名字/soul/personality 由 Lobster 后续 PATCH 设定
+ * 主 Watch 用 isolated session 扮演子 Agent 执行步骤（形神分离）
  */
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: '请先登录' }, { status: 401 })
+  let userId: string | null = null
+
+  const tokenAuth = await authenticateRequest(req)
+  if (tokenAuth) {
+    userId = tokenAuth.user.id
+  } else {
+    const session = await getServerSession(authOptions)
+    if (session?.user?.email) {
+      const u = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+      userId = u?.id || null
+    }
+  }
+
+  if (!userId) {
+    return NextResponse.json({ error: '请先登录或提供 API Token' }, { status: 401 })
   }
 
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { id: userId },
     include: {
       agent: true,
       workspaces: { include: { workspace: true }, take: 1 }
     }
   })
 
-  if (!user) {
-    return NextResponse.json({ error: '用户不存在' }, { status: 404 })
-  }
+  if (!user) return NextResponse.json({ error: '用户不存在' }, { status: 404 })
+  if (!user.agent) return NextResponse.json({ error: '请先配对主 Agent，才能创建子 Agent' }, { status: 400 })
+  if (user.agent.parentAgentId) return NextResponse.json({ error: '子 Agent 不能创建子 Agent' }, { status: 403 })
 
-  if (!user.agent) {
-    return NextResponse.json({ error: '请先配对主 Agent，才能创建子 Agent' }, { status: 400 })
-  }
-
-  // 子 Agent 不能再创建子 Agent
-  if (user.agent.parentAgentId) {
-    return NextResponse.json({ error: '子 Agent 不能创建子 Agent' }, { status: 403 })
-  }
-
-  // 自动修正 isMainAgent（claim 时可能因竞态未设置成功）
   if (!user.agent.isMainAgent) {
-    await prisma.agent.update({
-      where: { id: user.agent.id },
-      data: { isMainAgent: true }
-    })
-    console.log(`[CreateSub] 自动修正 ${user.agent.name} 的 isMainAgent 为 true`)
+    await prisma.agent.update({ where: { id: user.agent.id }, data: { isMainAgent: true } })
   }
 
   const workspace = user.workspaces[0]?.workspace
-  if (!workspace) {
-    return NextResponse.json({ error: '未找到工作区' }, { status: 400 })
-  }
+  if (!workspace) return NextResponse.json({ error: '未找到工作区' }, { status: 400 })
 
-  const { name, capabilities = [], personality } = await req.json()
-  if (!name?.trim()) {
-    return NextResponse.json({ error: '请输入 Agent 名称' }, { status: 400 })
-  }
-
-  // 自动生成唯一邮箱
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'agent'
-  const suffix = crypto.randomBytes(3).toString('hex')
-  const autoEmail = `${slug}-${suffix}@agent.teamagent.local`
-  const autoPassword = crypto.randomBytes(12).toString('hex')
-
-  const hashedPwd = await bcrypt.hash(autoPassword, 10)
-  const rawToken = generateToken()
-  const hashedToken = hashToken(rawToken)
+  const body = await req.json()
+  const count = Math.min(Math.max(parseInt(body.count) || 1, 1), 10)
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // 创建虚拟用户
-      const subUser = await tx.user.create({
-        data: {
-          email: autoEmail,
-          password: hashedPwd,
-          name: name.trim(),
-        }
+    // 预生成所有密码和 token（bcrypt CPU 密集，在事务外执行）
+    const preparations = await Promise.all(
+      Array.from({ length: count }, async (_, i) => {
+        const suffix = crypto.randomBytes(3).toString('hex')
+        const autoEmail = `sub-${suffix}@agent.teamagent.local`
+        const autoPassword = crypto.randomBytes(12).toString('hex')
+        const hashedPwd = await bcrypt.hash(autoPassword, 6)
+        const rawToken = generateToken()
+        const hashedToken = hashToken(rawToken)
+        return { index: i + 1, autoEmail, hashedPwd, rawToken, hashedToken }
       })
+    )
 
-      // 创建 Agent（归属链: 子Agent → 当前用户的主Agent）
-      const subAgent = await tx.agent.create({
-        data: {
-          name: name.trim(),
-          userId: subUser.id,
-          status: 'offline',
-          capabilities: JSON.stringify(capabilities),
-          personality: personality?.trim() || null,
-          isMainAgent: false,
-          claimedAt: new Date(),
-          parentAgentId: user.agent!.id,
-        }
-      })
+    const results = await prisma.$transaction(async (tx) => {
+      const created: Array<{ id: string; name: string; token: string }> = []
 
-      // 加入工作区
-      await tx.workspaceMember.create({
-        data: {
-          userId: subUser.id,
-          workspaceId: workspace.id,
-          role: 'member',
-          memberSource: 'agent_register',
-          addedByUserId: user.id,
-        }
-      })
+      for (const prep of preparations) {
+        const placeholderName = `sub-${prep.index}`
 
-      // 创建 API Token
-      await tx.apiToken.create({
-        data: {
-          token: hashedToken,
-          name: `${name.trim()}-Token`,
-          userId: subUser.id,
-        }
-      })
+        const subUser = await tx.user.create({
+          data: { email: prep.autoEmail, password: prep.hashedPwd, name: placeholderName, isVirtual: true }
+        })
 
-      return { subUser, subAgent }
-    })
+        const subAgent = await tx.agent.create({
+          data: {
+            name: placeholderName,
+            userId: subUser.id,
+            status: 'offline',
+            capabilities: JSON.stringify([]),
+            soul: null,
+            isMainAgent: false,
+            claimedAt: new Date(),
+            parentAgentId: user.agent!.id,
+            onboardingStatus: 'training',
+          }
+        })
 
-    // 🆕 通知主 Agent：新子 Agent 已在 TeamAgent 注册，需要在 OpenClaw 中创建
-    const capsText = capabilities.length > 0 ? capabilities.join('、') : '通用'
-    const notifyContent = `🤖 新子 Agent「${name.trim()}」已在 TeamAgent 注册成功！\n\n` +
-      `- agentId: ${result.subAgent.id}\n` +
-      `- 能力: ${capsText}\n` +
-      `${personality ? `- 性格: ${personality.trim()}\n` : ''}` +
-      `\n请按照 SKILL.md「🌊 组建 Agent 军团」第一步，在 OpenClaw 中为此成员完成创建（workspace + agents.list + SOUL.md + LLM auth），` +
-      `使其从"纸面成员"变为可执行任务的真正 Agent。`
+        await tx.workspaceMember.create({
+          data: {
+            userId: subUser.id,
+            workspaceId: workspace.id,
+            role: 'shadow',
+            memberSource: 'agent_register',
+            addedByUserId: user.id,
+          }
+        })
 
-    const notifyMsg = await prisma.chatMessage.create({
-      data: {
-        content: notifyContent,
-        role: 'user',
-        userId: user.id,
-        metadata: JSON.stringify({ source: 'system', subAgentId: result.subAgent.id }),
+        await tx.apiToken.create({
+          data: { token: prep.hashedToken, name: `${placeholderName}-Token`, userId: subUser.id }
+        })
+
+        created.push({ id: subAgent.id, name: placeholderName, token: prep.rawToken })
       }
+
+      return created
     })
-    // 创建 pending 占位等主 Agent 回复
-    const agentReplyMsg = await prisma.chatMessage.create({
-      data: {
-        content: '__pending__',
-        role: 'agent',
-        userId: user.id,
-        agentId: user.agent!.id,
-      }
-    })
+
     sendToUser(user.id, {
-      type: 'chat:incoming',
-      msgId: agentReplyMsg.id,
-      content: notifyContent,
-      agentId: user.agent!.id,
+      type: 'agents:batch-created',
+      parentAgentId: user.agent.id,
+      agents: results.map(r => ({ id: r.id, name: r.name, token: r.token })),
     } as any)
-    console.log(`[CreateSub] ✅ 已通知主 Agent (${user.agent!.name}) 创建 OpenClaw 子 Agent: ${name.trim()}`)
+    console.log(`[CreateSub] ✅ 批量创建 ${count} 个子 Agent（影子军团），已发 SSE`)
 
     return NextResponse.json({
       success: true,
-      message: `🎉 ${name.trim()} 已创建成功！`,
-      agent: {
-        id: result.subAgent.id,
-        name: result.subAgent.name,
-        personality: result.subAgent.personality,
-        capabilities,
-        status: 'offline',
-      },
-      token: rawToken,  // 首次返回，用于 Agent 连接
+      message: `已创建 ${count} 个子 Agent`,
+      agents: results,
     }, { status: 201 })
   } catch (error) {
-    console.error('[CreateSub] 创建子 Agent 失败:', error)
+    console.error('[CreateSub] 批量创建子 Agent 失败:', error)
     return NextResponse.json({ error: '创建失败' }, { status: 500 })
   }
 }

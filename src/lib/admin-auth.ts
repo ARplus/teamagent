@@ -11,7 +11,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getTokenFromRequest, verifyApiToken } from '@/lib/api-auth'
 
-export const ADMIN_EMAILS = ['aurora@arplus.top', 'muxu@arplus.top']
+export const ADMIN_EMAILS = ['aurora@arplus.top', 'muxu@arplus.top', 'yiq.duan@gmail.com', '1009239150@qq.com']
 
 export interface AdminIdentity {
   email: string

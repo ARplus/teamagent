@@ -302,7 +302,7 @@ async function parseWithQwen(description: string, teamContext: string): Promise<
     },
     signal: controller.signal,
     body: JSON.stringify({
-      model: 'qwen-max-latest',
+      model: 'qwen3-max',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT + teamContext },
         { role: 'user', content: `请将以下任务直接拆解为具体可执行步骤（不要创建"拆解"或"安排"类型的步骤）：\n\n${description}` }

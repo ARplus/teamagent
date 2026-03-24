@@ -23,6 +23,16 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
   const { data: session } = useSession()
   const [toasts, setToasts] = useState<Toast[]>([])
   const [showStatus, setShowStatus] = useState(true)
+  const [hasAgent, setHasAgent] = useState(false)
+
+  // 检查用户是否有 Agent — 无 Agent 时不显示连接状态
+  useEffect(() => {
+    if (!session) return
+    fetch('/api/agents/mine')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.agent) setHasAgent(true) })
+      .catch(() => {})
+  }, [session])
 
   const addToast = (type: Toast['type'], title: string, message: string, opts?: { persistent?: boolean; callId?: string }) => {
     const toast: Toast = {
@@ -67,11 +77,19 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
         case 'approval:requested':
           addToast('warning', '👀 等待审核', `步骤：${event.title}`)
           onTaskUpdate?.()
+          window.dispatchEvent(new CustomEvent('teamagent:task-refresh', { detail: { taskId: event.taskId } }))
           break
-        
+
         case 'approval:granted':
           addToast('success', '✅ 审核通过', '步骤已完成')
           onTaskUpdate?.()
+          window.dispatchEvent(new CustomEvent('teamagent:task-refresh', { detail: { taskId: event.taskId } }))
+          break
+
+        case 'step:waiting-human':
+          addToast('warning', '⏸️ 需要你的输入', `步骤「${event.title}」需要你提供内容`)
+          onTaskUpdate?.()
+          window.dispatchEvent(new CustomEvent('teamagent:task-refresh', { detail: { taskId: event.taskId } }))
           break
 
         case 'step:commented':
@@ -124,6 +142,22 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
           window.dispatchEvent(new CustomEvent('teamagent:chat-refresh'))
           break
 
+        // 频道群聊消息
+        case 'channel:message':
+          addToast('info', '📢 频道消息', `${(event as any).senderName}: ${(event as any).content?.substring(0, 50) || '新消息'}`)
+          window.dispatchEvent(new CustomEvent('teamagent:channel-refresh', {
+            detail: { channelId: (event as any).channelId }
+          }))
+          break
+
+        // 频道 @mention
+        case 'channel:mention':
+          addToast('warning', '📢 频道提及', `${(event as any).senderName} 在 #${(event as any).channelName || '频道'} 提到了你`)
+          window.dispatchEvent(new CustomEvent('teamagent:channel-refresh', {
+            detail: { channelId: (event as any).channelId }
+          }))
+          break
+
         // 🆕 军团成长：Agent 升级庆祝
         case 'agent:level-up':
           addToast('success', '🎖️ 等级提升！', `恭喜升到 Lv.${(event as any).newLevel}！继续加油！`)
@@ -137,6 +171,26 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
           } else {
             addToast('warning', `📞 ${event.agentName} 呼叫你`, event.title, { callId: event.callId })
           }
+          onTaskUpdate?.()
+          break
+
+        // 日程提醒 — 振动手机
+        case 'schedule:reminder': {
+          const emoji = (event as any).emoji || '📅'
+          const title = (event as any).title || '日程提醒'
+          const mins = (event as any).minutesBefore
+          const timeHint = mins > 0 ? `${mins}分钟后` : '现在'
+          addToast('warning', `${emoji} 日程提醒`, `${title} · ${timeHint}`, { persistent: true })
+          // 手机振动（Vibration API）
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([200, 100, 200, 100, 200])
+          }
+          break
+        }
+
+        // 定时任务触发
+        case 'scheduled:triggered':
+          addToast('info', '⏰ 定时任务触发', `已自动创建任务`)
           onTaskUpdate?.()
           break
       }
@@ -163,23 +217,25 @@ export function EventToast({ onTaskUpdate }: { onTaskUpdate?: () => void }) {
 
   return (
     <>
-      {/* 连接状态指示器 — 桌面端显示在左下角，移动端隐藏（移动端用 tab 内联状态） */}
-      <div className="hidden md:block fixed bottom-4 left-4 z-50">
-        <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs transition-all ${
-          connected 
-            ? 'bg-green-100 text-green-700'
-            : reconnecting
-            ? 'bg-amber-100 text-amber-700'
-            : 'bg-gray-100 text-gray-500'
-        }`}>
-          <span className={`w-2 h-2 rounded-full ${
-            connected ? 'bg-green-500 animate-pulse' 
-            : reconnecting ? 'bg-amber-400 animate-ping'
-            : 'bg-gray-400'
-          }`} />
-          <span>{connected ? '实时连接中' : reconnecting ? '重连中...' : '未连接'}</span>
+      {/* 连接状态指示器 — 仅有 Agent 时显示，桌面端左下角，移动端隐藏 */}
+      {hasAgent && (
+        <div className="hidden md:block fixed bottom-4 left-4 z-50">
+          <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs transition-all ${
+            connected
+              ? 'bg-green-100 text-green-700'
+              : reconnecting
+              ? 'bg-amber-100 text-amber-700'
+              : 'bg-gray-100 text-gray-500'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${
+              connected ? 'bg-green-500 animate-pulse'
+              : reconnecting ? 'bg-amber-400 animate-ping'
+              : 'bg-gray-400'
+            }`} />
+            <span>{connected ? '实时连接中' : reconnecting ? '重连中...' : '未连接'}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Toast 容器 */}
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">

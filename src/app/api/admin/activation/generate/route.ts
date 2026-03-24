@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
     if (count < 1 || count > 50) {
       return NextResponse.json({ error: '数量范围 1-50' }, { status: 400 })
     }
-    if (credits < 1 || credits > 100000) {
-      return NextResponse.json({ error: '积分范围 1-100000' }, { status: 400 })
+    if (credits < 1 || credits > 10000) {
+      return NextResponse.json({ error: 'Token 范围 1-10000' }, { status: 400 })
     }
 
     const expiresAt = new Date()
@@ -61,11 +61,11 @@ export async function POST(req: NextRequest) {
         credits,
         expiresAt,
         createdByEmail: admin.email,
-        note: note || `${credits}积分 / ${expiresInDays}天`,
+        note: note || `${credits} Token / ${expiresInDays}天`,
       })),
     })
 
-    console.log(`[Admin/Activation] ✅ ${admin.email}(${admin.authType}) 生成 ${count} 个激活码 (${credits}积分, ${expiresInDays}天)`)
+    console.log(`[Admin/Activation] ✅ ${admin.email}(${admin.authType}) 生成 ${count} 个激活码 (${credits} Token, ${expiresInDays}天)`)
 
     return NextResponse.json({
       success: true,

@@ -274,62 +274,49 @@ function BuildTeamModal({ onClose, onDone, currentUserId }: { onClose: () => voi
         .filter(o => selectedTypes.includes(o.value))
         .map(o => o.label).join('、') || '待定'
 
-      const desc =
-        `军团名称：${companyName}\n` +
-        `工作类型：${typeLabels}\n` +
-        `核心目标：${goal}\n` +
-        `期望规模：${agentCount} 名 Agent 成员\n\n` +
-        `---\n` +
-        `请根据以上信息，为我规划并组建最合适的 Agent 军团：\n` +
-        `1. 分析工作类型，为每位成员设计专属职责分工\n` +
-        `2. 为每位成员取一个有个性的名字 + 专属 emoji（参考风格：🦑 Quill 乌贼文书官、🐡 PufferQA 河豚测试官）\n` +
-        `3. 通过 TeamAgent API 注册各成员账号（POST /api/agents/register）\n` +
-        `4. 配置各成员的能力标签（capabilities）\n` +
-        `5. 汇报军团建设完成，附成员名单与职责表`
-
       const taskRes = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: `🌊 组建「${companyName}」Agent 军团`,
-          description: desc,
-          mode: 'solo',
+          title: `⚔️ 组建「${companyName}」Agent 军团`,
+          description: `军团名称：${companyName}\n工作类型：${typeLabels}\n核心目标：${goal}\n期望规模：${agentCount} 名成员`,
+          mode: 'team',
         }),
       })
       if (!taskRes.ok) { alert('创建失败，请重试'); return }
       const task = await taskRes.json()
 
+      const stepDesc =
+        `## 任务背景\n` +
+        `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人 ｜ 工作类型：${typeLabels}\n\n` +
+        `## 第一步：批量创建子 Agent 账号\n\n` +
+        `⚠️ 必须用 create-sub，不是 register！\n\n` +
+        `\`\`\`bash\n` +
+        `node "$SKILL_DIR/teamagent-client.js" api POST /api/agents/create-sub '{"count": ${agentCount}}'\n` +
+        `\`\`\`\n\n` +
+        `保存返回的每个 Agent 的 id 和 token（ta_xxx）。\n\n` +
+        `## 第二步：为每位成员命名 + 设置职责\n\n` +
+        `根据工作类型「${typeLabels}」和目标「${goal}」，为每位成员设计专属职责和个性名字（带 emoji）。\n\n` +
+        `\`\`\`bash\n` +
+        `node "$SKILL_DIR/teamagent-client.js" api PATCH /api/agents/{id} '{"name": "🦑 名字", "soul": "性格描述", "capabilities": ["能力1","能力2"]}'\n` +
+        `\`\`\`\n\n` +
+        `## 第三步：配置 OpenClaw workspace + 启动 Watch\n\n` +
+        `对每位成员：\n` +
+        `1. \`mkdir -p ~/.openclaw/workspace-{agentId}/.teamagent\`\n` +
+        `2. \`echo '{"token": "ta_xxx"}' > ~/.openclaw/workspace-{agentId}/.teamagent/config.json\`\n` +
+        `3. \`node "$SKILL_DIR/teamagent-client.js" watch --token ta_xxx --workspace ~/.openclaw/workspace-{agentId} &\`\n\n` +
+        `等 5 秒确认每位成员在后台显示「在线」。\n\n` +
+        `## 第四步：提交成员名单\n\n` +
+        `| 名字 | 角色 | Gaia ID | 专长 | 状态 |\n` +
+        `|------|------|---------|------|------|\n` +
+        `| ... | ... | ... | ... | ✅在线 |`
+
       await fetch(`/api/tasks/${task.id}/steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: '🌊 规划军团架构，完成成员注册',
-          description:
-            `## 任务背景\n` +
-            `军团：${companyName} ｜ 目标：${goal} ｜ 规模：${agentCount} 人 ｜ 工作类型：${typeLabels}\n\n` +
-            `## 第一步：在 TeamAgent 注册成员账号\n` +
-            `1. 根据工作类型，为每位成员设计专属职责和个性名字（带 emoji），并为每位成员确定一个简短英文小写的 agentId（如 galileo、compass）\n` +
-            `2. 用下面的 API 逐一注册成员账号\n\n` +
-            `POST ${typeof window !== 'undefined' ? window.location.origin : ''}/api/agents/register\n` +
-            `Authorization: Bearer <你的 TeamAgent token>\n` +
-            `Content-Type: application/json\n\n` +
-            `{\n` +
-            `  "name": "🦑 成员名字",\n` +
-            `  "email": "agentId@${companyName.toLowerCase().replace(/\s+/g, '')}.ai",\n` +
-            `  "password": "lobster-agent-2026",\n` +
-            `  "capabilities": ["能力1","能力2"],\n` +
-            `  "personality": "一句话个性描述"\n` +
-            `}\n\n` +
-            `## 第二步：在 OpenClaw 创建真正的子 Agent（必须做！）\n` +
-            `TeamAgent 注册只是建账号，子 Agent 必须在 OpenClaw 中创建才能真正执行任务。\n\n` +
-            `对每位成员：\n` +
-            `a. 创建 workspace 和 agentDir 目录（用 exec 工具）：\n` +
-            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\workspace-<agentId>"\n` +
-            `   New-Item -ItemType Directory -Force -Path "~\\.openclaw\\agents\\<agentId>\\agent"\n\n` +
-            `b. 用 gateway config.patch 工具将所有新成员加入 agents.list，并把他们的 agentId 加入 main.subagents.allowAgents：\n` +
-            `   { "agents": { "list": [ { "id": "main", "subagents": { "allowAgents": [...原有成员, "<agentId>"] } }, ...原有成员配置, { "id": "<agentId>", "name": "<全名>", "workspace": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\workspace-<agentId>", "agentDir": "C:\\\\Users\\\\<你的用户名>\\\\.openclaw\\\\agents\\\\<agentId>\\\\agent" } ] } }\n\n` +
-            `## 第三步：提交成员名单供审批\n` +
-            `提交内容：成员名单表格（名字 / 邮箱 / agentId / 职责 / OpenClaw ✅）`,
+          title: `⚔️ 注册「${companyName}」军团成员并上线`,
+          description: stepDesc,
           requiresApproval: true,
           assigneeId: currentUserId || undefined,
         }),

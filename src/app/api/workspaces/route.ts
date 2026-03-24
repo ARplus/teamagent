@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 })
     }
 
-    const workspaces = await prisma.workspace.findMany({
+    // 用户自己的工作区
+    const myWorkspaces = await prisma.workspace.findMany({
       where: {
         members: {
           some: { userId: auth.userId }
@@ -49,7 +50,23 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    return NextResponse.json(workspaces)
+    // 广场（type: 'plaza'）对所有用户可见，无需加入
+    const plazaWorkspaces = await prisma.workspace.findMany({
+      where: {
+        type: 'plaza',
+        id: { notIn: myWorkspaces.map(w => w.id) } // 排除已经在里面的
+      },
+      include: {
+        members: {
+          include: {
+            user: { select: { id: true, name: true, avatar: true } }
+          }
+        },
+        _count: { select: { tasks: true } }
+      }
+    })
+
+    return NextResponse.json([...myWorkspaces, ...plazaWorkspaces])
 
   } catch (error) {
     console.error('获取工作区失败:', error)
@@ -80,6 +97,14 @@ export async function POST(req: NextRequest) {
           create: {
             userId: auth.userId,
             role: 'owner'
+          }
+        },
+        channels: {
+          create: {
+            name: '大厅',
+            slug: 'lobby',
+            isDefault: true,
+            description: '工作区默认频道，所有成员可见',
           }
         }
       },

@@ -79,11 +79,22 @@ export async function GET(req: NextRequest) {
     })
 
     // 过滤：只返回前置步骤已完成的
+    // 获取这些步骤所属任务的所有步骤（用于前序检查）
+    const taskIds = [...new Set(steps.map(s => s.taskId))]
+    const allTaskSteps = taskIds.length > 0 ? await prisma.taskStep.findMany({
+      where: { taskId: { in: taskIds } },
+      select: { id: true, taskId: true, order: true, status: true },
+    }) : []
+
     const availableSteps = steps.filter(step => {
-      // 如果是第一步，可以领取
-      if (step.order === 1) return true
-      // 否则需要检查前一步是否完成（这里简化处理，实际可能需要查询）
-      return true  // TODO: 检查前置步骤
+      if (step.order <= 1) return true
+      // 同任务中 order 更小的步骤必须全部 "不阻塞"
+      // 与 claim 路由保持一致：done/skipped/waiting_approval/waiting_human 不阻塞
+      const predecessors = allTaskSteps.filter(
+        s => s.taskId === step.taskId && s.order < step.order
+      )
+      const nonBlockingStatuses = ['done', 'completed', 'approved', 'skipped', 'waiting_approval', 'waiting_human']
+      return predecessors.every(p => nonBlockingStatuses.includes(p.status))
     })
 
     // 获取 Agent 信息

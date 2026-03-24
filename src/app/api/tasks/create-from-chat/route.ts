@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendToUser } from '@/lib/events'
+import { buildDecomposePrompt, BASE_EXECUTION_RULES } from '@/lib/decompose-prompt'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const ANTHROPIC_API_URL = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages'
@@ -69,7 +70,7 @@ async function extractTaskFromChat(message: string): Promise<{ title: string; de
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${QWEN_API_KEY}` },
       body: JSON.stringify({
-        model: 'qwen-max-latest',
+        model: 'qwen3-max',
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: message }],
         temperature: 0.2,
         response_format: { type: 'json_object' },
@@ -142,7 +143,13 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // 4. SSE 通知
+    // 4. 如果有描述且需要拆解，先设 decomposeStatus: 'pending'
+    // 必须在 SSE task:created 之前写入 DB，否则 EventToast → fetchTasks() 会拿到 null
+    if (extracted.description && (extracted.mode === 'solo' || extracted.mode === 'team')) {
+      await prisma.task.update({ where: { id: task.id }, data: { decomposeStatus: 'pending' } })
+    }
+
+    // SSE 通知（此时 decomposeStatus 已是 'pending'）
     sendToUser(user.id, { type: 'task:created', taskId: task.id, title: task.title })
 
     // 5. Solo 模式：通知主 Agent 进行 decompose
@@ -150,19 +157,18 @@ export async function POST(req: NextRequest) {
       try {
         const allMembers = await prisma.workspaceMember.findMany({
           where: { workspaceId: membership.workspaceId },
-          include: { user: { select: { id: true, agent: { select: { id: true, name: true, isMainAgent: true } } } } }
+          include: { user: { select: { id: true, name: true, nickname: true, agent: { select: { id: true, name: true, capabilities: true, isMainAgent: true, parentAgentId: true, soul: true, growthLevel: true } } } } }
         })
-        // Solo: 优先找创建者自己的主 Agent，兜底任意主 Agent
+        // Solo: 只用创建者自己的主 Agent，私密任务不能让别人的 Agent 看到内容
         const mainMember = allMembers.find(m => m.user.id === user.id && (m.user.agent as any)?.isMainAgent)
-          || allMembers.find(m => (m.user.agent as any)?.isMainAgent === true)
         if (mainMember) {
           const mainAgentUserId = mainMember.user.id
           const decomposeStep = await prisma.taskStep.create({
             data: {
               title: `📋 拆解任务：${task.title}`,
-              description: `请分析任务描述和团队能力，将任务拆解为具体步骤并分配给对应 Agent。\n\n任务描述：\n${task.description}\n\n要求：\n1. 拆解为可独立执行的子步骤\n2. 为每步指定最合适的 assignee（Agent名字）\n3. 判断哪些步骤可以并行（parallelGroup 相同字符串）\n4. 判断每步是否需要人类审批（requiresApproval）\n5. 返回 JSON 格式步骤数组`,
+              description: `请分析任务描述和团队能力，将任务拆解为具体步骤并分配给对应 Agent。\n\n任务描述：\n${task.description}\n\n拆解要求：\n1. 拆解为可独立执行的子步骤\n2. 为每步指定最合适的 assignee（Agent名字）\n3. 判断哪些步骤可以并行（parallelGroup 相同字符串）\n4. 判断每步是否需要人类审批（requiresApproval）\n5. 返回 JSON 格式步骤数组\n\n${BASE_EXECUTION_RULES}\n\n拆解附加要求：\n- assignee 禁止为空，每步必须有明确责任人\n- assigneeType="human" 仅限需人类亲自完成（签署/付款/物理操作），审核/放行类步骤用 requiresApproval:true 代替`,
               order: 1, taskId: task.id, stepType: 'decompose',
-              assigneeId: mainAgentUserId, requiresApproval: false,
+              assigneeId: mainAgentUserId, assigneeNames: (mainMember.user.agent as any)?.name || '主Agent', requiresApproval: false,
               outputs: JSON.stringify(['steps-json']),
               skills: JSON.stringify(['task-decompose', 'team-management']),
               status: 'pending', agentStatus: 'pending',
@@ -171,11 +177,64 @@ export async function POST(req: NextRequest) {
           await prisma.stepAssignee.create({
             data: { stepId: decomposeStep.id, userId: mainAgentUserId, isPrimary: true, assigneeType: 'agent' }
           }).catch(() => {})
+
+          // V1.1: 构建填充好的拆解 prompt
+          let decomposePrompt: string | undefined
+          try {
+            // Solo: 只包含创建者自己的团队
+            const teamCtx = allMembers
+              .filter(m => {
+                const a = m.user.agent as any
+                if (a?.parentAgentId) return false
+                return m.user.id === user.id // Solo: 只保留创建者
+              })
+              .map(m => {
+                const a = m.user.agent as any
+                let caps: string[] = []
+                try { caps = JSON.parse(a?.capabilities || '[]') } catch {}
+                return {
+                  name: m.user.name || m.user.nickname || '未知',
+                  humanName: m.user.name || m.user.nickname || '未知',
+                  isAgent: !!a, agentName: a?.name,
+                  capabilities: caps, role: (m as any).role,
+                  soulSummary: a?.soul?.substring(0, 200),
+                  level: a?.growthLevel || undefined,
+                }
+              })
+            decomposePrompt = await buildDecomposePrompt(membership.workspaceId, {
+              taskTitle: task.title,
+              taskDescription: task.description || '',
+              supplement: task.supplement || undefined,
+              teamMembers: teamCtx,
+            })
+          } catch (e) {
+            console.warn('[CreateFromChat] 构建 decomposePrompt 失败:', e)
+          }
+
+          // Solo SSE 事件也只包含创建者自己
+          const teamCtxForEvent = allMembers
+            .filter(m => {
+              const a = m.user.agent as any
+              if (a?.parentAgentId) return false
+              return m.user.id === user.id
+            })
+            .map(m => {
+              const a = m.user.agent as any
+              let caps: string[] = []
+              try { caps = JSON.parse(a?.capabilities || '[]') } catch {}
+              return { name: m.user.name || m.user.nickname || '未知', isAgent: !!a, agentName: a?.name, capabilities: caps, role: (m as any).role }
+            })
           sendToUser(mainAgentUserId, {
-            type: 'step:ready', taskId: task.id, stepId: decomposeStep.id,
-            title: decomposeStep.title, stepType: 'decompose', taskDescription: task.description || ''
+            type: 'task:decompose-request',
+            taskId: task.id,
+            taskTitle: task.title,
+            taskDescription: task.description || '',
+            mode: 'solo', // 🆕 显式传 mode，Agent 用于限制 assignee 范围
+            supplement: task.supplement || undefined,
+            teamMembers: teamCtxForEvent,
+            ...(decomposePrompt ? { decomposePrompt } : {}),
           })
-          console.log(`[CreateFromChat] Solo → decompose 已通知主 Agent`)
+          console.log(`[CreateFromChat] Solo → task:decompose-request 已推送给主 Agent`)
         }
       } catch (e) {
         console.warn('[CreateFromChat] Solo decompose 触发失败:', e)
@@ -192,11 +251,21 @@ export async function POST(req: NextRequest) {
         supplement: task.supplement,
         workspaceId: membership.workspaceId,
         creatorId: user.id,
+        mode: 'team',
       }).catch(e => console.warn('[CreateFromChat] orchestrateDecompose:', e?.message))
     }
 
+    // 重新读取最新 decomposeStatus（solo/team 均可能已更新）
+    const freshTask = await prisma.task.findUnique({
+      where: { id: task.id },
+      select: { decomposeStatus: true }
+    })
     return NextResponse.json({
-      task: { id: task.id, title: task.title, description: task.description, mode: task.mode, status: task.status }
+      task: {
+        id: task.id, title: task.title, description: task.description,
+        mode: task.mode, status: task.status,
+        decomposeStatus: freshTask?.decomposeStatus ?? null,
+      }
     })
   } catch (error) {
     console.error('[CreateFromChat] 失败:', error)

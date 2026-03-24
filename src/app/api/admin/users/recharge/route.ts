@@ -1,5 +1,5 @@
 /**
- * 管理员：给用户直接充值（已付款 → 加积分 + 自动生成 token）
+ * 管理员：给用户直接充值（已付款 → 加 Token + 自动生成 API token）
  * POST /api/admin/users/recharge
  * Body: { userId?: string, phone?: string, credits: number, note?: string }
  *
@@ -21,8 +21,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { userId, phone, credits, note } = body
 
-    if ((!userId && !phone) || !credits || credits < 1 || credits > 100000) {
-      return NextResponse.json({ error: '参数错误：需要 userId 或 phone，以及 credits(1-100000)' }, { status: 400 })
+    if ((!userId && !phone) || !credits || credits < 1 || credits > 10000) {
+      return NextResponse.json({ error: '参数错误：需要 userId 或 phone，以及 credits(1-10000)' }, { status: 400 })
     }
 
     // 按 userId 或 phone 查用户
@@ -51,9 +51,9 @@ export async function POST(req: NextRequest) {
 
     let newTokenPlaintext: string | null = null
 
-    // 事务：加积分 + 可能创建 token
+    // 事务：加 Token + 可能创建 API token
     await prisma.$transaction(async (tx) => {
-      // 1. 增加积分
+      // 1. 增加 Token
       await tx.user.update({
         where: { id: user!.id },
         data: { creditBalance: { increment: credits } },
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     const newBalance = user.creditBalance + credits
 
-    console.log(`[Admin/Recharge] ✅ ${admin.email}(${admin.authType}) 给 ${user.email}(${user.phone || '无手机'}) 充值 ${credits} 积分${newTokenPlaintext ? ' + 自动生成Token' : ''}`)
+    console.log(`[Admin/Recharge] ✅ ${admin.email}(${admin.authType}) 给 ${user.email}(${user.phone || '无手机'}) 充值 ${credits} Token${newTokenPlaintext ? ' + 自动生成Token' : ''}`)
 
     return NextResponse.json({
       success: true,
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       tokenGenerated: !!newTokenPlaintext,
       // 明文 token 只在自动生成时返回一次
       newToken: newTokenPlaintext || undefined,
-      message: `已给 ${user.name || user.email} 充值 ${credits} 积分${newTokenPlaintext ? '，并自动生成了 API Token' : ''}`,
+      message: `已给 ${user.name || user.email} 充值 ${credits} Token${newTokenPlaintext ? '，并自动生成了 API Token' : ''}`,
     })
   } catch (error) {
     console.error('[Admin/Recharge] 失败:', error)

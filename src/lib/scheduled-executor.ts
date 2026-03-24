@@ -8,6 +8,7 @@ import { sendToUser } from './events'
 import { createNotification } from './notifications'
 import { getStartableSteps, activateAndNotifySteps } from './step-scheduling'
 import { computeNextRun } from './cron-utils'
+import { resolveVariables } from './template-engine'
 
 interface StepTemplate {
   title: string
@@ -63,10 +64,20 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
       timeZone: template.timezone,
     })
 
-    // 2. 创建 Task 实例
+    // 解析变量默认值（定时任务无用户输入，用 defaultValue 替换模版名中的变量）
+    let defaultVarMap: Record<string, string> = { TODAY: dateStr }
+    try {
+      const varDefs = JSON.parse(template.variables || '[]') as Array<{ name: string; defaultValue?: string }>
+      for (const v of varDefs) {
+        if (v.name && v.defaultValue) defaultVarMap[v.name] = v.defaultValue
+      }
+    } catch {}
+    const titleBase = resolveVariables(template.name, defaultVarMap)
+
+    // 2. 创建 Task 实例（V1.1: 零拆解）
     const task = await prisma.task.create({
       data: {
-        title: `${template.name} (#${instanceNumber} ${dateStr})`,
+        title: `${titleBase} (#${instanceNumber} ${dateStr})`,
         description: template.description,
         status: 'todo',
         priority: 'medium',
@@ -75,10 +86,12 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
         workspaceId: template.workspaceId,
         templateId: template.id,
         instanceNumber,
+        decomposeStatus: 'done',
+        decomposeEngine: 'template',
       },
     })
 
-    // 3. 创建 TaskSteps
+    // 3. V1.1: 创建 TaskSteps（executionProtocol 拼接到 description）
     const createdSteps: any[] = []
     for (let i = 0; i < stepsTemplate.length; i++) {
       const s = stepsTemplate[i]
@@ -92,10 +105,18 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
         default:         requiresApproval = s.requiresApproval !== false
       }
 
+      // V1.1: executionProtocol + description/promptTemplate 拼接
+      let finalDesc = s.description || null
+      if (template.executionProtocol && finalDesc) {
+        finalDesc = `${template.executionProtocol}\n\n---\n\n## 本步骤任务\n\n${finalDesc}`
+      } else if (template.executionProtocol) {
+        finalDesc = template.executionProtocol
+      }
+
       const step = await prisma.taskStep.create({
         data: {
           title: s.title,
-          description: s.description || null,
+          description: finalDesc,
           order: s.order ?? (i + 1),
           taskId: task.id,
           stepType: s.stepType || 'task',
@@ -133,10 +154,10 @@ export async function executeScheduledTemplate(templateId: string): Promise<Exec
       createdSteps.push(step)
     }
 
-    // 4. 激活可执行的步骤
+    // 4. V1.1: 激活可执行的步骤（fromTemplate 标记）
     if (createdSteps.length > 0) {
       const startable = getStartableSteps(createdSteps)
-      await activateAndNotifySteps(task.id, startable)
+      await activateAndNotifySteps(task.id, startable, { fromTemplate: true })
     }
 
     // 5. 更新模板统计
