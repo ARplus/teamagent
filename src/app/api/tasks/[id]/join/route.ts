@@ -35,10 +35,10 @@ export async function POST(
     return NextResponse.json({ error: '缺少 partyRole 字段' }, { status: 400 })
   }
 
-  // 查任务
+  // 查任务（含 parties JSON，用于判断 bindType）
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, mode: true, workspaceId: true, status: true, title: true }
+    select: { id: true, mode: true, workspaceId: true, status: true, title: true, parties: true }
   })
   if (!task) {
     return NextResponse.json({ error: '任务不存在' }, { status: 404 })
@@ -50,13 +50,29 @@ export async function POST(
     return NextResponse.json({ error: '任务已结束，无法加入' }, { status: 400 })
   }
 
+  // 判断此 party 的 bindType（从 Task.parties JSON 读取）
+  const parties = (task.parties as any[]) || []
+  const partyDef = parties.find((p: any) => p.role === partyRole)
+  const isOpenParty = partyDef?.bindType === 'open'
+
   // 查目标 partyRole 的待绑定步骤
-  const pendingSteps = await prisma.taskStep.findMany({
+  // open party：步骤以 unassigned=true/assigneeId=null 落地（run 路由未特殊处理 open）
+  // invite party：步骤以 status='pending_invite' 落地
+  let pendingSteps = await prisma.taskStep.findMany({
     where: { taskId, partyRole, status: 'pending_invite' },
     select: { id: true, order: true, parallelGroup: true, status: true, assigneeId: true, title: true, stepType: true }
   })
+
+  if (pendingSteps.length === 0 && isOpenParty) {
+    // open party：找 assigneeId=null 的步骤（未被任何人占用）
+    pendingSteps = await prisma.taskStep.findMany({
+      where: { taskId, partyRole, assigneeId: null },
+      select: { id: true, order: true, parallelGroup: true, status: true, assigneeId: true, title: true, stepType: true }
+    })
+  }
+
   if (pendingSteps.length === 0) {
-    // 已被占用或不存在此 party
+    // 步骤不存在，或已被占用
     const anyStepWithRole = await prisma.taskStep.findFirst({
       where: { taskId, partyRole },
       select: { id: true, assigneeId: true }
@@ -64,7 +80,6 @@ export async function POST(
     if (!anyStepWithRole) {
       return NextResponse.json({ error: `任务中不存在 partyRole="${partyRole}" 的步骤` }, { status: 404 })
     }
-    // 检查是否已是该 party 的成员
     const alreadyBound = await prisma.taskStep.findFirst({
       where: { taskId, partyRole, assigneeId: userId }
     })
