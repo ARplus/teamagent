@@ -91,9 +91,17 @@ export async function GET(
     const templateName = (step.task as any)?.template?.name || null
     return NextResponse.json({
       ...step,
-      result: shouldMask ? null : (step as any).result,
-      description: shouldMask ? null : step.description,
-      attachments: shouldMask ? [] : step.attachments,
+      result:           shouldMask ? null : (step as any).result,
+      description:      shouldMask ? null : step.description,
+      attachments:      shouldMask ? [] : step.attachments,
+      // 遮罩其余可能含私密内容的字段（同 tasks/[id] 保持一致）
+      inputs:           shouldMask ? null : (step as any).inputs,
+      outputs:          shouldMask ? null : (step as any).outputs,
+      skills:           shouldMask ? null : (step as any).skills,
+      summary:          shouldMask ? null : (step as any).summary,
+      humanInputPrompt: shouldMask ? null : (step as any).humanInputPrompt,
+      appealText:       shouldMask ? null : (step as any).appealText,
+      agenda:           shouldMask ? null : (step as any).agenda,
       fromTemplate,
       templateName,
     })

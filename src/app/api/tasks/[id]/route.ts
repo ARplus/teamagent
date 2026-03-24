@@ -190,6 +190,14 @@ export async function GET(
       result: maskedResult,
       description: maskedDescription,
       rejectionReason: shouldMask ? null : (s as any).rejectionReason,
+      // 遮罩其余可能含私密内容的字段（避免对方 Agent 通过 inputs/outputs 等侧信道获取底线）
+      inputs:           shouldMask ? null : (s as any).inputs,
+      outputs:          shouldMask ? null : (s as any).outputs,
+      skills:           shouldMask ? null : (s as any).skills,
+      summary:          shouldMask ? null : (s as any).summary,
+      humanInputPrompt: shouldMask ? null : (s as any).humanInputPrompt,
+      appealText:       shouldMask ? null : (s as any).appealText,
+      agenda:           shouldMask ? null : (s as any).agenda,
       submissions: undefined, // 不传 submissions 数组到前端（前端用 history API 拿完整列表）
       lastSubmitter,          // 🆕 最新提交者名字（Agent 优先）
       approvedByUser: (s as any).approvedBy ? approverMap[(s as any).approvedBy] ?? null : null,
