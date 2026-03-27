@@ -57,11 +57,18 @@ export function getStartableSteps<T extends StepLike>(steps: T[]): T[] {
 /**
  * 步骤完成（done/skipped）后，计算下一批可启动的步骤
  *
- * - 并行组内步骤完成：检查组内是否全部完成
+ * 规则：
+ * - 并行组内步骤完成：检查【所有并行组+顺序步骤】在当前 order 之前是否全部完成
  *   - 全部完成 → 推进到下一批
  *   - 未全部完成 → 等待，不推进
- * - 顺序步骤完成：直接推进到下一批
- * - waiting_human 步骤：视为阻断屏障，下游全部不推进（等人类完成后才解锁）
+ * - 顺序步骤完成：检查 order 之前的所有步骤是否全完成，全完成才推进
+ * - waiting_human 步骤：视为阻断屏障，下游全部不推进
+ *
+ * Bug#5 修复要点：
+ * 原逻辑只检查 order ≤ maxGroupOrder 的其他步骤，
+ * 但"maxGroupOrder"可能小于其他并行组的 order，导致漏判。
+ * 新逻辑：统一找到当前完成的步骤（或组）之后的第一个"屏障"，
+ * 检查屏障之前的所有步骤是否全部完成，才推进。
  */
 export function getNextStepsAfterCompletion<T extends StepLike>(
   allSteps: T[],
@@ -70,28 +77,40 @@ export function getNextStepsAfterCompletion<T extends StepLike>(
   const sorted = [...allSteps].sort((a, b) => a.order - b.order)
   const pg = completedStep.parallelGroup
 
+  // 计算"当前完成波次"的最大 order
+  // - 并行步骤：取整个并行组的最大 order
+  // - 顺序步骤：就是自己的 order
+  let completedWaveMaxOrder: number
   if (pg) {
-    // 并行组：检查组内是否全部完成
     const groupSteps = sorted.filter(s => s.parallelGroup === pg)
+    completedWaveMaxOrder = Math.max(...groupSteps.map(s => s.order))
+
+    // 组内还有未完成的步骤，不推进
     const allGroupDone = groupSteps.every(
       s => s.status === 'done' || s.status === 'skipped'
     )
-    if (!allGroupDone) return [] // 组内还有未完成的，不推进
-
-    // 全组完成，找组后面的步骤（包含 waiting_human 屏障检测）
-    const maxGroupOrder = Math.max(...groupSteps.map(s => s.order))
-    const afterGroup = sorted.filter(s => s.order > maxGroupOrder)
-    // 如果下一个步骤是 waiting_human，阻断（它已经在等人类了，不再往下推）
-    if (afterGroup[0]?.status === 'waiting_human') return []
-    const remaining = afterGroup.filter(s => s.status === 'pending')
-    return getStartableSteps(remaining)
+    if (!allGroupDone) return []
+  } else {
+    completedWaveMaxOrder = completedStep.order
   }
 
-  // 顺序步骤：找后面的步骤（包含 waiting_human 屏障检测）
-  const afterStep = sorted.filter(s => s.order > completedStep.order)
-  // 如果下一个步骤是 waiting_human，阻断
-  if (afterStep[0]?.status === 'waiting_human') return []
-  const remaining = afterStep.filter(s => s.status === 'pending')
+  // Bug#5 核心修复：检查 order ≤ completedWaveMaxOrder 的【所有】步骤是否完成
+  // 同组的兄弟步骤（parallelGroup === pg）上面已经判断过，这里跳过避免重复
+  // 但其他组（包括其他并行组和顺序步骤）必须全部 done/skipped 才推进
+  const prerequisitesUnfinished = sorted.filter(s => {
+    if (s.order > completedWaveMaxOrder) return false       // 不是前置
+    if (pg && s.parallelGroup === pg) return false          // 同组，上面已判断
+    return s.status !== 'done' && s.status !== 'skipped'
+  })
+  if (prerequisitesUnfinished.length > 0) return [] // 仍有前置未完成
+
+  // 所有前置完成，找当前波次之后的步骤
+  const afterWave = sorted.filter(s => s.order > completedWaveMaxOrder)
+
+  // waiting_human 屏障：下一个步骤已在等人类输入，不再往后推
+  if (afterWave[0]?.status === 'waiting_human') return []
+
+  const remaining = afterWave.filter(s => s.status === 'pending')
   return getStartableSteps(remaining)
 }
 

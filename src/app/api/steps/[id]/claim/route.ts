@@ -158,8 +158,10 @@ export async function POST(
     const blockers = allSteps.filter(s => {
       if (s.order >= step.order) return false          // 只看前序
       if (['done', 'completed', 'approved', 'skipped', 'waiting_approval', 'waiting_human'].includes(s.status)) return false  // 已完成/跳过/待审批/等人工不阻塞
-      // 同一 parallelGroup 的不阻塞（并行步骤互不等待）
+      // 同一 parallelGroup 的不阻塞（并行步骤互不等待，in_progress 也算正常推进中）
       if (myGroup && s.parallelGroup === myGroup) return false
+      // in_progress：同组的兄弟正在执行，属于正常并行状态，不阻塞（上行已处理）
+      // 跨组的 in_progress 才需要阻塞（前序步骤还没完成）
       return true
     })
     if (blockers.length > 0) {
